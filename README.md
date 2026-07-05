@@ -90,8 +90,13 @@ These are one-time steps the operator (not the app) must do per environment:
   **one-way, read-only mirror**: the app's database is the source of truth,
   and the sheet is fully overwritten on every sync. Anyone editing the sheet
   directly will have their changes silently discarded on the next sync.
-- **Cron workers** (all scheduled via `vercel.json`, protect with
-  `CRON_SECRET` in production so only Vercel's invocations are accepted):
+- **Cron workers**: scheduled via an **external cron service** (e.g.
+  [cron-job.org](https://cron-job.org), free tier) rather than `vercel.json` —
+  Vercel's Hobby plan caps its own cron feature at once/day, too coarse for
+  the once-a-minute job below. Point each cron job's URL at
+  `https://<your-deployment>/api/cron/<name>` with an `Authorization: Bearer
+  <CRON_SECRET>` header set (`CRON_SECRET` must match the env var above so
+  only your scheduler's requests are accepted):
   - `/api/cron/process-message-jobs` (every minute) — drains queued messages
     (from rules or manual sends) and pushes them via each registrant's bound
     LINE channel.
@@ -107,7 +112,7 @@ These are one-time steps the operator (not the app) must do per environment:
     take roughly 80 minutes to fully drain. That's fine for non-urgent
     reminders; if faster delivery is ever needed, raise `BATCH_SIZE` in
     `app/api/cron/process-message-jobs/route.ts` and/or the cron frequency in
-    `vercel.json` before introducing an external queue.
+    your external scheduler before introducing an external queue.
   - `/api/cron/sync-sheets` (hourly) — pushes the latest registrant data to
     each configured Google Sheet.
 

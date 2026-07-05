@@ -103,9 +103,13 @@ default field set mirroring the original Google Form (`DEFAULT_FORM_FIELDS` in
 
 ### Cron & webhooks
 
-- All cron routes are scheduled in `vercel.json` and guarded by `lib/cronAuth.ts`
-  (`CRON_SECRET` bearer token; open when unset for local dev): `process-message-jobs` (1 min),
-  `evaluate-scheduled-rules` (15 min), `sync-sheets` (hourly).
+- Cron routes are guarded by `lib/cronAuth.ts` (`CRON_SECRET` bearer token; open when unset
+  for local dev): `process-message-jobs` (target: 1 min), `evaluate-scheduled-rules` (15 min),
+  `sync-sheets` (hourly). **Not scheduled via `vercel.json`** — Vercel's Hobby plan caps its
+  own cron feature at once/day, which is too coarse for `process-message-jobs`. Instead an
+  external scheduler (e.g. cron-job.org) hits each route on the target cadence with header
+  `Authorization: Bearer <CRON_SECRET>`. Revisit `vercel.json` crons if the project ever
+  upgrades to Vercel Pro.
 - `app/api/webhook/[channelId]/route.ts` verifies `x-line-signature` against **that specific
   channel's own decrypted secret** (looked up by URL param — not a single global secret) and
   keeps `Registrant.isFriend` in sync on follow/unfollow.
