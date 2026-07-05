@@ -1,0 +1,114 @@
+import { NextRequest, NextResponse } from "next/server";
+import { HTTPFetchError } from "@line/bot-sdk";
+import { prisma } from "@/lib/prisma";
+import { pushTextMessage } from "@/lib/line";
+import { currentYearMonth } from "@/lib/quota";
+import { isAuthorizedCronRequest } from "@/lib/cronAuth";
+
+const BATCH_SIZE = 50;
+
+async function claimBatch(): Promise<string[]> {
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "message_jobs"
+      WHERE "status" = 'QUEUED'
+      ORDER BY "createdAt" ASC
+      LIMIT ${BATCH_SIZE}
+      FOR UPDATE SKIP LOCKED
+    `;
+    const ids = rows.map((r) => r.id);
+    if (ids.length > 0) {
+      await tx.messageJob.updateMany({ where: { id: { in: ids } }, data: { status: "SENDING" } });
+    }
+    return ids;
+  });
+}
+
+async function handle(request: NextRequest) {
+  if (!isAuthorizedCronRequest(request)) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+
+  const claimedIds = await claimBatch();
+  if (claimedIds.length === 0) {
+    return NextResponse.json({ processed: 0, sent: 0, failed: 0, skippedQuota: 0 });
+  }
+
+  const jobs = await prisma.messageJob.findMany({
+    where: { id: { in: claimedIds } },
+    include: { registrant: true, channel: true },
+  });
+
+  const yearMonth = currentYearMonth();
+  let sent = 0;
+  let failed = 0;
+  let skippedQuota = 0;
+
+  for (const job of jobs) {
+    try {
+      if (!job.registrant.lineUserId) {
+        throw new Error("Registrant has no LINE user id");
+      }
+
+      const usage = await prisma.channelUsageCounter.findUnique({
+        where: { channelId_yearMonth: { channelId: job.channelId, yearMonth } },
+      });
+      const overQuota = (usage?.messagesSent ?? 0) >= job.channel.monthlyFreeQuota;
+
+      if (overQuota && !job.channel.allowOverage) {
+        await prisma.messageJob.update({
+          where: { id: job.id },
+          data: { status: "FAILED", lastError: "Channel is over its free quota", processedAt: new Date() },
+        });
+        if (job.ruleExecutionId) {
+          await prisma.ruleExecution.update({
+            where: { id: job.ruleExecutionId },
+            data: { status: "SKIPPED_QUOTA" },
+          });
+        }
+        skippedQuota++;
+        continue;
+      }
+
+      await pushTextMessage(job.channel.accessTokenEncrypted, job.registrant.lineUserId, job.body);
+
+      await prisma.$transaction([
+        prisma.messageJob.update({ where: { id: job.id }, data: { status: "SENT", processedAt: new Date() } }),
+        prisma.messageLog.create({
+          data: { registrantId: job.registrantId, channelId: job.channelId, body: job.body, lineApiResponseStatus: 200 },
+        }),
+        prisma.channelUsageCounter.upsert({
+          where: { channelId_yearMonth: { channelId: job.channelId, yearMonth } },
+          update: { messagesSent: { increment: 1 } },
+          create: { channelId: job.channelId, yearMonth, messagesSent: 1 },
+        }),
+        ...(job.ruleExecutionId
+          ? [prisma.ruleExecution.update({ where: { id: job.ruleExecutionId }, data: { status: "SENT", sentAt: new Date() } })]
+          : []),
+      ]);
+      sent++;
+    } catch (err) {
+      const status = err instanceof HTTPFetchError ? err.status : undefined;
+      const message = err instanceof Error ? err.message : String(err);
+
+      await prisma.$transaction([
+        prisma.messageJob.update({
+          where: { id: job.id },
+          data: { status: "FAILED", attempts: { increment: 1 }, lastError: message, processedAt: new Date() },
+        }),
+        prisma.messageLog.create({
+          data: { registrantId: job.registrantId, channelId: job.channelId, body: job.body, lineApiResponseStatus: status },
+        }),
+        ...(job.ruleExecutionId
+          ? [prisma.ruleExecution.update({ where: { id: job.ruleExecutionId }, data: { status: "FAILED", errorDetail: message } })]
+          : []),
+      ]);
+      failed++;
+    }
+  }
+
+  return NextResponse.json({ processed: jobs.length, sent, failed, skippedQuota });
+}
+
+export const GET = handle;
+export const POST = handle;

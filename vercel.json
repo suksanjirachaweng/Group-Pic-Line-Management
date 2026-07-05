@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/process-message-jobs",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/evaluate-scheduled-rules",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-sheets",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

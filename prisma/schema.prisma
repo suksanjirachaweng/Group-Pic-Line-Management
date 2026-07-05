@@ -1,0 +1,320 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Auth / admin users
+// ---------------------------------------------------------------------------
+
+enum AdminRole {
+  SUPERADMIN
+  UNIVERSITY_ADMIN
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         AdminRole @default(UNIVERSITY_ADMIN)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  universities AdminUserUniversity[]
+
+  @@map("admin_users")
+}
+
+model AdminUserUniversity {
+  adminUserId  String
+  universityId String
+  createdAt    DateTime @default(now())
+
+  adminUser  AdminUser  @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  @@id([adminUserId, universityId])
+  @@map("admin_user_universities")
+}
+
+// ---------------------------------------------------------------------------
+// Universities & configurable form schema
+// ---------------------------------------------------------------------------
+
+model University {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  name           String
+  isActive       Boolean  @default(true)
+  headerImageUrl String? // banner image shown at the top of the registration form
+  themeColor     String? // hex color (e.g. "#4f46e5") used to brand this university's registration form; defaults to the app's indigo when unset
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  formFields      FormFieldDefinition[]
+  channelPool     UniversityChannelPool[]
+  registrants     Registrant[]
+  rules           Rule[]
+  admins          AdminUserUniversity[]
+  sheetExportConfig SheetExportConfig?
+
+  @@map("universities")
+}
+
+enum FormFieldType {
+  TEXT
+  NUMBER
+  SELECT
+  DATE
+  DATETIME
+  PHONE
+  EMAIL
+}
+
+model FormFieldDefinition {
+  id           String        @id @default(cuid())
+  universityId String
+  key          String // used as the key inside Registrant.data JSON
+  label        String
+  description  String? // optional helper text shown under the label on the registration form
+  imageUrl     String? // optional image shown under the description (e.g. an example photo)
+  fieldType    FormFieldType @default(TEXT)
+  options      Json? // for SELECT fields: string[]
+  isRequired   Boolean       @default(true)
+  sortOrder    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  @@unique([universityId, key])
+  @@map("form_field_definitions")
+}
+
+// ---------------------------------------------------------------------------
+// LINE channels & channel pools
+// ---------------------------------------------------------------------------
+
+model Channel {
+  id                    String   @id @default(cuid())
+  name                  String
+  lineChannelId         String   @unique
+  accessTokenEncrypted  String
+  channelSecretEncrypted String
+  liffId                String
+  monthlyFreeQuota      Int      @default(300)
+  allowOverage          Boolean  @default(true)
+  isActive              Boolean  @default(true)
+  lineBasicId           String?
+  lineDisplayName       String?
+  linePictureUrl        String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  universityPool UniversityChannelPool[]
+  registrants    Registrant[]
+  usageCounters  ChannelUsageCounter[]
+  messageJobs    MessageJob[]
+  messageLogs    MessageLog[]
+
+  @@map("channels")
+}
+
+model UniversityChannelPool {
+  universityId String
+  channelId    String
+  weight       Int      @default(1)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  channel    Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@id([universityId, channelId])
+  @@map("university_channel_pools")
+}
+
+model ChannelUsageCounter {
+  id            String   @id @default(cuid())
+  channelId     String
+  yearMonth     String // e.g. "2026-07"
+  messagesSent  Int      @default(0)
+  updatedAt     DateTime @updatedAt
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, yearMonth])
+  @@map("channel_usage_counters")
+}
+
+// ---------------------------------------------------------------------------
+// Registrants
+// ---------------------------------------------------------------------------
+
+enum RegistrantStatus {
+  PENDING
+  CONFIRMED
+  PROBLEM
+  CANCELLED
+}
+
+model Registrant {
+  id           String           @id @default(cuid())
+  universityId String
+  channelId    String?
+  lineUserId   String?
+  isFriend     Boolean          @default(false)
+  displayName  String?
+  data         Json             @default("{}")
+  status       RegistrantStatus @default(PENDING)
+  registeredAt DateTime         @default(now())
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  university      University       @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  channel         Channel?         @relation(fields: [channelId], references: [id])
+  ruleExecutions  RuleExecution[]
+  messageJobs     MessageJob[]
+  messageLogs     MessageLog[]
+
+  @@index([universityId, lineUserId])
+  @@index([universityId, status])
+  @@map("registrants")
+}
+
+// ---------------------------------------------------------------------------
+// Rule engine
+// ---------------------------------------------------------------------------
+
+enum RuleTrigger {
+  ON_REGISTRATION
+  SCHEDULED_TICK
+}
+
+model Rule {
+  id              String      @id @default(cuid())
+  universityId    String
+  name            String
+  isActive        Boolean     @default(true)
+  trigger         RuleTrigger @default(ON_REGISTRATION)
+  conditionTree   Json // {"op":"AND"|"OR","conditions":[...]}
+  messageTemplate String
+  scheduleConfig  Json? // { relativeToField: string, offsetMinutes: number } for SCHEDULED_TICK
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  university University      @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  executions RuleExecution[]
+
+  @@index([universityId, isActive])
+  @@map("rules")
+}
+
+enum RuleExecutionStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED_QUOTA
+  SKIPPED_NOT_REACHABLE
+}
+
+model RuleExecution {
+  id           String              @id @default(cuid())
+  ruleId       String
+  registrantId String
+  status       RuleExecutionStatus @default(PENDING)
+  attemptedAt  DateTime            @default(now())
+  sentAt       DateTime?
+  errorDetail  String?
+
+  rule       Rule        @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  registrant Registrant  @relation(fields: [registrantId], references: [id], onDelete: Cascade)
+  messageJob MessageJob?
+
+  @@unique([ruleId, registrantId])
+  @@map("rule_executions")
+}
+
+// ---------------------------------------------------------------------------
+// Message sending pipeline
+// ---------------------------------------------------------------------------
+
+enum MessageJobSource {
+  RULE
+  MANUAL
+}
+
+enum MessageJobStatus {
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+}
+
+model MessageJob {
+  id              String            @id @default(cuid())
+  registrantId    String
+  channelId       String
+  source          MessageJobSource  @default(MANUAL)
+  ruleExecutionId String?           @unique
+  body            String
+  status          MessageJobStatus  @default(QUEUED)
+  attempts        Int               @default(0)
+  lastError       String?
+  createdAt       DateTime          @default(now())
+  processedAt     DateTime?
+
+  registrant    Registrant     @relation(fields: [registrantId], references: [id], onDelete: Cascade)
+  channel       Channel        @relation(fields: [channelId], references: [id])
+  ruleExecution RuleExecution? @relation(fields: [ruleExecutionId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("message_jobs")
+}
+
+model MessageLog {
+  id                    String   @id @default(cuid())
+  registrantId          String
+  channelId             String
+  body                  String
+  lineApiResponseStatus Int?
+  createdAt             DateTime @default(now())
+
+  registrant Registrant @relation(fields: [registrantId], references: [id], onDelete: Cascade)
+  channel    Channel    @relation(fields: [channelId], references: [id])
+
+  @@index([registrantId])
+  @@map("message_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Google Sheets one-way export mirror
+// ---------------------------------------------------------------------------
+
+enum SheetSyncStatus {
+  SUCCESS
+  FAILED
+}
+
+model SheetExportConfig {
+  id             String           @id @default(cuid())
+  universityId   String           @unique
+  googleSheetId  String
+  lastSyncedAt   DateTime?
+  lastSyncStatus SheetSyncStatus?
+  lastSyncError  String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  @@map("sheet_export_configs")
+}
