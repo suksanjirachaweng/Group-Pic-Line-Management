@@ -320,6 +320,10 @@ export default function LiffRegisterClient() {
         >
           ปิดหน้าต่าง / Close window
         </button>
+        <p className="mt-3 text-xs text-gray-400">
+          หากหน้าจอไม่ปิดอัตโนมัติ กรุณากดปุ่ม X ที่มุมขวาบน / If the screen doesn&apos;t close automatically,
+          tap the X in the top-right corner.
+        </p>
       </CenteredMessage>
     );
   }

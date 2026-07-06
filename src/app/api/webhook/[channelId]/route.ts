@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { validateSignature, webhook } from "@line/bot-sdk";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto";
-import { pushTextMessage } from "@/lib/line";
+import { replyTextMessage } from "@/lib/line";
 import { buildLiffRegisterUrl } from "@/lib/liffUrl";
-import { currentYearMonth } from "@/lib/quota";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ channelId: string }> }) {
   const { channelId } = await params;
@@ -40,8 +39,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       data: { isFriend: event.type === "follow" },
     });
 
-    if (event.type === "follow") {
-      await sendRegistrationLinkIfSingleUniversity(channel, userId);
+    if (event.type === "follow" && event.replyToken) {
+      await sendRegistrationLinkIfSingleUniversity(channel, event.replyToken);
     }
   }
 
@@ -53,10 +52,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
  * registration link to auto-send when the pool is unambiguous — exactly one active
  * university. Otherwise skip silently; that channel's graduates still reach the form via
  * the usual rich menu / template button link.
+ *
+ * Sent via replyMessage (using the follow event's replyToken) rather than pushMessage —
+ * replies are free and unlimited, so this never touches the channel's monthly quota.
  */
 async function sendRegistrationLinkIfSingleUniversity(
   channel: { id: string; liffId: string; accessTokenEncrypted: string },
-  lineUserId: string,
+  replyToken: string,
 ) {
   const pool = await prisma.universityChannelPool.findMany({
     where: { channelId: channel.id, isActive: true, university: { isActive: true } },
@@ -69,17 +71,7 @@ async function sendRegistrationLinkIfSingleUniversity(
   const text = `ขอบคุณที่เพิ่มเพื่อนนะครับ/ค่ะ!\n\nกดลิงก์ด้านล่างเพื่อลงทะเบียนรับภาพถ่ายหมู่ของ ${university.name} ได้เลย:\n${url}`;
 
   try {
-    await pushTextMessage(channel.accessTokenEncrypted, lineUserId, text);
-
-    // Not routed through the MessageJob queue: MessageJob/MessageLog require an existing
-    // Registrant row, but no registrant exists yet at first-follow time. Still counts toward
-    // the channel's monthly quota like every other push.
-    const yearMonth = currentYearMonth();
-    await prisma.channelUsageCounter.upsert({
-      where: { channelId_yearMonth: { channelId: channel.id, yearMonth } },
-      update: { messagesSent: { increment: 1 } },
-      create: { channelId: channel.id, yearMonth, messagesSent: 1 },
-    });
+    await replyTextMessage(channel.accessTokenEncrypted, replyToken, text);
   } catch (err) {
     console.error("Failed to send welcome registration link", err);
   }

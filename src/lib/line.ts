@@ -18,6 +18,26 @@ export async function pushTextMessage(
   });
 }
 
+/**
+ * Sends a single text message as a reply to a webhook event (e.g. "follow"), via the
+ * event's replyToken. Reply messages are free and unlimited, unlike pushMessage — always
+ * prefer this over pushTextMessage when a replyToken is available.
+ */
+export async function replyTextMessage(
+  accessTokenEncrypted: string,
+  replyToken: string,
+  text: string,
+): Promise<void> {
+  const client = new messagingApi.MessagingApiClient({
+    channelAccessToken: decryptSecret(accessTokenEncrypted),
+  });
+
+  await client.replyMessage({
+    replyToken,
+    messages: [{ type: "text", text }],
+  });
+}
+
 export type LineBotInfo = { basicId: string; displayName: string; pictureUrl: string | null };
 
 /** Fetches the bot's basic ID, display name, and profile picture from the LINE Messaging API. */
