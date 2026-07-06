@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { requireSuperadmin } from "@/lib/authz";
 import { encryptSecret } from "@/lib/crypto";
 import { fetchLiffAppIds, fetchLineBotInfo } from "@/lib/line";
+import { publishRichMenu } from "@/lib/richMenu";
+import { buildLiffRegisterUrl } from "@/lib/liffUrl";
 
 const channelSchema = z.object({
   name: z.string().min(1).max(200),
@@ -108,6 +110,57 @@ export async function refreshLineBotInfo(channelId: string) {
 
   revalidatePath("/admin/channels");
   revalidatePath(`/admin/channels/${channelId}`);
+}
+
+export type PublishRichMenuState =
+  | { success: true; richMenuId: string }
+  | { success: false; error: string }
+  | null;
+
+/**
+ * Publishes the standard 3-button rich menu (register / order photos / track status) to
+ * this channel, deriving the "register" link from the single active university it serves.
+ * Only supported when the channel's pool has exactly one active university — with more than
+ * one, there's no single link to bake into the rich menu's static action URL.
+ */
+export async function publishChannelRichMenu(
+  channelId: string,
+  _prevState: PublishRichMenuState,
+): Promise<PublishRichMenuState> {
+  await requireSuperadmin();
+
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    include: {
+      universityPool: {
+        where: { isActive: true, university: { isActive: true } },
+        include: { university: true },
+      },
+    },
+  });
+  if (!channel) return { success: false, error: "Channel not found" };
+
+  if (channel.universityPool.length !== 1) {
+    return {
+      success: false,
+      error:
+        channel.universityPool.length === 0
+          ? "This channel isn't assigned to any active university's pool yet."
+          : "This channel serves more than one university — publishing a rich menu needs exactly one to know which registration link to use.",
+    };
+  }
+
+  const university = channel.universityPool[0].university;
+  const registerUrl = buildLiffRegisterUrl(channel.liffId, university.slug);
+
+  try {
+    const richMenuId = await publishRichMenu(channel.accessTokenEncrypted, registerUrl, channel.richMenuId);
+    await prisma.channel.update({ where: { id: channelId }, data: { richMenuId } });
+    revalidatePath(`/admin/channels/${channelId}`);
+    return { success: true, richMenuId };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Failed to publish rich menu" };
+  }
 }
 
 export type LiffAppSuggestions = { liffIds: string[] } | { error: string };

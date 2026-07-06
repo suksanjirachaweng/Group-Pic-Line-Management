@@ -3,13 +3,14 @@ import { notFound, redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AdminRole } from "@/generated/prisma/enums";
-import { updateChannel, setChannelActive, refreshLineBotInfo } from "@/lib/actions/channels";
+import { updateChannel, setChannelActive, refreshLineBotInfo, publishChannelRichMenu } from "@/lib/actions/channels";
 import { setChannelPoolMembership } from "@/lib/actions/universities";
 import { currentYearMonth } from "@/lib/quota";
 import { projectCostForAllTiers } from "@/lib/linePricing";
 import { getChannelQrInfo } from "@/lib/lineQr";
 import { ChannelForm } from "./ChannelForm";
 import { LiffIdField } from "./LiffIdField";
+import { PublishRichMenuButton } from "./PublishRichMenuButton";
 
 export default async function ChannelDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -33,6 +34,7 @@ export default async function ChannelDetailPage({ params }: { params: Promise<{ 
   const qrInfo = await getChannelQrInfo(channel);
 
   const updateChannelWithId = updateChannel.bind(null, channel.id);
+  const publishChannelRichMenuWithId = publishChannelRichMenu.bind(null, channel.id);
 
   return (
     <div className="max-w-md space-y-6">
@@ -186,6 +188,21 @@ export default async function ChannelDetailPage({ params }: { params: Promise<{ 
               ))}
           </ul>
         )}
+      </div>
+
+      <div className="rounded-md border border-gray-200 bg-white p-4">
+        <h2 className="mb-2 text-sm font-semibold text-gray-900">Rich menu</h2>
+        <p className="mb-3 text-xs text-gray-400">
+          Publishes the standard 3-button rich menu (register / order photos / track status) as this
+          channel&apos;s default — the &quot;register&quot; button links to the university this channel
+          serves. Re-publish after changing the LIFF ID above so the link stays in sync.
+        </p>
+        {channel.richMenuId && (
+          <p className="mb-3 text-xs text-gray-500">
+            Currently published: <span className="font-mono">{channel.richMenuId}</span>
+          </p>
+        )}
+        <PublishRichMenuButton action={publishChannelRichMenuWithId} hasExisting={!!channel.richMenuId} />
       </div>
 
       <div>

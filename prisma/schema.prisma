@@ -116,6 +116,7 @@ model Channel {
   lineBasicId           String?
   lineDisplayName       String?
   linePictureUrl        String?
+  richMenuId            String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
