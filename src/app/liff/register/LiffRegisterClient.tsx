@@ -28,7 +28,14 @@ type Status =
   | { step: "error"; message: string }
   | ({ step: "list" } & FormContext)
   | ({ step: "form" | "submitting"; editingId: string | null } & FormContext)
-  | { step: "done"; wasEdit: boolean; fields: FieldDef[]; data: Record<string, string> };
+  | {
+      step: "done";
+      wasEdit: boolean;
+      fields: FieldDef[];
+      themeColor: string | null;
+      registrations: RegistrationSummary[];
+      savedId: string;
+    };
 
 type LiffProfile = { userId: string; displayName?: string };
 
@@ -202,7 +209,19 @@ export default function LiffRegisterClient() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "Registration failed. Please try again.");
       }
-      setStatus({ step: "done", wasEdit: !!editingId, fields: status.fields, data: formValues });
+      const body: { registrantId: string } = await res.json();
+      const savedEntry: RegistrationSummary = { id: body.registrantId, registeredAt: new Date().toISOString(), data: formValues };
+      const registrations = editingId
+        ? status.registrations.map((r) => (r.id === editingId ? savedEntry : r))
+        : [...status.registrations, savedEntry];
+      setStatus({
+        step: "done",
+        wasEdit: !!editingId,
+        fields: status.fields,
+        themeColor: status.themeColor,
+        registrations,
+        savedId: body.registrantId,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setStatus({ step: "error", message });
@@ -233,8 +252,9 @@ export default function LiffRegisterClient() {
   }
 
   if (status.step === "done") {
+    const brandStyle = { "--brand-color": status.themeColor || DEFAULT_THEME_COLOR } as React.CSSProperties;
     return (
-      <CenteredMessage>
+      <CenteredMessage themeScope style={brandStyle}>
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
           <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -249,14 +269,46 @@ export default function LiffRegisterClient() {
             : "ขอบคุณที่ลงทะเบียน ข้อมูลของคุณถูกบันทึกเรียบร้อยแล้ว"}
         </p>
         {status.fields.length > 0 && (
-          <dl className="mb-6 space-y-1.5 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-left">
-            {status.fields.map((f) => (
-              <div key={f.key} className="flex items-center justify-between gap-3">
-                <dt className="min-w-0 flex-1 truncate text-xs text-gray-500">{f.label}</dt>
-                <dd className="shrink-0 text-base font-bold text-gray-900">{status.data[f.key] || "—"}</dd>
-              </div>
-            ))}
-          </dl>
+          <ul className="mb-6 space-y-2.5 text-left">
+            {status.registrations.map((reg, i) => {
+              const isNew = reg.id === status.savedId;
+              return (
+                <li
+                  key={reg.id}
+                  className={
+                    isNew
+                      ? "brand-border rounded-xl border-2 bg-white px-4 py-3 shadow-md"
+                      : "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 opacity-60"
+                  }
+                >
+                  {isNew ? (
+                    <p className="brand-text mb-1.5 text-xs font-bold uppercase tracking-wide">
+                      บันทึกล่าสุด / Just saved
+                    </p>
+                  ) : (
+                    <p className="mb-1.5 text-xs font-medium text-gray-400">
+                      รายการที่ {i + 1} ·{" "}
+                      {new Date(reg.registeredAt).toLocaleString("th-TH", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  )}
+                  <dl className="space-y-1.5">
+                    {status.fields.map((f) => (
+                      <div key={f.key} className="flex items-center justify-between gap-3">
+                        <dt className="min-w-0 flex-1 truncate text-xs text-gray-500">{f.label}</dt>
+                        <dd className="shrink-0 text-base font-bold text-gray-900">{reg.data[f.key] || "—"}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </li>
+              );
+            })}
+          </ul>
         )}
         <button
           className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 py-3 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:shadow-lg active:scale-[0.99]"
@@ -456,9 +508,21 @@ function inputTypeFor(fieldType: FieldDef["fieldType"]): string {
   }
 }
 
-function CenteredMessage({ children }: { children: React.ReactNode }) {
+function CenteredMessage({
+  children,
+  themeScope,
+  style,
+}: {
+  children: React.ReactNode;
+  themeScope?: boolean;
+  style?: React.CSSProperties;
+}) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-6">
+    <div
+      className={`flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-6 ${themeScope ? "theme-scope" : ""}`}
+      style={style}
+    >
+      {themeScope && <ThemeStyle />}
       <div className="w-full max-w-sm rounded-2xl border border-gray-100 bg-white p-8 text-center shadow-sm shadow-indigo-100/50">
         {children}
       </div>
