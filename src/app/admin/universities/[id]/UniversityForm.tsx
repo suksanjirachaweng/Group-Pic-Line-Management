@@ -6,9 +6,11 @@ import type { UpdateUniversityState } from "@/lib/actions/universities";
 export function UniversityForm({
   action,
   children,
+  className = "space-y-4 rounded-md border border-gray-200 bg-white p-6",
 }: {
   action: (prevState: UpdateUniversityState, formData: FormData) => Promise<UpdateUniversityState>;
   children: React.ReactNode;
+  className?: string;
 }) {
   const [state, formAction] = useActionState(action, null);
 
@@ -19,7 +21,7 @@ export function UniversityForm({
   }, [state]);
 
   return (
-    <form action={formAction} className="space-y-4 rounded-md border border-gray-200 bg-white p-6">
+    <form action={formAction} className={className}>
       {children}
     </form>
   );

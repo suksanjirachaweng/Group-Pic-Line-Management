@@ -173,8 +173,9 @@ export async function createFormField(
 export async function updateFormField(
   universityId: string,
   fieldId: string,
+  _prevState: UpdateUniversityState,
   formData: FormData,
-) {
+): Promise<UpdateUniversityState> {
   await requireUniversityAccess(universityId);
 
   const parsed = formFieldSchema.parse({
@@ -209,6 +210,8 @@ export async function updateFormField(
   });
 
   revalidatePath(`/admin/universities/${universityId}`);
+
+  return { success: true, savedAt: Date.now() };
 }
 
 export async function deleteFormField(universityId: string, fieldId: string) {

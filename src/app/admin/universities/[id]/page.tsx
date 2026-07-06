@@ -196,7 +196,7 @@ export default async function UniversityDetailPage({
           {university.formFields.map((f) => (
             <div key={f.id} className="flex flex-col gap-2 p-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <form
+              <UniversityForm
                 action={updateFormField.bind(null, university.id, f.id)}
                 className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-6 sm:items-center"
               >
@@ -254,7 +254,7 @@ export default async function UniversityDetailPage({
                   rows={2}
                   className="col-span-2 rounded-md border border-gray-300 px-2 py-1.5 text-xs sm:col-span-6"
                 />
-              </form>
+              </UniversityForm>
               <form action={deleteFormField.bind(null, university.id, f.id)}>
                 <button type="submit" className="text-sm text-red-600 hover:underline">
                   Delete
