@@ -79,7 +79,7 @@ export default function LiffRegisterClient() {
 
   const [status, setStatus] = useState<Status>(() =>
     !universitySlug || !liffId
-      ? { step: "error", message: "Missing registration link parameters." }
+      ? { step: "error", message: "ลิงก์ลงทะเบียนไม่ถูกต้อง / Missing registration link parameters." }
       : { step: "loading" },
   );
   const [profile, setProfile] = useState<LiffProfile | null>(null);
@@ -128,7 +128,8 @@ export default function LiffRegisterClient() {
             `/api/universities/${universitySlug}/registrations?lineUserId=${encodeURIComponent(liffProfile.userId)}`,
           ),
         ]);
-        if (!fieldsRes.ok) throw new Error("Could not load the registration form for this university.");
+        if (!fieldsRes.ok)
+          throw new Error("ไม่สามารถโหลดแบบฟอร์มลงทะเบียนของมหาวิทยาลัยนี้ได้ / Could not load the registration form for this university.");
         const fieldsBody = await fieldsRes.json();
         const registrations: RegistrationSummary[] = registrationsRes.ok
           ? (await registrationsRes.json()).registrations
@@ -207,7 +208,7 @@ export default function LiffRegisterClient() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? "Registration failed. Please try again.");
+        throw new Error(body.error ?? "ลงทะเบียนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง / Registration failed. Please try again.");
       }
       const body: { registrantId: string } = await res.json();
       const savedEntry: RegistrationSummary = { id: body.registrantId, registeredAt: new Date().toISOString(), data: formValues };
@@ -232,7 +233,7 @@ export default function LiffRegisterClient() {
     return (
       <CenteredMessage>
         <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" />
-        <p className="text-sm text-gray-500">กำลังโหลด...</p>
+        <p className="text-sm text-gray-500">กำลังโหลด... / Loading...</p>
       </CenteredMessage>
     );
   }
@@ -245,7 +246,7 @@ export default function LiffRegisterClient() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </div>
-        <p className="font-semibold text-gray-900">เกิดข้อผิดพลาด</p>
+        <p className="font-semibold text-gray-900">เกิดข้อผิดพลาด / Something went wrong</p>
         <p className="mt-1 text-sm text-gray-500">{status.message}</p>
       </CenteredMessage>
     );
@@ -261,12 +262,12 @@ export default function LiffRegisterClient() {
           </svg>
         </div>
         <h1 className="text-lg font-semibold text-gray-900">
-          {status.wasEdit ? "แก้ไขข้อมูลเรียบร้อยแล้ว" : "ลงทะเบียนสำเร็จ"}
+          {status.wasEdit ? "แก้ไขข้อมูลเรียบร้อยแล้ว / Updated successfully" : "ลงทะเบียนสำเร็จ / Registration successful"}
         </h1>
         <p className="mt-1 mb-6 text-sm text-gray-500">
           {status.wasEdit
-            ? "ข้อมูลของคุณถูกอัปเดตเรียบร้อยแล้ว"
-            : "ขอบคุณที่ลงทะเบียน ข้อมูลของคุณถูกบันทึกเรียบร้อยแล้ว"}
+            ? "ข้อมูลของคุณถูกอัปเดตเรียบร้อยแล้ว / Your information has been updated."
+            : "ขอบคุณที่ลงทะเบียน ข้อมูลของคุณถูกบันทึกเรียบร้อยแล้ว / Thank you for registering. Your information has been saved."}
         </p>
         {status.fields.length > 0 && (
           <ul className="mb-6 space-y-2.5 text-left">
@@ -287,7 +288,7 @@ export default function LiffRegisterClient() {
                     </p>
                   ) : (
                     <p className="mb-1.5 text-xs font-medium text-gray-400">
-                      รายการที่ {i + 1} ·{" "}
+                      รายการที่ {i + 1} / Entry {i + 1} ·{" "}
                       {new Date(reg.registeredAt).toLocaleString("th-TH", {
                         day: "numeric",
                         month: "short",
@@ -317,7 +318,7 @@ export default function LiffRegisterClient() {
             if (liff.isInClient()) liff.closeWindow();
           }}
         >
-          ปิดหน้าต่าง
+          ปิดหน้าต่าง / Close window
         </button>
       </CenteredMessage>
     );
@@ -341,7 +342,7 @@ export default function LiffRegisterClient() {
                 <span className="brand-bg h-8 w-1.5 shrink-0 rounded-full" />
                 <div>
                   <h1 className="text-xl font-bold leading-tight text-gray-900">{universityName}</h1>
-                  <p className="text-sm text-gray-400">รายการที่ลงทะเบียนไว้</p>
+                  <p className="text-sm text-gray-400">รายการที่ลงทะเบียนไว้ / Your registrations</p>
                 </div>
               </div>
 
@@ -350,7 +351,7 @@ export default function LiffRegisterClient() {
                   <li key={reg.id} className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <p className="text-xs font-medium text-gray-400">
-                        รายการที่ {i + 1} ·{" "}
+                        รายการที่ {i + 1} / Entry {i + 1} ·{" "}
                         {new Date(reg.registeredAt).toLocaleString("th-TH", {
                           day: "numeric",
                           month: "short",
@@ -363,7 +364,7 @@ export default function LiffRegisterClient() {
                         onClick={() => startEditingRegistration(reg)}
                         className="brand-border brand-text brand-edit-btn shrink-0 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition"
                       >
-                        แก้ไข
+                        แก้ไข / Edit
                       </button>
                     </div>
                     {fields.length > 0 ? (
@@ -378,7 +379,7 @@ export default function LiffRegisterClient() {
                         ))}
                       </dl>
                     ) : (
-                      <p className="text-sm text-gray-400">(ไม่มีข้อมูลสรุป)</p>
+                      <p className="text-sm text-gray-400">(ไม่มีข้อมูลสรุป / No summary available)</p>
                     )}
                   </li>
                 ))}
@@ -388,7 +389,7 @@ export default function LiffRegisterClient() {
                 onClick={startNewRegistration}
                 className="brand-bg mt-5 w-full rounded-xl py-3 text-sm font-semibold text-white shadow-md transition hover:brightness-90 active:scale-[0.99] active:brightness-95"
               >
-                + ลงทะเบียนเพิ่ม
+                + ลงทะเบียนเพิ่ม / Register another
               </button>
             </div>
           </div>
@@ -414,7 +415,7 @@ export default function LiffRegisterClient() {
                 onClick={backToList}
                 className="brand-text mb-4 flex items-center gap-1 text-xs font-medium hover:underline"
               >
-                ← กลับไปยังรายการที่ลงทะเบียนไว้
+                ← กลับไปยังรายการที่ลงทะเบียนไว้ / Back to your registrations
               </button>
             )}
 
@@ -422,7 +423,9 @@ export default function LiffRegisterClient() {
               <span className="brand-bg h-8 w-1.5 shrink-0 rounded-full" />
               <div>
                 <h1 className="text-xl font-bold leading-tight text-gray-900">{universityName}</h1>
-                <p className="text-sm text-gray-400">{status.editingId ? "แก้ไขข้อมูล" : "Registration"}</p>
+                <p className="text-sm text-gray-400">
+                  {status.editingId ? "แก้ไขข้อมูล / Edit registration" : "ลงทะเบียน / Registration"}
+                </p>
               </div>
             </div>
 
@@ -452,7 +455,7 @@ export default function LiffRegisterClient() {
                       className={fieldInputClasses}
                     >
                       <option value="" disabled>
-                        Select...
+                        เลือก... / Select...
                       </option>
                       {(f.options ?? []).map((opt) => (
                         <option key={opt} value={opt}>
@@ -476,7 +479,11 @@ export default function LiffRegisterClient() {
                 disabled={status.step === "submitting"}
                 className="brand-bg w-full rounded-xl py-3 text-sm font-semibold text-white shadow-md transition hover:brightness-90 active:scale-[0.99] active:brightness-95 disabled:opacity-50"
               >
-                {status.step === "submitting" ? "กำลังบันทึก..." : status.editingId ? "บันทึกการแก้ไข" : "Submit"}
+                {status.step === "submitting"
+                  ? "กำลังบันทึก... / Saving..."
+                  : status.editingId
+                    ? "บันทึกการแก้ไข / Save changes"
+                    : "ลงทะเบียน / Submit"}
               </button>
             </form>
           </div>
