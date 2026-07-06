@@ -4,9 +4,17 @@ import { getServerSession } from "next-auth";
 import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { RegistrantStatus } from "@/generated/prisma/enums";
-import { buildRegistrantWhere, sortRegistrants } from "@/lib/registrantFilters";
+import {
+  buildRegistrantWhere,
+  sortRegistrants,
+  buildAdvancedConditionGroup,
+  filterByAdvancedConditions,
+  CONDITION_OPERATORS,
+  type AdvancedConditionRow,
+} from "@/lib/registrantFilters";
 
 const PAGE_SIZE = 50;
+const ADVANCED_FILTER_ROWS = 3;
 
 const FIXED_COLUMNS = [
   { key: "lineUserId", label: "LINE User ID" },
@@ -21,18 +29,11 @@ export default async function RegistrantsPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{
-    page?: string;
-    status?: string;
-    q?: string;
-    fieldKey?: string;
-    fieldValue?: string;
-    sortBy?: string;
-    sortDir?: string;
-  }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const { id: universityId } = await params;
-  const { page: pageParam, status, q, fieldKey, fieldValue, sortBy, sortDir } = await searchParams;
+  const sp0 = await searchParams;
+  const { page: pageParam, status, q, fieldKey, fieldValue, sortBy, sortDir } = sp0;
 
   const session = await getServerSession(authOptions);
   const user = session!.user;
@@ -47,6 +48,13 @@ export default async function RegistrantsPage({
   const page = Math.max(1, Number(pageParam) || 1);
   const formFieldKeys = new Set(university.formFields.map((f) => f.key));
 
+  const advancedRows: AdvancedConditionRow[] = Array.from({ length: ADVANCED_FILTER_ROWS }, (_, i) => ({
+    field: sp0[`af${i}f`],
+    operator: sp0[`af${i}o`],
+    value: sp0[`af${i}v`],
+  }));
+  const advancedGroup = buildAdvancedConditionGroup(advancedRows);
+
   const where = buildRegistrantWhere(universityId, { status, q, fieldKey, fieldValue });
 
   const matched = await prisma.registrant.findMany({
@@ -55,7 +63,8 @@ export default async function RegistrantsPage({
     include: { channel: { select: { name: true } } },
   });
 
-  const sorted = sortRegistrants(matched, sortBy, sortDir, formFieldKeys);
+  const advancedFiltered = filterByAdvancedConditions(matched, advancedGroup);
+  const sorted = sortRegistrants(advancedFiltered, sortBy, sortDir, formFieldKeys);
   const total = sorted.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const registrants = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -71,6 +80,14 @@ export default async function RegistrantsPage({
     if (merged.fieldValue) sp.set("fieldValue", merged.fieldValue);
     if (merged.sortBy) sp.set("sortBy", merged.sortBy);
     if (merged.sortDir) sp.set("sortDir", merged.sortDir);
+    for (let i = 0; i < ADVANCED_FILTER_ROWS; i++) {
+      const f = sp0[`af${i}f`];
+      const o = sp0[`af${i}o`];
+      const v = sp0[`af${i}v`];
+      if (f) sp.set(`af${i}f`, f);
+      if (o) sp.set(`af${i}o`, o);
+      if (v) sp.set(`af${i}v`, v);
+    }
     sp.set("page", String(nextPage));
     return `?${sp.toString()}`;
   }
@@ -92,6 +109,14 @@ export default async function RegistrantsPage({
   if (fieldValue) exportSp.set("fieldValue", fieldValue);
   if (sortBy) exportSp.set("sortBy", sortBy);
   if (sortDir) exportSp.set("sortDir", sortDir);
+  for (let i = 0; i < ADVANCED_FILTER_ROWS; i++) {
+    const f = sp0[`af${i}f`];
+    const o = sp0[`af${i}o`];
+    const v = sp0[`af${i}v`];
+    if (f) exportSp.set(`af${i}f`, f);
+    if (o) exportSp.set(`af${i}o`, o);
+    if (v) exportSp.set(`af${i}v`, v);
+  }
   const exportHref = `/api/admin/universities/${universityId}/registrants/export?${exportSp.toString()}`;
 
   return (
@@ -151,6 +176,58 @@ export default async function RegistrantsPage({
           Filter
         </button>
       </form>
+
+      <details className="mb-4 rounded-md border border-gray-200 bg-white p-3" open={!!advancedGroup}>
+        <summary className="cursor-pointer text-sm font-medium text-gray-700">
+          Advanced filter (all conditions must match)
+        </summary>
+        <form className="mt-3 space-y-2" method="get">
+          {status && <input type="hidden" name="status" value={status} />}
+          {q && <input type="hidden" name="q" value={q} />}
+          {fieldKey && <input type="hidden" name="fieldKey" value={fieldKey} />}
+          {fieldValue && <input type="hidden" name="fieldValue" value={fieldValue} />}
+          {sortBy && <input type="hidden" name="sortBy" value={sortBy} />}
+          {sortDir && <input type="hidden" name="sortDir" value={sortDir} />}
+          {Array.from({ length: ADVANCED_FILTER_ROWS }, (_, i) => (
+            <div key={i} className="flex gap-2">
+              <select
+                name={`af${i}f`}
+                defaultValue={sp0[`af${i}f`] ?? ""}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+              >
+                <option value="">Field…</option>
+                {university.formFields.map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                name={`af${i}o`}
+                defaultValue={sp0[`af${i}o`] ?? ""}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+              >
+                <option value="">Operator…</option>
+                {CONDITION_OPERATORS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                name={`af${i}v`}
+                defaultValue={sp0[`af${i}v`]}
+                placeholder="Value"
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+              />
+            </div>
+          ))}
+          <button type="submit" className="rounded-md bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white">
+            Apply advanced filter
+          </button>
+        </form>
+      </details>
 
       <div className="overflow-x-auto rounded-md border border-gray-200 bg-white">
         <table className="w-full text-sm">

@@ -1,4 +1,51 @@
 import { Prisma, RegistrantStatus } from "@/generated/prisma/client";
+import { matchesConditionTree, type Condition, type ConditionGroup, type ConditionOperator } from "@/lib/rules/evaluate";
+
+export const CONDITION_OPERATORS: { value: ConditionOperator; label: string }[] = [
+  { value: "eq", label: "=" },
+  { value: "neq", label: "≠" },
+  { value: "contains", label: "contains" },
+  { value: "gt", label: ">" },
+  { value: "gte", label: ">=" },
+  { value: "lt", label: "<" },
+  { value: "lte", label: "<=" },
+  { value: "after", label: "after (date)" },
+  { value: "before", label: "before (date)" },
+  { value: "is_not_empty", label: "is not empty" },
+  { value: "is_empty", label: "is empty" },
+];
+
+const OPERATORS_NOT_NEEDING_VALUE = new Set<ConditionOperator>(["is_empty", "is_not_empty"]);
+
+export type AdvancedConditionRow = { field?: string; operator?: string; value?: string };
+
+/**
+ * Builds an AND condition group from advanced-filter rows, dropping incomplete rows (no
+ * field, no operator, or missing value for operators that need one). Returns null if no
+ * row is usable — evaluated in-memory via the same interpreter the rule engine uses, never
+ * as raw SQL, so a field name typo just matches nothing rather than being a query risk.
+ */
+export function buildAdvancedConditionGroup(rows: AdvancedConditionRow[]): ConditionGroup | null {
+  const conditions: Condition[] = rows
+    .filter((r): r is { field: string; operator: ConditionOperator; value?: string } => {
+      if (!r.field || !r.operator) return false;
+      if (!CONDITION_OPERATORS.some((o) => o.value === r.operator)) return false;
+      if (!OPERATORS_NOT_NEEDING_VALUE.has(r.operator as ConditionOperator) && !r.value) return false;
+      return true;
+    })
+    .map((r) => ({ field: r.field, operator: r.operator, value: r.value }));
+
+  return conditions.length > 0 ? { op: "AND", conditions } : null;
+}
+
+/** Filters registrants against an advanced condition group, evaluated against their `data`. */
+export function filterByAdvancedConditions<T extends { data: unknown }>(
+  registrants: T[],
+  group: ConditionGroup | null,
+): T[] {
+  if (!group) return registrants;
+  return registrants.filter((r) => matchesConditionTree(group, (r.data ?? {}) as Record<string, unknown>));
+}
 
 type SortableRegistrant = {
   displayName: string | null;

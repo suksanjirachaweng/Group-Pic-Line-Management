@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess, AuthzError } from "@/lib/authz";
-import { buildRegistrantWhere, sortRegistrants } from "@/lib/registrantFilters";
+import {
+  buildRegistrantWhere,
+  sortRegistrants,
+  buildAdvancedConditionGroup,
+  filterByAdvancedConditions,
+  type AdvancedConditionRow,
+} from "@/lib/registrantFilters";
+
+const ADVANCED_FILTER_ROWS = 3;
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: universityId } = await params;
@@ -33,8 +41,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     orderBy: { registeredAt: "desc" },
     include: { channel: { select: { name: true } } },
   });
+
+  const advancedRows: AdvancedConditionRow[] = Array.from({ length: ADVANCED_FILTER_ROWS }, (_, i) => ({
+    field: sp.get(`af${i}f`) ?? undefined,
+    operator: sp.get(`af${i}o`) ?? undefined,
+    value: sp.get(`af${i}v`) ?? undefined,
+  }));
+  const advancedGroup = buildAdvancedConditionGroup(advancedRows);
+  const advancedFiltered = filterByAdvancedConditions(matched, advancedGroup);
+
   const formFieldKeys = new Set(university.formFields.map((f) => f.key));
-  const registrants = sortRegistrants(matched, sp.get("sortBy") ?? undefined, sp.get("sortDir") ?? undefined, formFieldKeys);
+  const registrants = sortRegistrants(
+    advancedFiltered,
+    sp.get("sortBy") ?? undefined,
+    sp.get("sortDir") ?? undefined,
+    formFieldKeys,
+  );
 
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Registrants");
