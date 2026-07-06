@@ -122,40 +122,53 @@ export default async function RegistrantsPage({
         </button>
       </form>
 
-      <div className="overflow-hidden rounded-md border border-gray-200 bg-white">
+      <div className="overflow-x-auto rounded-md border border-gray-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
             <tr>
-              <th className="px-4 py-2">Name</th>
-              <th className="px-4 py-2">LINE User ID</th>
-              <th className="px-4 py-2">LINE Channel</th>
-              <th className="px-4 py-2">Friend</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2">Registered</th>
+              <th className="whitespace-nowrap px-4 py-2">Name</th>
+              <th className="whitespace-nowrap px-4 py-2">LINE User ID</th>
+              <th className="whitespace-nowrap px-4 py-2">LINE Channel</th>
+              <th className="whitespace-nowrap px-4 py-2">Friend</th>
+              <th className="whitespace-nowrap px-4 py-2">Status</th>
+              <th className="whitespace-nowrap px-4 py-2">Registered</th>
+              {university.formFields.map((f) => (
+                <th key={f.key} className="whitespace-nowrap px-4 py-2">
+                  {f.label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {registrants.map((r) => (
-              <tr key={r.id} className="hover:bg-gray-50">
-                <td className="px-4 py-2">
-                  <Link href={`/admin/universities/${universityId}/registrants/${r.id}`} className="text-gray-900 hover:text-indigo-600 hover:underline">
-                    {r.displayName ?? "(no name)"}
-                  </Link>
-                </td>
-                <td className="px-4 py-2 font-mono text-xs text-gray-500">
-                  {r.lineUserId ? `${r.lineUserId.slice(0, 10)}…` : "—"}
-                </td>
-                <td className="px-4 py-2 text-gray-500">{r.channel?.name ?? "—"}</td>
-                <td className="px-4 py-2 text-gray-500">{r.isFriend ? "Yes" : "No"}</td>
-                <td className="px-4 py-2">
-                  <StatusBadge status={r.status} />
-                </td>
-                <td className="px-4 py-2 text-gray-500">{r.registeredAt.toLocaleDateString()}</td>
-              </tr>
-            ))}
+            {registrants.map((r) => {
+              const data = (r.data ?? {}) as Record<string, string>;
+              return (
+                <tr key={r.id} className="hover:bg-gray-50">
+                  <td className="whitespace-nowrap px-4 py-2">
+                    <Link href={`/admin/universities/${universityId}/registrants/${r.id}`} className="text-gray-900 hover:text-indigo-600 hover:underline">
+                      {r.displayName ?? "(no name)"}
+                    </Link>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-500">
+                    {r.lineUserId ? `${r.lineUserId.slice(0, 10)}…` : "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-gray-500">{r.channel?.name ?? "—"}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-gray-500">{r.isFriend ? "Yes" : "No"}</td>
+                  <td className="whitespace-nowrap px-4 py-2">
+                    <StatusBadge status={r.status} />
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-gray-500">{r.registeredAt.toLocaleDateString()}</td>
+                  {university.formFields.map((f) => (
+                    <td key={f.key} className="whitespace-nowrap px-4 py-2 text-gray-500">
+                      {data[f.key] || "—"}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
             {registrants.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-3 text-gray-400">
+                <td colSpan={6 + university.formFields.length} className="px-4 py-3 text-gray-400">
                   No registrants match this filter.
                 </td>
               </tr>
