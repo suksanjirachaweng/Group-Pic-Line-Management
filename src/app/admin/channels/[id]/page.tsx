@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AdminRole } from "@/generated/prisma/enums";
-import { updateChannel, setChannelActive } from "@/lib/actions/channels";
+import { updateChannel, setChannelActive, refreshLineBotInfo } from "@/lib/actions/channels";
 import { setChannelPoolMembership } from "@/lib/actions/universities";
 import { currentYearMonth } from "@/lib/quota";
 import { projectCostForAllTiers } from "@/lib/linePricing";
@@ -39,10 +39,20 @@ export default async function ChannelDetailPage({ params }: { params: Promise<{ 
       <h1 className="text-lg font-semibold text-gray-900">{channel.name}</h1>
 
       <div className="rounded-md border-t-4 border-[#06C755] border-x border-b border-gray-200 bg-white p-4">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
-          <span className="inline-block h-2 w-2 rounded-full bg-[#06C755]" />
-          LINE Bot info (from LINE)
-        </h2>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+            <span className="inline-block h-2 w-2 rounded-full bg-[#06C755]" />
+            LINE Bot info (from LINE)
+          </h2>
+          <form action={refreshLineBotInfo.bind(null, channel.id)}>
+            <button
+              type="submit"
+              className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Refresh
+            </button>
+          </form>
+        </div>
         {qrInfo ? (
           <div className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}

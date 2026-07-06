@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireSuperadmin } from "@/lib/authz";
 import { encryptSecret } from "@/lib/crypto";
-import { fetchLiffAppIds } from "@/lib/line";
+import { fetchLiffAppIds, fetchLineBotInfo } from "@/lib/line";
 
 const channelSchema = z.object({
   name: z.string().min(1).max(200),
@@ -85,6 +85,26 @@ export async function setChannelActive(channelId: string, isActive: boolean) {
   await requireSuperadmin();
 
   await prisma.channel.update({ where: { id: channelId }, data: { isActive } });
+
+  revalidatePath("/admin/channels");
+  revalidatePath(`/admin/channels/${channelId}`);
+}
+
+/**
+ * Re-fetches the bot's display name/icon/basic ID from LINE and overwrites the cached
+ * copy — needed because renaming the OA on LINE's side doesn't otherwise propagate here.
+ */
+export async function refreshLineBotInfo(channelId: string) {
+  await requireSuperadmin();
+
+  const channel = await prisma.channel.findUnique({ where: { id: channelId } });
+  if (!channel) return;
+
+  const info = await fetchLineBotInfo(channel.accessTokenEncrypted);
+  await prisma.channel.update({
+    where: { id: channelId },
+    data: { lineBasicId: info.basicId, lineDisplayName: info.displayName, linePictureUrl: info.pictureUrl },
+  });
 
   revalidatePath("/admin/channels");
   revalidatePath(`/admin/channels/${channelId}`);
