@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess, AuthzError } from "@/lib/authz";
-import { buildRegistrantWhere } from "@/lib/registrantFilters";
+import { buildRegistrantWhere, sortRegistrants } from "@/lib/registrantFilters";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: universityId } = await params;
@@ -28,23 +28,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     fieldValue: sp.get("fieldValue") ?? undefined,
   });
 
-  const registrants = await prisma.registrant.findMany({
+  const matched = await prisma.registrant.findMany({
     where,
     orderBy: { registeredAt: "desc" },
     include: { channel: { select: { name: true } } },
   });
+  const formFieldKeys = new Set(university.formFields.map((f) => f.key));
+  const registrants = sortRegistrants(matched, sp.get("sortBy") ?? undefined, sp.get("sortDir") ?? undefined, formFieldKeys);
 
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Registrants");
 
   sheet.columns = [
     { header: "Name", key: "name", width: 24 },
+    ...university.formFields.map((f) => ({ header: f.label, key: f.key, width: 24 })),
     { header: "LINE User ID", key: "lineUserId", width: 22 },
     { header: "LINE Channel", key: "channel", width: 20 },
     { header: "Friend", key: "friend", width: 10 },
     { header: "Status", key: "status", width: 12 },
     { header: "Registered", key: "registered", width: 20 },
-    ...university.formFields.map((f) => ({ header: f.label, key: f.key, width: 24 })),
   ];
   sheet.getRow(1).font = { bold: true };
 
