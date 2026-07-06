@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { RegistrantStatus } from "@/generated/prisma/enums";
+import { buildRegistrantWhere } from "@/lib/registrantFilters";
 
 const PAGE_SIZE = 50;
 
@@ -12,32 +13,24 @@ export default async function RegistrantsPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ page?: string; status?: string; q?: string }>;
+  searchParams: Promise<{ page?: string; status?: string; q?: string; fieldKey?: string; fieldValue?: string }>;
 }) {
   const { id: universityId } = await params;
-  const { page: pageParam, status, q } = await searchParams;
+  const { page: pageParam, status, q, fieldKey, fieldValue } = await searchParams;
 
   const session = await getServerSession(authOptions);
   const user = session!.user;
   if (!canAccessUniversity(user, universityId)) notFound();
 
-  const university = await prisma.university.findUnique({ where: { id: universityId } });
+  const university = await prisma.university.findUnique({
+    where: { id: universityId },
+    include: { formFields: { orderBy: { sortOrder: "asc" } } },
+  });
   if (!university) notFound();
 
   const page = Math.max(1, Number(pageParam) || 1);
 
-  const where = {
-    universityId,
-    ...(status ? { status: status as RegistrantStatus } : {}),
-    ...(q
-      ? {
-          OR: [
-            { displayName: { contains: q, mode: "insensitive" as const } },
-            { lineUserId: { contains: q, mode: "insensitive" as const } },
-          ],
-        }
-      : {}),
-  };
+  const where = buildRegistrantWhere(universityId, { status, q, fieldKey, fieldValue });
 
   const [registrants, total] = await Promise.all([
     prisma.registrant.findMany({
@@ -56,11 +49,22 @@ export default async function RegistrantsPage({
     const sp = new URLSearchParams();
     const s = overrides.status ?? status;
     const query = overrides.q ?? q;
+    const fk = overrides.fieldKey ?? fieldKey;
+    const fv = overrides.fieldValue ?? fieldValue;
     if (s) sp.set("status", s);
     if (query) sp.set("q", query);
+    if (fk) sp.set("fieldKey", fk);
+    if (fv) sp.set("fieldValue", fv);
     sp.set("page", String(nextPage));
     return `?${sp.toString()}`;
   }
+
+  const exportSp = new URLSearchParams();
+  if (status) exportSp.set("status", status);
+  if (q) exportSp.set("q", q);
+  if (fieldKey) exportSp.set("fieldKey", fieldKey);
+  if (fieldValue) exportSp.set("fieldValue", fieldValue);
+  const exportHref = `/api/admin/universities/${universityId}/registrants/export?${exportSp.toString()}`;
 
   return (
     <div>
@@ -69,12 +73,20 @@ export default async function RegistrantsPage({
           {university.name} — Registrants
           <span className="ml-2 text-sm font-normal text-gray-400">{total} total</span>
         </h1>
-        <Link href={`/admin/universities/${universityId}`} className="text-sm text-gray-500 hover:underline">
-          Back to university
-        </Link>
+        <div className="flex items-center gap-3">
+          <a
+            href={exportHref}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Export to Excel
+          </a>
+          <Link href={`/admin/universities/${universityId}`} className="text-sm text-gray-500 hover:underline">
+            Back to university
+          </Link>
+        </div>
       </div>
 
-      <form className="mb-4 flex gap-2" method="get">
+      <form className="mb-4 flex flex-wrap gap-2" method="get">
         <input
           type="text"
           name="q"
@@ -90,6 +102,21 @@ export default async function RegistrantsPage({
             </option>
           ))}
         </select>
+        <select name="fieldKey" defaultValue={fieldKey ?? ""} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm">
+          <option value="">Filter by field…</option>
+          {university.formFields.map((f) => (
+            <option key={f.key} value={f.key}>
+              {f.label}
+            </option>
+          ))}
+        </select>
+        <input
+          type="text"
+          name="fieldValue"
+          defaultValue={fieldValue}
+          placeholder="Field value"
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+        />
         <button type="submit" className="rounded-md bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white">
           Filter
         </button>
