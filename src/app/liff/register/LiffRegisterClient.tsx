@@ -28,7 +28,7 @@ type Status =
   | { step: "error"; message: string }
   | ({ step: "list" } & FormContext)
   | ({ step: "form" | "submitting"; editingId: string | null } & FormContext)
-  | { step: "done"; wasEdit: boolean };
+  | { step: "done"; wasEdit: boolean; fields: FieldDef[]; data: Record<string, string> };
 
 type LiffProfile = { userId: string; displayName?: string };
 
@@ -197,7 +197,7 @@ export default function LiffRegisterClient() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "Registration failed. Please try again.");
       }
-      setStatus({ step: "done", wasEdit: !!editingId });
+      setStatus({ step: "done", wasEdit: !!editingId, fields: status.fields, data: formValues });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setStatus({ step: "error", message });
@@ -243,6 +243,16 @@ export default function LiffRegisterClient() {
             ? "ข้อมูลของคุณถูกอัปเดตเรียบร้อยแล้ว"
             : "ขอบคุณที่ลงทะเบียน ข้อมูลของคุณถูกบันทึกเรียบร้อยแล้ว"}
         </p>
+        {status.fields.length > 0 && (
+          <dl className="mb-6 space-y-1.5 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-left">
+            {status.fields.map((f) => (
+              <div key={f.key} className="flex items-center justify-between gap-3">
+                <dt className="min-w-0 flex-1 truncate text-xs text-gray-500">{f.label}</dt>
+                <dd className="shrink-0 text-base font-bold text-gray-900">{status.data[f.key] || "—"}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
         <button
           className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 py-3 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:shadow-lg active:scale-[0.99]"
           onClick={async () => {
