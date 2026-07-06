@@ -43,7 +43,7 @@ const DEFAULT_FORM_FIELDS = [
   {
     key: "group_photo_index",
     label: "หมายเลขถ่ายภาพหมู่ / Group Photo Number",
-    fieldType: FormFieldType.NUMBER,
+    fieldType: FormFieldType.TEXT,
     isRequired: true,
     sortOrder: 1,
   },
