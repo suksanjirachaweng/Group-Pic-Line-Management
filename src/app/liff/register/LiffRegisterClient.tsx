@@ -59,7 +59,14 @@ function ThemeStyle() {
 }
 
 export default function LiffRegisterClient() {
-  const searchParams = useSearchParams();
+  const rawSearchParams = useSearchParams();
+  // LIFF wraps any query string appended after the liffId (as in our own
+  // /register/[slug] redirect) into a single "liff.state" param instead of
+  // passing university/liffId through directly — unwrap it here.
+  const liffState = rawSearchParams.get("liff.state");
+  const searchParams = liffState
+    ? new URLSearchParams(liffState.startsWith("?") ? liffState.slice(1) : liffState)
+    : rawSearchParams;
   const universitySlug = searchParams.get("university");
   const liffId = searchParams.get("liffId");
 
