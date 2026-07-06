@@ -311,19 +311,10 @@ export default function LiffRegisterClient() {
             })}
           </ul>
         )}
-        <button
-          className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 py-3 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:shadow-lg active:scale-[0.99]"
-          onClick={async () => {
-            const liff = (await import("@line/liff")).default;
-            if (liff.isInClient()) liff.closeWindow();
-          }}
-        >
-          ปิดหน้าต่าง / Close window
-        </button>
-        <p className="mt-3 text-xs text-gray-400">
-          หากหน้าจอไม่ปิดอัตโนมัติ กรุณากดปุ่ม X ที่มุมขวาบน / If the screen doesn&apos;t close automatically,
-          tap the X in the top-right corner.
-        </p>
+        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+          กดปุ่ม X ที่มุมขวาบนของหน้าจอเพื่อกลับไปที่แชท / Tap the X in the top-right corner of the
+          screen to return to the chat.
+        </div>
       </CenteredMessage>
     );
   }
