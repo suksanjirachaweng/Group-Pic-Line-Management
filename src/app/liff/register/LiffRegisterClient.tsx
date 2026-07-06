@@ -157,7 +157,12 @@ export default function LiffRegisterClient() {
 
   function startNewRegistration() {
     if (status.step !== "list" && status.step !== "form" && status.step !== "submitting") return;
-    setFormValues({});
+    const latest = status.registrations[status.registrations.length - 1];
+    // Carry forward contact info from the person's most recent registration so they don't
+    // have to retype it for every additional group photo — group_photo_index etc. still blank.
+    setFormValues(
+      latest ? { full_name: latest.data.full_name ?? "", phone_number: latest.data.phone_number ?? "" } : {},
+    );
     setStatus({ ...pickFormContext(status), step: "form", editingId: null });
   }
 
