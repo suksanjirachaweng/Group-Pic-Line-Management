@@ -61,6 +61,10 @@ export async function createLiffApp(accessTokenEncrypted: string, endpointUrl: s
   const res = await client.addLIFFApp({
     view: { type: "full", url: endpointUrl },
     description: "Group photo registration form",
+    // Left unset, LINE defaults to ["profile", "chat_message.write"] — the registration page
+    // only ever calls getProfile()/getFriendship()/requestFriendship(), never sendMessages(),
+    // so requesting chat_message.write just adds an unnecessary permission prompt for users.
+    scope: ["profile"],
   });
   return res.liffId;
 }
