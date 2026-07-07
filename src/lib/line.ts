@@ -65,6 +65,11 @@ export async function createLiffApp(accessTokenEncrypted: string, endpointUrl: s
     // only ever calls getProfile()/getFriendship()/requestFriendship(), never sendMessages(),
     // so requesting chat_message.write just adds an unnecessary permission prompt for users.
     scope: ["profile"],
+    // LINE's own docs just say "Specify concat" — governs how the query string we append
+    // (?university=...&liffId=...) is carried through the LIFF URL. Left unset, a rich-menu
+    // "uri" action tap into this LIFF failed with a generic LINE error before ever reaching
+    // our server, while the identical URL worked fine tapped as a chat hyperlink.
+    permanentLinkPattern: "concat",
   });
   return res.liffId;
 }
