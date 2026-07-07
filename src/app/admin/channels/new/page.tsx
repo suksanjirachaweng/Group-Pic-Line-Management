@@ -38,27 +38,14 @@ export default async function NewChannelPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">LIFF ID</label>
-          <input name="liffId" required placeholder="e.g. 1234567890-abcdefgh" className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
-          <p className="mt-1 text-xs text-gray-400">
-            From the channel&apos;s LIFF tab. After creating, the channel page can fetch this for you
-            automatically from LINE.
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">LINE Channel access token</label>
-          <textarea name="accessToken" required rows={3} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs" />
-          <p className="mt-1 text-xs text-gray-400">
-            From the Messaging API tab → Channel access token (long-lived) — issue one if you haven&apos;t.
-          </p>
-        </div>
-
-        <div>
           <label className="block text-sm font-medium text-gray-700">LINE Channel secret</label>
           <input name="channelSecret" required className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs" />
           <p className="mt-1 text-xs text-gray-400">
-            From Basic settings → Channel secret. Both are encrypted before being stored.
+            From Basic settings → Channel secret. Encrypted before being stored. That&apos;s the last LINE
+            secret you need to copy — after saving, this app automatically issues the access token, sets
+            the webhook URL, and creates the LIFF app for you. The only thing still left to do by hand
+            afterwards is flipping &quot;Use webhook&quot; on in LINE Developers Console → Messaging API
+            (LINE doesn&apos;t expose an API for that toggle).
           </p>
         </div>
 

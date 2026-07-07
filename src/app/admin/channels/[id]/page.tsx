@@ -2,18 +2,36 @@ import { getServerSession } from "next-auth";
 import { notFound, redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { decryptSecret } from "@/lib/crypto";
 import { AdminRole } from "@/generated/prisma/enums";
-import { updateChannel, setChannelActive, refreshLineBotInfo, publishChannelRichMenu } from "@/lib/actions/channels";
+import {
+  updateChannel,
+  setChannelActive,
+  refreshLineBotInfo,
+  publishChannelRichMenu,
+  issueAccessToken,
+  setChannelWebhook,
+  createOrRecreateLiffApp,
+  syncQuotaFromLine,
+} from "@/lib/actions/channels";
 import { setChannelPoolMembership } from "@/lib/actions/universities";
 import { currentYearMonth } from "@/lib/quota";
 import { projectCostForAllTiers } from "@/lib/linePricing";
 import { getChannelQrInfo } from "@/lib/lineQr";
+import { getChannelLiveStatus } from "@/lib/channelStatus";
 import { ChannelForm } from "./ChannelForm";
-import { LiffIdField } from "./LiffIdField";
 import { PublishRichMenuButton } from "./PublishRichMenuButton";
+import { ChannelActionButton } from "./ChannelActionButton";
 
-export default async function ChannelDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ChannelDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ setup?: string }>;
+}) {
   const { id } = await params;
+  const { setup } = await searchParams;
   const session = await getServerSession(authOptions);
   if (session!.user.role !== AdminRole.SUPERADMIN) {
     redirect("/admin/universities");
@@ -31,14 +49,34 @@ export default async function ChannelDetailPage({ params }: { params: Promise<{ 
 
   const usedThisMonth = channel.usageCounters[0]?.messagesSent ?? 0;
   const tierProjections = projectCostForAllTiers(usedThisMonth);
-  const qrInfo = await getChannelQrInfo(channel);
+  const hasToken = decryptSecret(channel.accessTokenEncrypted).length > 0;
+  const qrInfo = hasToken ? await getChannelQrInfo(channel) : null;
+  const liveStatus = hasToken ? await getChannelLiveStatus(channel.accessTokenEncrypted) : { webhook: null, quota: null };
+  const expectedWebhookUrl = `${process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? ""}/api/webhook/${channel.id}`;
 
   const updateChannelWithId = updateChannel.bind(null, channel.id);
   const publishChannelRichMenuWithId = publishChannelRichMenu.bind(null, channel.id);
+  const issueAccessTokenWithId = issueAccessToken.bind(null, channel.id);
+  const setChannelWebhookWithId = setChannelWebhook.bind(null, channel.id);
+  const createOrRecreateLiffAppWithId = createOrRecreateLiffApp.bind(null, channel.id);
+  const syncQuotaFromLineWithId = syncQuotaFromLine.bind(null, channel.id);
 
   return (
     <div className="max-w-md space-y-6">
       <h1 className="text-lg font-semibold text-gray-900">{channel.name}</h1>
+
+      {setup === "partial" && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+          สร้างแชนแนลแล้ว แต่การตั้งค่าอัตโนมัติบางขั้นตอนไม่สำเร็จ — เช็คการ์ด Access token / LIFF app /
+          Webhook ด้านล่าง แล้วกดปุ่มของขั้นตอนที่ยังไม่เสร็จอีกครั้ง
+        </div>
+      )}
+      {setup === "ok" && (
+        <div className="rounded-md border border-green-300 bg-green-50 p-3 text-xs text-green-800">
+          ตั้งค่าอัตโนมัติเสร็จเรียบร้อย (access token, webhook, LIFF app) — เหลือแค่เปิด &quot;Use webhook&quot;
+          ใน LINE Developers Console เอง (ดูการ์ด Webhook ด้านล่าง)
+        </div>
+      )}
 
       <div className="rounded-md border-t-4 border-[#06C755] border-x border-b border-gray-200 bg-white p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
@@ -92,6 +130,66 @@ export default async function ChannelDetailPage({ params }: { params: Promise<{ 
         </p>
       </div>
 
+      <div className="rounded-md border border-gray-200 bg-white p-4">
+        <h2 className="mb-1 text-sm font-semibold text-gray-900">Access token</h2>
+        <p className="mb-2 text-xs text-gray-500">
+          {hasToken ? (
+            channel.accessTokenExpiresAt ? (
+              <>ออกอัตโนมัติ — หมดอายุ {channel.accessTokenExpiresAt.toLocaleString()} (cron จะออกใหม่ให้ก่อนหมดอายุ)</>
+            ) : (
+              <>Token ปัจจุบันไม่ได้ออกผ่านระบบนี้ (เช่น แบบ long-lived ที่ออกเองใน Console) — ไม่มีวันหมดอายุ</>
+            )
+          ) : (
+            <>ยังไม่มี token — กดปุ่มด้านล่างเพื่อออกอัตโนมัติจาก Channel ID + Secret</>
+          )}
+        </p>
+        <ChannelActionButton
+          action={issueAccessTokenWithId}
+          idleLabel={hasToken ? "ออก token ใหม่ (reissue)" : "ออก token"}
+          pendingLabel="กำลังออก..."
+        />
+      </div>
+
+      <div className="rounded-md border border-gray-200 bg-white p-4">
+        <h2 className="mb-1 text-sm font-semibold text-gray-900">LIFF app</h2>
+        <p className="mb-2 text-xs text-gray-500">
+          {channel.liffId ? <>LIFF ID ปัจจุบัน: <span className="font-mono">{channel.liffId}</span></> : "ยังไม่ได้สร้าง LIFF app"}
+        </p>
+        <ChannelActionButton
+          action={createOrRecreateLiffAppWithId}
+          idleLabel={channel.liffId ? "สร้าง LIFF app ใหม่แทนอันเดิม" : "สร้าง LIFF app"}
+          pendingLabel="กำลังสร้าง..."
+        />
+      </div>
+
+      <div className="rounded-md border border-gray-200 bg-white p-4">
+        <h2 className="mb-1 text-sm font-semibold text-gray-900">Webhook</h2>
+        {liveStatus.webhook ? (
+          <div className="mb-2 text-xs text-gray-500">
+            <p className="break-all">
+              URL: <span className="font-mono">{liveStatus.webhook.endpoint}</span>
+              {liveStatus.webhook.endpoint !== expectedWebhookUrl && (
+                <span className="ml-1 text-amber-600">(ไม่ตรงกับที่ควรจะเป็น — กด &quot;ตั้ง webhook URL&quot; ด้านล่าง)</span>
+              )}
+            </p>
+            <p className="mt-1 flex items-center gap-1">
+              <span className={`inline-block h-2 w-2 rounded-full ${liveStatus.webhook.active ? "bg-green-500" : "bg-red-500"}`} />
+              {liveStatus.webhook.active ? (
+                "Use webhook: เปิดอยู่"
+              ) : (
+                <span className="font-medium text-red-600">
+                  Use webhook: ปิดอยู่ — LINE จะไม่ส่ง event ใดๆ มาเลย ต้องเข้าไปเปิดเองใน LINE Developers
+                  Console → Messaging API (ไม่มี API ให้เปิดจากที่นี่)
+                </span>
+              )}
+            </p>
+          </div>
+        ) : (
+          <p className="mb-2 text-xs text-gray-400">ยังดึงสถานะ webhook จาก LINE ไม่ได้ (ต้องมี access token ที่ใช้งานได้ก่อน)</p>
+        )}
+        <ChannelActionButton action={setChannelWebhookWithId} idleLabel="ตั้ง webhook URL ให้ตรงกับระบบนี้" pendingLabel="กำลังตั้งค่า..." />
+      </div>
+
       <ChannelForm action={updateChannelWithId}>
         <div>
           <label className="block text-sm font-medium text-gray-700">Name</label>
@@ -110,21 +208,6 @@ export default async function ChannelDetailPage({ params }: { params: Promise<{ 
           </p>
         </div>
 
-        <LiffIdField channelId={channel.id} defaultValue={channel.liffId} />
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">LINE Channel access token</label>
-          <textarea
-            name="accessToken"
-            rows={3}
-            placeholder="Leave blank to keep the current value"
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs"
-          />
-          <p className="mt-1 text-xs text-gray-400">
-            From the Messaging API tab → Channel access token (long-lived) — issue one if you haven&apos;t.
-          </p>
-        </div>
-
         <div>
           <label className="block text-sm font-medium text-gray-700">LINE Channel secret</label>
           <input
@@ -134,7 +217,9 @@ export default async function ChannelDetailPage({ params }: { params: Promise<{ 
           />
           <p className="mt-1 text-xs text-gray-400">
             From Basic settings → Channel secret. Stored values are encrypted and never displayed
-            back — leave blank unless rotating.
+            back — leave blank unless rotating. LINE doesn&apos;t expose this via any API, so it&apos;s the
+            one secret that must always be pasted in by hand. After rotating it, click &quot;reissue&quot;
+            on the Access token card above.
           </p>
         </div>
 
@@ -207,8 +292,21 @@ export default async function ChannelDetailPage({ params }: { params: Promise<{ 
 
       <div>
         <h2 className="mb-2 text-sm font-semibold text-gray-900">
-          Cost projection ({usedThisMonth} messages this month)
+          Cost projection ({usedThisMonth} messages this month, our own counter)
         </h2>
+        {liveStatus.quota && (
+          <p className="mb-2 text-xs text-gray-500">
+            LINE รายงานสด: {liveStatus.quota.type === "limited" ? `จำกัด ${liveStatus.quota.limit} ข้อความ/เดือน` : "ไม่จำกัด (แผนเสียเงิน)"},
+            ใช้ไปแล้ว {liveStatus.quota.consumedThisMonth} ข้อความเดือนนี้
+          </p>
+        )}
+        <div className="mb-2">
+          <ChannelActionButton
+            action={syncQuotaFromLineWithId}
+            idleLabel="Sync monthly free quota จาก LINE"
+            pendingLabel="กำลังดึงข้อมูล..."
+          />
+        </div>
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
             <tr>

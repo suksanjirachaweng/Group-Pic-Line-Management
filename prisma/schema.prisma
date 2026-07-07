@@ -108,8 +108,10 @@ model Channel {
   name                  String
   lineChannelId         String   @unique
   accessTokenEncrypted  String
+  accessTokenExpiresAt  DateTime? // set only for tokens we auto-issued (stateless, ~30d); null = manually-issued long-lived token or not yet issued
+  accessTokenKeyId      String?   // LINE's key_id for the current auto-issued token, needed to revoke it on rotation
   channelSecretEncrypted String
-  liffId                String
+  liffId                String    // "" until auto-created
   monthlyFreeQuota      Int      @default(300)
   allowOverage          Boolean  @default(true)
   isActive              Boolean  @default(true)
