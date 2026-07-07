@@ -2,20 +2,28 @@ import "server-only";
 import { messagingApi, liff, channelAccessToken, HTTPFetchError } from "@line/bot-sdk";
 import { decryptSecret } from "@/lib/crypto";
 
-/** Sends a single text push message via the given channel's decrypted access token. */
+/**
+ * Sends a text push message via the given channel's decrypted access token, optionally preceded
+ * by an image message. Each message object in the push counts separately against quota, so an
+ * attached image doubles the cost of this send (1 for the image, 1 for the text).
+ */
 export async function pushTextMessage(
   accessTokenEncrypted: string,
   lineUserId: string,
   text: string,
+  imageUrl?: string | null,
 ): Promise<void> {
   const client = new messagingApi.MessagingApiClient({
     channelAccessToken: decryptSecret(accessTokenEncrypted),
   });
 
-  await client.pushMessage({
-    to: lineUserId,
-    messages: [{ type: "text", text }],
-  });
+  const messages: messagingApi.Message[] = [];
+  if (imageUrl) {
+    messages.push({ type: "image", originalContentUrl: imageUrl, previewImageUrl: imageUrl });
+  }
+  messages.push({ type: "text", text });
+
+  await client.pushMessage({ to: lineUserId, messages });
 }
 
 /**

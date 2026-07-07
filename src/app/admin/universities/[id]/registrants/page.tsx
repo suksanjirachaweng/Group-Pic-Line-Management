@@ -12,6 +12,10 @@ import {
   CONDITION_OPERATORS,
   type AdvancedConditionRow,
 } from "@/lib/registrantFilters";
+import { SelectAllCheckbox } from "./SelectAllCheckbox";
+import { BulkSendButton } from "./BulkSendButton";
+
+const SELECT_FORM_ID = "bulk-select-form";
 
 const PAGE_SIZE = 50;
 const ADVANCED_FILTER_ROWS = 3;
@@ -127,6 +131,7 @@ export default async function RegistrantsPage({
           <span className="ml-2 text-sm font-normal text-gray-400">{total} total</span>
         </h1>
         <div className="flex items-center gap-3">
+          <BulkSendButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
           <a
             href={exportHref}
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -229,10 +234,13 @@ export default async function RegistrantsPage({
         </form>
       </details>
 
-      <div className="overflow-x-auto rounded-md border border-gray-200 bg-white">
+      <form id={SELECT_FORM_ID} className="overflow-x-auto rounded-md border border-gray-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
             <tr>
+              <th className="whitespace-nowrap px-4 py-2">
+                <SelectAllCheckbox formId={SELECT_FORM_ID} />
+              </th>
               <th className="whitespace-nowrap px-4 py-2">
                 <Link href={sortHref("name")} className="hover:text-gray-700">
                   Name{sortIndicator("name")}
@@ -262,6 +270,11 @@ export default async function RegistrantsPage({
               return (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="whitespace-nowrap px-4 py-2">
+                    {r.lineUserId && r.channelId && (
+                      <input type="checkbox" name="registrantIds" value={r.id} aria-label={`Select ${r.displayName ?? r.id}`} />
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2">
                     <Link href={`/admin/universities/${universityId}/registrants/${r.id}`} className="text-gray-900 hover:text-indigo-600 hover:underline">
                       {r.displayName ?? "(no name)"}
                     </Link>
@@ -285,14 +298,14 @@ export default async function RegistrantsPage({
             })}
             {registrants.length === 0 && (
               <tr>
-                <td colSpan={1 + university.formFields.length + FIXED_COLUMNS.length} className="px-4 py-3 text-gray-400">
+                <td colSpan={2 + university.formFields.length + FIXED_COLUMNS.length} className="px-4 py-3 text-gray-400">
                   No registrants match this filter.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-      </div>
+      </form>
 
       {totalPages > 1 && (
         <div className="mt-4 flex items-center gap-3 text-sm">

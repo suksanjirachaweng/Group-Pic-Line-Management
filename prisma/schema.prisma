@@ -284,6 +284,7 @@ model MessageJob {
   source          MessageJobSource  @default(MANUAL)
   ruleExecutionId String?           @unique
   body            String
+  imageUrl        String? // optional image attachment for manual/bulk sends — counts as a 2nd message against quota when set
   status          MessageJobStatus  @default(QUEUED)
   attempts        Int               @default(0)
   lastError       String?

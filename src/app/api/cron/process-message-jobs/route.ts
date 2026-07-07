@@ -70,7 +70,11 @@ async function handle(request: NextRequest) {
         continue;
       }
 
-      await pushTextMessage(job.channel.accessTokenEncrypted, job.registrant.lineUserId, job.body);
+      await pushTextMessage(job.channel.accessTokenEncrypted, job.registrant.lineUserId, job.body, job.imageUrl);
+
+      // An attached image is a separate message object in the same push, so it counts as a
+      // second message against quota — matches how LINE itself bills the send.
+      const messagesCounted = job.imageUrl ? 2 : 1;
 
       await prisma.$transaction([
         prisma.messageJob.update({ where: { id: job.id }, data: { status: "SENT", processedAt: new Date() } }),
@@ -79,8 +83,8 @@ async function handle(request: NextRequest) {
         }),
         prisma.channelUsageCounter.upsert({
           where: { channelId_yearMonth: { channelId: job.channelId, yearMonth } },
-          update: { messagesSent: { increment: 1 } },
-          create: { channelId: job.channelId, yearMonth, messagesSent: 1 },
+          update: { messagesSent: { increment: messagesCounted } },
+          create: { channelId: job.channelId, yearMonth, messagesSent: messagesCounted },
         }),
         ...(job.ruleExecutionId
           ? [prisma.ruleExecution.update({ where: { id: job.ruleExecutionId }, data: { status: "SENT", sentAt: new Date() } })]
