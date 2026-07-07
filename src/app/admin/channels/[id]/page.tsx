@@ -13,6 +13,7 @@ import {
   setChannelWebhook,
   createOrRecreateLiffApp,
   syncQuotaFromLine,
+  deleteChannel,
 } from "@/lib/actions/channels";
 import { setChannelPoolMembership } from "@/lib/actions/universities";
 import { currentYearMonth } from "@/lib/quota";
@@ -22,6 +23,7 @@ import { getChannelLiveStatus } from "@/lib/channelStatus";
 import { ChannelForm } from "./ChannelForm";
 import { PublishRichMenuButton } from "./PublishRichMenuButton";
 import { ChannelActionButton } from "./ChannelActionButton";
+import { DeleteChannelButton } from "./DeleteChannelButton";
 
 export default async function ChannelDetailPage({
   params,
@@ -60,6 +62,7 @@ export default async function ChannelDetailPage({
   const setChannelWebhookWithId = setChannelWebhook.bind(null, channel.id);
   const createOrRecreateLiffAppWithId = createOrRecreateLiffApp.bind(null, channel.id);
   const syncQuotaFromLineWithId = syncQuotaFromLine.bind(null, channel.id);
+  const deleteChannelWithId = deleteChannel.bind(null, channel.id);
 
   return (
     <div className="max-w-md space-y-6">
@@ -336,6 +339,8 @@ export default async function ChannelDetailPage({
           channel&apos;s actual current plan and pricing, which may have changed.
         </p>
       </div>
+
+      <DeleteChannelButton action={deleteChannelWithId} channelName={channel.name} />
     </div>
   );
 }

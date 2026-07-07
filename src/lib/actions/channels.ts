@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { requireSuperadmin } from "@/lib/authz";
 import { encryptSecret, decryptSecret } from "@/lib/crypto";
 import {
@@ -163,6 +164,40 @@ export async function setChannelActive(channelId: string, isActive: boolean) {
 }
 
 /**
+ * Permanently deletes a channel row. `Registrant.channelId` is a nullable FK, so the DB
+ * itself would just silently null it out on delete rather than blocking — checked explicitly
+ * here instead, so a channel that's actually been used can't be deleted out from under its
+ * registrants. MessageJob/MessageLog use required FKs, so those still surface as a P2003
+ * from the DB if hit. Use Deactivate instead for a channel that's actually been used.
+ */
+export async function deleteChannel(channelId: string, _prevState: ChannelActionState): Promise<ChannelActionState> {
+  await requireSuperadmin();
+
+  const registrantCount = await prisma.registrant.count({ where: { channelId } });
+  if (registrantCount > 0) {
+    return {
+      success: false,
+      error: `ลบไม่ได้ — มีผู้ลงทะเบียน ${registrantCount} คนผูกกับแชนแนลนี้อยู่ ใช้ปุ่ม Deactivate แทน`,
+    };
+  }
+
+  try {
+    await prisma.channel.delete({ where: { id: channelId } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+      return {
+        success: false,
+        error: "ลบไม่ได้ — แชนแนลนี้มีประวัติข้อความผูกอยู่ ใช้ปุ่ม Deactivate แทน",
+      };
+    }
+    return { success: false, error: err instanceof Error ? err.message : "Failed to delete channel" };
+  }
+
+  revalidatePath("/admin/channels");
+  redirect("/admin/channels");
+}
+
+/**
  * Re-fetches the bot's display name/icon/basic ID from LINE and overwrites the cached
  * copy — needed because renaming the OA on LINE's side doesn't otherwise propagate here.
  */
@@ -170,13 +205,17 @@ export async function refreshLineBotInfo(channelId: string) {
   await requireSuperadmin();
 
   const channel = await prisma.channel.findUnique({ where: { id: channelId } });
-  if (!channel) return;
+  if (!channel || !decryptSecret(channel.accessTokenEncrypted)) return;
 
-  const info = await fetchLineBotInfo(channel.accessTokenEncrypted);
-  await prisma.channel.update({
-    where: { id: channelId },
-    data: { lineBasicId: info.basicId, lineDisplayName: info.displayName, linePictureUrl: info.pictureUrl },
-  });
+  try {
+    const info = await fetchLineBotInfo(channel.accessTokenEncrypted);
+    await prisma.channel.update({
+      where: { id: channelId },
+      data: { lineBasicId: info.basicId, lineDisplayName: info.displayName, linePictureUrl: info.pictureUrl },
+    });
+  } catch {
+    // Best-effort refresh — a bad/expired token shouldn't crash the page, just leave the cached info as-is.
+  }
 
   revalidatePath("/admin/channels");
   revalidatePath(`/admin/channels/${channelId}`);

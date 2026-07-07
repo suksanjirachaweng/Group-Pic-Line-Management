@@ -25,7 +25,9 @@ export function encryptSecret(plaintext: string): string {
 
 export function decryptSecret(encrypted: string): string {
   const [ivB64, authTagB64, ciphertextB64] = encrypted.split(":");
-  if (!ivB64 || !authTagB64 || !ciphertextB64) {
+  // Use `=== undefined` (not truthy checks) — an empty-string plaintext (e.g. a "no token
+  // issued yet" placeholder) legitimately encrypts to a zero-length ciphertext segment.
+  if (ivB64 === undefined || authTagB64 === undefined || ciphertextB64 === undefined) {
     throw new Error("Malformed encrypted value");
   }
   const key = deriveKey();
