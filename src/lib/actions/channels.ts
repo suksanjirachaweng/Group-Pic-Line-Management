@@ -47,15 +47,16 @@ async function autoConfigureChannel(channelId: string): Promise<{ errors: string
     const issued = await issueChannelAccessToken(channel.lineChannelId, channelSecret);
     accessTokenEncrypted = encryptSecret(issued.accessToken);
     const expiresAt = new Date(Date.now() + issued.expiresIn * 1000);
-
-    if (channel.accessTokenKeyId && channel.accessTokenExpiresAt) {
-      await revokeChannelAccessToken(channel.lineChannelId, channelSecret, decryptSecret(channel.accessTokenEncrypted));
-    }
+    const previousToken = decryptSecret(channel.accessTokenEncrypted);
 
     await prisma.channel.update({
       where: { id: channelId },
-      data: { accessTokenEncrypted, accessTokenExpiresAt: expiresAt, accessTokenKeyId: issued.keyId },
+      data: { accessTokenEncrypted, accessTokenExpiresAt: expiresAt },
     });
+
+    if (channel.accessTokenExpiresAt && previousToken) {
+      await revokeChannelAccessToken(previousToken);
+    }
   } catch (err) {
     errors.push(`Issue access token: ${err instanceof Error ? err.message : String(err)}`);
     return { errors }; // nothing below this works without a valid token
@@ -224,7 +225,7 @@ export async function refreshLineBotInfo(channelId: string) {
 export type ChannelActionState = { success: true; message: string } | { success: false; error: string } | null;
 
 /**
- * Issues a brand-new stateless access token for this channel from its own ID + secret, and
+ * Issues a brand-new short-lived access token for this channel from its own ID + secret, and
  * revokes the one it replaces (if we were the ones managing it). No manual "Issue" step in
  * LINE Developers Console needed — but the new token expires in ~30 days, so the refresh
  * cron (`/api/cron/refresh-channel-tokens`) re-runs this automatically ahead of expiry.
@@ -237,21 +238,21 @@ export async function issueAccessToken(channelId: string, _prevState: ChannelAct
 
   try {
     const channelSecret = decryptSecret(channel.channelSecretEncrypted);
+    const previousToken = decryptSecret(channel.accessTokenEncrypted);
     const issued = await issueChannelAccessToken(channel.lineChannelId, channelSecret);
     const expiresAt = new Date(Date.now() + issued.expiresIn * 1000);
-
-    if (channel.accessTokenKeyId && channel.accessTokenExpiresAt) {
-      await revokeChannelAccessToken(channel.lineChannelId, channelSecret, decryptSecret(channel.accessTokenEncrypted));
-    }
 
     await prisma.channel.update({
       where: { id: channelId },
       data: {
         accessTokenEncrypted: encryptSecret(issued.accessToken),
         accessTokenExpiresAt: expiresAt,
-        accessTokenKeyId: issued.keyId,
       },
     });
+
+    if (channel.accessTokenExpiresAt && previousToken) {
+      await revokeChannelAccessToken(previousToken);
+    }
 
     revalidatePath(`/admin/channels/${channelId}`);
     return { success: true, message: `ออก token ใหม่แล้ว หมดอายุ ${expiresAt.toLocaleString()}` };

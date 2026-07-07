@@ -1,5 +1,5 @@
 import "server-only";
-import { messagingApi, liff } from "@line/bot-sdk";
+import { messagingApi, liff, channelAccessToken, HTTPFetchError } from "@line/bot-sdk";
 import { decryptSecret } from "@/lib/crypto";
 
 /** Sends a single text push message via the given channel's decrypted access token. */
@@ -119,42 +119,34 @@ export async function getMessageQuotaInfo(accessTokenEncrypted: string): Promise
   };
 }
 
-export type IssuedChannelToken = { accessToken: string; expiresIn: number; keyId: string };
+export type IssuedChannelToken = { accessToken: string; expiresIn: number };
 
 /**
- * Issues a new stateless channel access token directly from the channel's own ID + secret
- * (OAuth client-credentials grant) — no manual "Issue" click in LINE Developers Console needed.
- * These tokens expire (~30 days); callers should persist `expiresIn` and refresh ahead of it.
+ * Issues a new short-lived channel access token directly from the channel's own ID + secret
+ * (`POST /v2/oauth/accessToken`, grant_type=client_credentials) — no manual "Issue" click in
+ * LINE Developers Console needed. Despite the name, these are valid for 30 days per LINE's
+ * docs and can't be refreshed in place, only reissued; callers should persist `expiresIn` and
+ * reissue ahead of it. (Not to be confused with "channel access token v2.1"/"stateless" token
+ * issuance, which require a JWT signed with a registered private key — a different flow.)
  */
 export async function issueChannelAccessToken(lineChannelId: string, channelSecret: string): Promise<IssuedChannelToken> {
-  const res = await fetch("https://api.line.me/oauth2/v2.1/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: lineChannelId,
-      client_secret: channelSecret,
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to issue channel access token (${res.status}): ${await res.text()}`);
+  const client = new channelAccessToken.ChannelAccessTokenClient({});
+  try {
+    const res = await client.issueChannelToken("client_credentials", lineChannelId, channelSecret);
+    return { accessToken: res.access_token, expiresIn: res.expires_in };
+  } catch (err) {
+    if (err instanceof HTTPFetchError) {
+      throw new Error(`${err.status} ${err.statusText}: ${err.body}`);
+    }
+    throw err;
   }
-  const data = await res.json();
-  return { accessToken: data.access_token, expiresIn: data.expires_in, keyId: data.key_id };
 }
 
-/** Revokes a previously auto-issued stateless channel access token. Best-effort — never throws. */
-export async function revokeChannelAccessToken(lineChannelId: string, channelSecret: string, accessToken: string): Promise<void> {
+/** Revokes a previously auto-issued short-lived channel access token. Best-effort — never throws. */
+export async function revokeChannelAccessToken(accessToken: string): Promise<void> {
+  const client = new channelAccessToken.ChannelAccessTokenClient({});
   try {
-    await fetch("https://api.line.me/oauth2/v2.1/revoke", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: lineChannelId,
-        client_secret: channelSecret,
-        access_token: accessToken,
-      }),
-    });
+    await client.revokeChannelToken(accessToken);
   } catch {
     // Old token will simply expire on its own if revocation fails — not fatal.
   }

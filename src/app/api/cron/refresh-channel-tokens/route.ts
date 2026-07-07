@@ -33,12 +33,11 @@ async function handle(request: NextRequest) {
         data: {
           accessTokenEncrypted: encryptSecret(issued.accessToken),
           accessTokenExpiresAt: new Date(Date.now() + issued.expiresIn * 1000),
-          accessTokenKeyId: issued.keyId,
         },
       });
 
-      if (channel.accessTokenKeyId) {
-        await revokeChannelAccessToken(channel.lineChannelId, channelSecret, oldAccessToken);
+      if (oldAccessToken) {
+        await revokeChannelAccessToken(oldAccessToken);
       }
       refreshed++;
     } catch {
