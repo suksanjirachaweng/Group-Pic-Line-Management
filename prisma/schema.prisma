@@ -283,8 +283,9 @@ model MessageJob {
   channelId       String
   source          MessageJobSource  @default(MANUAL)
   ruleExecutionId String?           @unique
-  body            String
-  imageUrl        String? // optional image attachment for manual/bulk sends — counts as a 2nd message against quota when set
+  body            String // may be "" when the send is image-only
+  imageUrl        String? // optional image attachment for manual/bulk sends — counts as its own message against quota when set
+  linkUrl         String? // when set alongside imageUrl, sent as a tappable Flex image (like a banner ad) instead of a plain image message
   status          MessageJobStatus  @default(QUEUED)
   attempts        Int               @default(0)
   lastError       String?

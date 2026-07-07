@@ -23,8 +23,8 @@ export async function sendBulkMessage(
 
   const registrantIds = formData.getAll("registrantIds").map(String);
   const body = String(formData.get("body") ?? "").trim();
+  const linkUrl = String(formData.get("link") ?? "").trim() || null;
   if (registrantIds.length === 0) return { success: false, error: "ยังไม่ได้เลือกผู้รับ" };
-  if (!body) return { success: false, error: "กรุณากรอกข้อความ" };
 
   let imageUrl: string | null = null;
   const imageFile = formData.get("image");
@@ -35,6 +35,9 @@ export async function sendBulkMessage(
       return { success: false, error: err instanceof Error ? err.message : "อัปโหลดรูปไม่สำเร็จ" };
     }
   }
+
+  if (!body && !imageUrl) return { success: false, error: "กรุณากรอกข้อความ หรือแนบรูปอย่างน้อย 1 อย่าง" };
+  if (linkUrl && !imageUrl) return { success: false, error: "ใส่ลิงก์ได้ต้องแนบรูปด้วย (ลิงก์จะเปิดเมื่อกดที่รูป)" };
 
   const registrants = await prisma.registrant.findMany({
     where: { id: { in: registrantIds }, universityId, lineUserId: { not: null }, channelId: { not: null } },
@@ -49,8 +52,9 @@ export async function sendBulkMessage(
       registrantId: r.id,
       channelId: r.channelId!,
       source: "MANUAL" as const,
-      body: interpolateTemplate(body, { displayName: r.displayName, data: (r.data ?? {}) as Record<string, unknown> }),
+      body: body ? interpolateTemplate(body, { displayName: r.displayName, data: (r.data ?? {}) as Record<string, unknown> }) : "",
       imageUrl,
+      linkUrl,
     })),
   });
 

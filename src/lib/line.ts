@@ -4,24 +4,46 @@ import { decryptSecret } from "@/lib/crypto";
 
 /**
  * Sends a text push message via the given channel's decrypted access token, optionally preceded
- * by an image message. Each message object in the push counts separately against quota, so an
- * attached image doubles the cost of this send (1 for the image, 1 for the text).
+ * by an image. When both `imageUrl` and `linkUrl` are given, the image is sent as a tappable
+ * Flex "hero image" (like a banner ad — tapping anywhere opens `linkUrl`) instead of a plain
+ * image message. `text` may be "" for an image-only send. Each message object in the push
+ * counts separately against quota (image/flex = 1, text = 1 if non-empty).
  */
 export async function pushTextMessage(
   accessTokenEncrypted: string,
   lineUserId: string,
   text: string,
   imageUrl?: string | null,
+  linkUrl?: string | null,
 ): Promise<void> {
   const client = new messagingApi.MessagingApiClient({
     channelAccessToken: decryptSecret(accessTokenEncrypted),
   });
 
   const messages: messagingApi.Message[] = [];
-  if (imageUrl) {
+  if (imageUrl && linkUrl) {
+    messages.push({
+      type: "flex",
+      altText: text || "รูปภาพ",
+      contents: {
+        type: "bubble",
+        hero: {
+          type: "image",
+          url: imageUrl,
+          size: "full",
+          aspectMode: "cover",
+          action: { type: "uri", uri: linkUrl },
+        },
+      },
+    });
+  } else if (imageUrl) {
     messages.push({ type: "image", originalContentUrl: imageUrl, previewImageUrl: imageUrl });
   }
-  messages.push({ type: "text", text });
+  if (text) {
+    messages.push({ type: "text", text });
+  }
+
+  if (messages.length === 0) return;
 
   await client.pushMessage({ to: lineUserId, messages });
 }

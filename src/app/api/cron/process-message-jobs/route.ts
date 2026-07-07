@@ -70,11 +70,11 @@ async function handle(request: NextRequest) {
         continue;
       }
 
-      await pushTextMessage(job.channel.accessTokenEncrypted, job.registrant.lineUserId, job.body, job.imageUrl);
+      await pushTextMessage(job.channel.accessTokenEncrypted, job.registrant.lineUserId, job.body, job.imageUrl, job.linkUrl);
 
-      // An attached image is a separate message object in the same push, so it counts as a
-      // second message against quota — matches how LINE itself bills the send.
-      const messagesCounted = job.imageUrl ? 2 : 1;
+      // Each message object in the push (image/flex, text) counts separately against quota —
+      // matches how LINE itself bills the send. Falls back to 1 in case both are somehow empty.
+      const messagesCounted = (job.imageUrl ? 1 : 0) + (job.body ? 1 : 0) || 1;
 
       await prisma.$transaction([
         prisma.messageJob.update({ where: { id: job.id }, data: { status: "SENT", processedAt: new Date() } }),
