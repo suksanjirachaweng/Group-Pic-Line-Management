@@ -8,7 +8,6 @@ import { Prisma } from "@/generated/prisma/client";
 import { requireSuperadmin } from "@/lib/authz";
 import { encryptSecret, decryptSecret } from "@/lib/crypto";
 import {
-  fetchLiffAppIds,
   fetchLineBotInfo,
   issueChannelAccessToken,
   revokeChannelAccessToken,
@@ -20,6 +19,7 @@ import {
 import { publishRichMenu } from "@/lib/richMenu";
 import { buildLiffRegisterUrl } from "@/lib/liffUrl";
 import { getAppBaseUrl } from "@/lib/appUrl";
+import { getSharedLiffAccessToken } from "@/lib/lineLoginChannel";
 
 const channelSchema = z.object({
   name: z.string().min(1).max(200),
@@ -71,11 +71,16 @@ async function autoConfigureChannel(channelId: string): Promise<{ errors: string
   }
 
   if (!channel.liffId) {
-    try {
-      const liffId = await createLiffApp(accessTokenEncrypted, `${appBaseUrl}/liff/register`);
-      await prisma.channel.update({ where: { id: channelId }, data: { liffId } });
-    } catch (err) {
-      errors.push(`Create LIFF app: ${err instanceof Error ? err.message : String(err)}`);
+    const liffToken = await getSharedLiffAccessToken();
+    if ("error" in liffToken) {
+      errors.push(`Create LIFF app: ${liffToken.error}`);
+    } else {
+      try {
+        const liffId = await createLiffApp(liffToken.accessTokenEncrypted, `${appBaseUrl}/liff/register`);
+        await prisma.channel.update({ where: { id: channelId }, data: { liffId } });
+      } catch (err) {
+        errors.push(`Create LIFF app: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 
@@ -278,17 +283,24 @@ export async function setChannelWebhook(channelId: string, _prevState: ChannelAc
   }
 }
 
-/** Creates (or replaces) this channel's LIFF app pointed at our shared `/liff/register` page. */
+/**
+ * Creates (or replaces) this channel's LIFF app pointed at our shared `/liff/register` page.
+ * LIFF apps can't be created directly on a Messaging API channel — this always goes through
+ * the one shared LINE Login channel's own token, not this channel's own access token.
+ */
 export async function createOrRecreateLiffApp(channelId: string, _prevState: ChannelActionState): Promise<ChannelActionState> {
   await requireSuperadmin();
 
   const channel = await prisma.channel.findUnique({ where: { id: channelId } });
   if (!channel) return { success: false, error: "Channel not found" };
 
+  const liffToken = await getSharedLiffAccessToken();
+  if ("error" in liffToken) return { success: false, error: liffToken.error };
+
   try {
-    const liffId = await createLiffApp(channel.accessTokenEncrypted, `${getAppBaseUrl()}/liff/register`);
+    const liffId = await createLiffApp(liffToken.accessTokenEncrypted, `${getAppBaseUrl()}/liff/register`);
     if (channel.liffId) {
-      await deleteLiffApp(channel.accessTokenEncrypted, channel.liffId);
+      await deleteLiffApp(liffToken.accessTokenEncrypted, channel.liffId);
     }
     await prisma.channel.update({ where: { id: channelId }, data: { liffId } });
     revalidatePath(`/admin/channels/${channelId}`);
@@ -369,26 +381,3 @@ export async function publishChannelRichMenu(
   }
 }
 
-export type LiffAppSuggestions = { liffIds: string[] } | { error: string };
-
-/** Looks up LIFF app IDs already registered to this channel via the LIFF server API. */
-export async function fetchLiffAppSuggestions(channelId: string): Promise<LiffAppSuggestions> {
-  await requireSuperadmin();
-
-  const channel = await prisma.channel.findUnique({ where: { id: channelId } });
-  if (!channel) return { error: "Channel not found" };
-
-  try {
-    const liffIds = await fetchLiffAppIds(channel.accessTokenEncrypted);
-    if (liffIds.length === 0) {
-      return { error: "No LIFF apps found for this channel yet — use the Create LIFF app button above." };
-    }
-    return { liffIds };
-  } catch (err) {
-    // LINE's LIFF server API returns a 404 (not an empty list) when the channel has no LIFF app yet.
-    if (err instanceof Error && err.message.includes("404")) {
-      return { error: "No LIFF apps found for this channel yet — use the Create LIFF app button above." };
-    }
-    return { error: err instanceof Error ? err.message : "Couldn't reach LINE" };
-  }
-}

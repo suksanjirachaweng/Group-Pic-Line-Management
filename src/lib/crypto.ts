@@ -24,6 +24,11 @@ export function encryptSecret(plaintext: string): string {
 }
 
 export function decryptSecret(encrypted: string): string {
+  // A raw empty string is used as a schema-level "nothing stored yet" default in a few places
+  // (distinct from `encryptSecret("")`, which is a real encrypted value with empty plaintext) —
+  // treat it as "no value" rather than a malformed one.
+  if (encrypted === "") return "";
+
   const [ivB64, authTagB64, ciphertextB64] = encrypted.split(":");
   // Use `=== undefined` (not truthy checks) — an empty-string plaintext (e.g. a "no token
   // issued yet" placeholder) legitimately encrypts to a zero-length ciphertext segment.

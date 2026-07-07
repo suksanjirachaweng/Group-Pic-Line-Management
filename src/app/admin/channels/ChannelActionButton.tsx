@@ -1,14 +1,15 @@
 "use client";
 
 import { useActionState, useEffect } from "react";
-import type { ChannelActionState } from "@/lib/actions/channels";
+
+type ActionState = { success: true; message: string } | { success: false; error: string } | null;
 
 export function ChannelActionButton({
   action,
   idleLabel,
   pendingLabel,
 }: {
-  action: (prevState: ChannelActionState) => Promise<ChannelActionState>;
+  action: (prevState: ActionState) => Promise<ActionState>;
   idleLabel: string;
   pendingLabel: string;
 }) {

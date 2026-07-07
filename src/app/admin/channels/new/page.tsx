@@ -30,22 +30,23 @@ export default async function NewChannelPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">LINE Channel ID</label>
+          <label className="block text-sm font-medium text-gray-700">Messaging API Channel ID</label>
           <input name="lineChannelId" required className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
           <p className="mt-1 text-xs text-gray-400">
-            From LINE Developers Console → your channel → Basic settings → Channel ID.
+            From LINE Developers Console → the <strong>Messaging API</strong> channel for this bot (not the
+            separate LINE Login channel used for LIFF) → Basic settings → Channel ID.
           </p>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">LINE Channel secret</label>
+          <label className="block text-sm font-medium text-gray-700">Messaging API Channel Secret</label>
           <input name="channelSecret" required className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs" />
           <p className="mt-1 text-xs text-gray-400">
-            From Basic settings → Channel secret. Encrypted before being stored. That&apos;s the last LINE
-            secret you need to copy — after saving, this app automatically issues the access token, sets
-            the webhook URL, and creates the LIFF app for you. The only thing still left to do by hand
-            afterwards is flipping &quot;Use webhook&quot; on in LINE Developers Console → Messaging API
-            (LINE doesn&apos;t expose an API for that toggle).
+            From that same Messaging API channel&apos;s Basic settings → Channel secret. Encrypted before
+            being stored. That&apos;s the last secret you need to copy — after saving, this app
+            automatically issues the access token and sets the webhook URL. The only thing still left to
+            do by hand afterwards is flipping &quot;Use webhook&quot; on in LINE Developers Console →
+            Messaging API (LINE doesn&apos;t expose an API for that toggle).
           </p>
         </div>
 

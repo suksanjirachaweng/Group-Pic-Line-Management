@@ -108,8 +108,7 @@ model Channel {
   name                  String
   lineChannelId         String   @unique
   accessTokenEncrypted  String
-  accessTokenExpiresAt  DateTime? // set only for tokens we auto-issued (stateless, ~30d); null = manually-issued long-lived token or not yet issued
-  accessTokenKeyId      String?   // LINE's key_id for the current auto-issued token, needed to revoke it on rotation
+  accessTokenExpiresAt  DateTime? // set only for tokens we auto-issued (short-lived, ~30d); null = manually-issued long-lived token or not yet issued
   channelSecretEncrypted String
   liffId                String    // "" until auto-created
   monthlyFreeQuota      Int      @default(300)
@@ -129,6 +128,22 @@ model Channel {
   messageLogs    MessageLog[]
 
   @@map("channels")
+}
+
+// LINE requires LIFF apps to live on a separate LINE Login channel (can't be added directly to
+// a Messaging API channel) — this project shares ONE Login channel across every university's
+// LIFF app, so its credentials are stored once here rather than per-Channel. Always exactly one
+// row (id fixed to "singleton"), upserted.
+model LineLoginChannel {
+  id                     String    @id @default("singleton")
+  channelId              String
+  channelSecretEncrypted String
+  accessTokenEncrypted   String    @default("")
+  accessTokenExpiresAt   DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@map("line_login_channel")
 }
 
 model UniversityChannelPool {

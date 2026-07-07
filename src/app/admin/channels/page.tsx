@@ -3,10 +3,13 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { decryptSecret } from "@/lib/crypto";
 import { AdminRole } from "@/generated/prisma/enums";
 import { currentYearMonth } from "@/lib/quota";
 import { cheapestViablePlan } from "@/lib/linePricing";
 import { getChannelQrInfo } from "@/lib/lineQr";
+import { saveLineLoginChannel, issueLineLoginChannelToken } from "@/lib/actions/lineLoginChannel";
+import { LineLoginChannelCard } from "./LineLoginChannelCard";
 
 export default async function ChannelsPage() {
   const session = await getServerSession(authOptions);
@@ -25,8 +28,23 @@ export default async function ChannelsPage() {
 
   const qrInfos = await Promise.all(channels.map((c) => getChannelQrInfo(c)));
 
+  const lineLoginChannel = await prisma.lineLoginChannel.findUnique({ where: { id: "singleton" } });
+  const lineLoginHasToken = lineLoginChannel ? decryptSecret(lineLoginChannel.accessTokenEncrypted).length > 0 : false;
+  const lineLoginStatusText = !lineLoginChannel
+    ? "ยังไม่ได้ตั้งค่า"
+    : lineLoginHasToken
+      ? `มี token แล้ว — หมดอายุ ${lineLoginChannel.accessTokenExpiresAt?.toLocaleString() ?? "-"} (cron จะออกใหม่ให้ก่อนหมดอายุ)`
+      : "ตั้งค่า Channel ID/Secret แล้ว แต่ยังไม่ได้ออก token";
+
   return (
     <div>
+      <LineLoginChannelCard
+        currentChannelId={lineLoginChannel?.channelId ?? ""}
+        statusText={lineLoginStatusText}
+        saveAction={saveLineLoginChannel}
+        issueTokenAction={issueLineLoginChannelToken}
+      />
+
       <div className="mb-4 flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#06C755]" />

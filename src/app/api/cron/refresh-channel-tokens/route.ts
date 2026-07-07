@@ -45,7 +45,37 @@ async function handle(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ checked: channels.length, refreshed, failed });
+  // The one shared LINE Login channel (used for LIFF across every university) has its own
+  // independently-expiring token, refreshed the same way.
+  const lineLoginRow = await prisma.lineLoginChannel.findUnique({ where: { id: "singleton" } });
+  const lineLoginChannel =
+    lineLoginRow && lineLoginRow.accessTokenExpiresAt && lineLoginRow.accessTokenExpiresAt <= new Date(Date.now() + REFRESH_WINDOW_MS)
+      ? lineLoginRow
+      : null;
+  if (lineLoginChannel) {
+    try {
+      const channelSecret = decryptSecret(lineLoginChannel.channelSecretEncrypted);
+      const oldAccessToken = decryptSecret(lineLoginChannel.accessTokenEncrypted);
+      const issued = await issueChannelAccessToken(lineLoginChannel.channelId, channelSecret);
+
+      await prisma.lineLoginChannel.update({
+        where: { id: "singleton" },
+        data: {
+          accessTokenEncrypted: encryptSecret(issued.accessToken),
+          accessTokenExpiresAt: new Date(Date.now() + issued.expiresIn * 1000),
+        },
+      });
+
+      if (oldAccessToken) {
+        await revokeChannelAccessToken(oldAccessToken);
+      }
+      refreshed++;
+    } catch {
+      failed++;
+    }
+  }
+
+  return NextResponse.json({ checked: channels.length + (lineLoginChannel ? 1 : 0), refreshed, failed });
 }
 
 export const GET = handle;

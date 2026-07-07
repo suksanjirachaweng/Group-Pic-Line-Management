@@ -22,7 +22,7 @@ import { getChannelQrInfo } from "@/lib/lineQr";
 import { getChannelLiveStatus } from "@/lib/channelStatus";
 import { ChannelForm } from "./ChannelForm";
 import { PublishRichMenuButton } from "./PublishRichMenuButton";
-import { ChannelActionButton } from "./ChannelActionButton";
+import { ChannelActionButton } from "../ChannelActionButton";
 import { DeleteChannelButton } from "./DeleteChannelButton";
 
 export default async function ChannelDetailPage({
@@ -134,7 +134,7 @@ export default async function ChannelDetailPage({
       </div>
 
       <div className="rounded-md border border-gray-200 bg-white p-4">
-        <h2 className="mb-1 text-sm font-semibold text-gray-900">Access token</h2>
+        <h2 className="mb-1 text-sm font-semibold text-gray-900">Messaging API Access Token</h2>
         <p className="mb-2 text-xs text-gray-500">
           {hasToken ? (
             channel.accessTokenExpiresAt ? (
@@ -203,26 +203,27 @@ export default async function ChannelDetailPage({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">LINE Channel ID</label>
+          <label className="block text-sm font-medium text-gray-700">Messaging API Channel ID</label>
           <input name="lineChannelId" defaultValue={channel.lineChannelId} required className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
           <p className="mt-1 text-xs text-gray-400">
-            Copy from LINE Developers Console → your channel → Basic settings → Channel ID. LINE
+            Copy from LINE Developers Console → the <strong>Messaging API</strong> channel for this bot
+            (not the separate LINE Login channel used for LIFF) → Basic settings → Channel ID. LINE
             doesn&apos;t expose an API to look this up, so it must be pasted in manually.
           </p>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">LINE Channel secret</label>
+          <label className="block text-sm font-medium text-gray-700">Messaging API Channel Secret</label>
           <input
             name="channelSecret"
             placeholder="Leave blank to keep the current value"
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs"
           />
           <p className="mt-1 text-xs text-gray-400">
-            From Basic settings → Channel secret. Stored values are encrypted and never displayed
-            back — leave blank unless rotating. LINE doesn&apos;t expose this via any API, so it&apos;s the
-            one secret that must always be pasted in by hand. After rotating it, click &quot;reissue&quot;
-            on the Access token card above.
+            From that same Messaging API channel&apos;s Basic settings → Channel secret. Stored values
+            are encrypted and never displayed back — leave blank unless rotating. LINE doesn&apos;t
+            expose this via any API, so it&apos;s the one secret that must always be pasted in by hand.
+            After rotating it, click &quot;reissue&quot; on the Messaging API Access Token card above.
           </p>
         </div>
 

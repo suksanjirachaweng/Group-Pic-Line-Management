@@ -49,15 +49,6 @@ export async function fetchLineBotInfo(accessTokenEncrypted: string): Promise<Li
   return { basicId: info.basicId, displayName: info.displayName, pictureUrl: info.pictureUrl ?? null };
 }
 
-/** Lists the LIFF app IDs already registered to this channel (via the LIFF server API). */
-export async function fetchLiffAppIds(accessTokenEncrypted: string): Promise<string[]> {
-  const client = new liff.LiffClient({
-    channelAccessToken: decryptSecret(accessTokenEncrypted),
-  });
-  const res = await client.getAllLIFFApps();
-  return (res.apps ?? []).map((app) => app.liffId).filter((id): id is string => !!id);
-}
-
 /**
  * Creates a new LIFF app on this channel pointed at our shared LIFF registration page.
  * The description must not contain "LINE" (or similar) — LINE rejects those — so we use a
