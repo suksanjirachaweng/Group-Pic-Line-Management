@@ -16,11 +16,14 @@ import {
 import { setSheetExportConfig, triggerSheetSync } from "@/lib/actions/sheets";
 import {
   uploadUniversityHeaderImage,
+  selectUniversityHeaderImage,
   removeUniversityHeaderImage,
   uploadFormFieldImage,
+  selectFormFieldImage,
   removeFormFieldImage,
 } from "@/lib/actions/images";
 import { ImageUploadForm } from "./ImageUploadForm";
+import { ImageLibraryPicker } from "./ImageLibraryPicker";
 import { UniversityForm } from "./UniversityForm";
 
 export default async function UniversityDetailPage({
@@ -169,6 +172,7 @@ export default async function UniversityDetailPage({
               fieldName="headerImage"
               hasImage={!!university.headerImageUrl}
             />
+            <ImageLibraryPicker universityId={university.id} onSelect={selectUniversityHeaderImage.bind(null, university.id)} />
             {university.headerImageUrl && (
               <form action={removeUniversityHeaderImage.bind(null, university.id)}>
                 <button type="submit" className="text-sm text-red-600 hover:underline">
@@ -270,6 +274,11 @@ export default async function UniversityDetailPage({
                   action={uploadFormFieldImage.bind(null, university.id, f.id)}
                   fieldName="fieldImage"
                   hasImage={!!f.imageUrl}
+                  size="compact"
+                />
+                <ImageLibraryPicker
+                  universityId={university.id}
+                  onSelect={selectFormFieldImage.bind(null, university.id, f.id)}
                   size="compact"
                 />
                 {f.imageUrl && (
