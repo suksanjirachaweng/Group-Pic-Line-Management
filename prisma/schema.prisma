@@ -65,8 +65,25 @@ model University {
   rules           Rule[]
   admins          AdminUserUniversity[]
   sheetExportConfig SheetExportConfig?
+  messageTemplates  MessageTemplate[]
 
   @@map("universities")
+}
+
+model MessageTemplate {
+  id           String   @id @default(cuid())
+  universityId String
+  name         String
+  body         String
+  imageUrl     String?
+  linkUrl      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  @@unique([universityId, name])
+  @@map("message_templates")
 }
 
 enum FormFieldType {

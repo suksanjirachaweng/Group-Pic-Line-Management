@@ -34,6 +34,9 @@ export async function sendBulkMessage(
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : "อัปโหลดรูปไม่สำเร็จ" };
     }
+  } else {
+    // No newly-picked file — reuse an already-uploaded URL carried over from a loaded template.
+    imageUrl = String(formData.get("imageUrl") ?? "").trim() || null;
   }
 
   if (!body && !imageUrl) return { success: false, error: "กรุณากรอกข้อความ หรือแนบรูปอย่างน้อย 1 อย่าง" };
