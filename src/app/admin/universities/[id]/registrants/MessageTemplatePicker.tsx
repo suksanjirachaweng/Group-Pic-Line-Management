@@ -9,14 +9,12 @@ import {
 } from "@/lib/actions/messageTemplates";
 
 export function MessageTemplatePicker({
-  universityId,
   bodyRef,
   imageInputRef,
   templateImageUrl,
   linkValue,
   onLoad,
 }: {
-  universityId: string;
   bodyRef: RefObject<HTMLTextAreaElement | null>;
   imageInputRef: RefObject<HTMLInputElement | null>;
   templateImageUrl: string | null;
@@ -31,7 +29,7 @@ export function MessageTemplatePicker({
     setOpen(true);
     if (templates === null) {
       startTransition(async () => {
-        setTemplates(await listMessageTemplates(universityId));
+        setTemplates(await listMessageTemplates());
       });
     }
   }
@@ -57,7 +55,7 @@ export function MessageTemplatePicker({
     }
 
     startTransition(async () => {
-      const result = await saveMessageTemplate(universityId, fd);
+      const result = await saveMessageTemplate(fd);
       if (result && "error" in result) {
         window.alert(result.error);
         return;
@@ -70,7 +68,7 @@ export function MessageTemplatePicker({
   function handleDelete(t: MessageTemplateSummary) {
     if (!window.confirm(`ลบ template "${t.name}"?`)) return;
     startTransition(async () => {
-      await deleteMessageTemplate(universityId, t.id);
+      await deleteMessageTemplate(t.id);
       setTemplates((prev) => prev?.filter((x) => x.id !== t.id) ?? null);
     });
   }

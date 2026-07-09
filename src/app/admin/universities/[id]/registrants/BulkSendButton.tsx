@@ -158,7 +158,6 @@ export function BulkSendButton({ universityId, selectFormId }: { universityId: s
 
             <div className="mt-4 flex items-center justify-between gap-2">
               <MessageTemplatePicker
-                universityId={universityId}
                 bodyRef={bodyRef}
                 imageInputRef={imageInputRef}
                 templateImageUrl={templateImageUrl}

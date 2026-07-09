@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUniversityAccess } from "@/lib/authz";
+import { requireSession } from "@/lib/authz";
 import { uploadImage } from "@/lib/blob";
 
 export type TemplateActionState = { error: string } | { success: true } | null;
@@ -15,10 +15,10 @@ export type MessageTemplateSummary = {
   linkUrl: string | null;
 };
 
-export async function listMessageTemplates(universityId: string): Promise<MessageTemplateSummary[]> {
-  await requireUniversityAccess(universityId);
+/** Templates are shared across every university this operator manages — not scoped to one. */
+export async function listMessageTemplates(): Promise<MessageTemplateSummary[]> {
+  await requireSession();
   return prisma.messageTemplate.findMany({
-    where: { universityId },
     orderBy: { updatedAt: "desc" },
     select: { id: true, name: true, body: true, imageUrl: true, linkUrl: true },
   });
@@ -30,11 +30,8 @@ export async function listMessageTemplates(universityId: string): Promise<Messag
  * `imageUrl` (e.g. loaded from another template without picking a new file), that URL is reused
  * as-is with no re-upload.
  */
-export async function saveMessageTemplate(
-  universityId: string,
-  formData: FormData,
-): Promise<TemplateActionState> {
-  await requireUniversityAccess(universityId);
+export async function saveMessageTemplate(formData: FormData): Promise<TemplateActionState> {
+  await requireSession();
 
   const name = String(formData.get("name") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
@@ -45,7 +42,7 @@ export async function saveMessageTemplate(
   const imageFile = formData.get("image");
   if (imageFile instanceof File && imageFile.size > 0) {
     try {
-      imageUrl = await uploadImage(imageFile, `universities/${universityId}/templates`);
+      imageUrl = await uploadImage(imageFile, "templates");
     } catch (err) {
       return { error: err instanceof Error ? err.message : "อัปโหลดรูปไม่สำเร็จ" };
     }
@@ -54,17 +51,17 @@ export async function saveMessageTemplate(
   if (!body && !imageUrl) return { error: "กรอกข้อความ หรือแนบรูปอย่างน้อย 1 อย่าง" };
 
   await prisma.messageTemplate.upsert({
-    where: { universityId_name: { universityId, name } },
-    create: { universityId, name, body, imageUrl, linkUrl },
+    where: { name },
+    create: { name, body, imageUrl, linkUrl },
     update: { body, imageUrl, linkUrl },
   });
 
-  revalidatePath(`/admin/universities/${universityId}/registrants`);
+  revalidatePath("/admin/universities/[id]/registrants", "page");
   return { success: true };
 }
 
-export async function deleteMessageTemplate(universityId: string, templateId: string): Promise<void> {
-  await requireUniversityAccess(universityId);
-  await prisma.messageTemplate.delete({ where: { id: templateId, universityId } });
-  revalidatePath(`/admin/universities/${universityId}/registrants`);
+export async function deleteMessageTemplate(templateId: string): Promise<void> {
+  await requireSession();
+  await prisma.messageTemplate.delete({ where: { id: templateId } });
+  revalidatePath("/admin/universities/[id]/registrants", "page");
 }

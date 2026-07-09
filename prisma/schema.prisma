@@ -65,24 +65,21 @@ model University {
   rules           Rule[]
   admins          AdminUserUniversity[]
   sheetExportConfig SheetExportConfig?
-  messageTemplates  MessageTemplate[]
 
   @@map("universities")
 }
 
+/// Shared across every university — this operator manages several universities and reuses the
+/// same recurring messages (e.g. a promo banner) across all of them.
 model MessageTemplate {
-  id           String   @id @default(cuid())
-  universityId String
-  name         String
-  body         String
-  imageUrl     String?
-  linkUrl      String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String   @unique
+  body      String
+  imageUrl  String?
+  linkUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
-
-  @@unique([universityId, name])
   @@map("message_templates")
 }
 
