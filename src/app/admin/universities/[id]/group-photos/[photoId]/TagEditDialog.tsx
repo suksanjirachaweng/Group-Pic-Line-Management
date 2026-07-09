@@ -121,6 +121,7 @@ export function TagEditDialog({
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
+          placeholder="เว้นว่างไว้ก่อนได้ — ค่อยกลับมาใส่ทีหลัง"
           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
         />
 
@@ -168,7 +169,7 @@ export function TagEditDialog({
             <button
               type="button"
               onClick={() => onSave({ code, name, row, order, registrantId, matchSource })}
-              disabled={!code.trim() || !name.trim()}
+              disabled={!code.trim()}
               className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
             >
               บันทึก

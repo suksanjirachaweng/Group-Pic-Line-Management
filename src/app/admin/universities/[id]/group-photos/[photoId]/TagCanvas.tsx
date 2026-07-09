@@ -101,6 +101,7 @@ export function TagCanvas({
   const [candidateOcrPending, setCandidateOcrPending] = useState<Set<string>>(new Set());
   const [labelMode, setLabelMode] = useState<"code" | "name">("code");
   const [labelAngle, setLabelAngle] = useState(-30);
+  const [hasDetected, setHasDetected] = useState(false);
   const [spacePressed, setSpacePressed] = useState(false);
 
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -413,11 +414,16 @@ export function TagCanvas({
         </div>
         <button
           type="button"
-          disabled={!loaded || isDetecting}
-          onClick={() => fullBitmapRef.current && runFaceDetection(fullBitmapRef.current)}
+          disabled={!loaded || isDetecting || hasDetected}
+          onClick={() => {
+            if (!fullBitmapRef.current) return;
+            setHasDetected(true);
+            runFaceDetection(fullBitmapRef.current);
+          }}
+          title={hasDetected ? "ตรวจจับไปแล้วในรูปนี้ — กดซ้ำจะได้ผลลัพธ์เดิม" : undefined}
           className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
-          {isDetecting ? "กำลังตรวจจับใบหน้า..." : "ตรวจจับใบหน้า (ช่วยแนะนำตำแหน่ง)"}
+          {isDetecting ? "กำลังตรวจจับใบหน้า..." : hasDetected ? "ตรวจจับใบหน้าแล้ว" : "ตรวจจับใบหน้า (ช่วยแนะนำตำแหน่ง)"}
         </button>
         <Link
           href={`/admin/universities/${universityId}/group-photos/${groupPhotoId}/validate`}
@@ -463,7 +469,7 @@ export function TagCanvas({
               const { xFrac, yFrac } = fullResToFraction(t.x, t.y, imageWidth, imageHeight);
               const isProblem = problemIds.has(t.id);
               const color = colorForRow(t.row);
-              const labelText = labelMode === "code" ? t.code : t.name;
+              const labelText = labelMode === "code" ? t.code : t.name.trim() || "(ยังไม่มีชื่อ)";
               return (
                 <div
                   key={t.id}

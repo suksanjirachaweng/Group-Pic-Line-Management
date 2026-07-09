@@ -26,7 +26,7 @@ export function PhotoReviewView({
   const reviewTags: ReviewTag[] = tags.map((t) => ({ ...t, isProblem: problemTagIds.has(t.id) }));
 
   async function handleSave(tagId: string, input: { code: string; name: string }) {
-    if (!input.code.trim() || !input.name.trim()) return { error: "กรุณากรอกรหัสและชื่อให้ครบ" };
+    if (!input.code.trim()) return { error: "กรุณากรอกรหัส" };
     const fd = new FormData();
     fd.set("code", input.code);
     fd.set("name", input.name);

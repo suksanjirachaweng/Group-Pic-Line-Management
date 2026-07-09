@@ -26,7 +26,7 @@ export async function updateTagViaPublicLink(
 
   const name = String(formData.get("name") ?? "").trim();
   const code = String(formData.get("code") ?? "").trim();
-  if (!name || !code) return { error: "กรุณากรอกชื่อและหมายเลขให้ครบ" };
+  if (!code) return { error: "กรุณากรอกหมายเลข" };
 
   await prisma.groupPhotoTag.update({
     where: { id: tagId },

@@ -77,7 +77,7 @@ export function ValidateView({
   async function handleSave(tagId: string, input: { code: string; name: string }) {
     const tag = tagsById.get(tagId);
     if (!tag) return { error: "ไม่พบข้อมูลนี้" };
-    if (!input.code.trim() || !input.name.trim()) return { error: "กรุณากรอกรหัสและชื่อให้ครบ" };
+    if (!input.code.trim()) return { error: "กรุณากรอกรหัส" };
 
     const normalized = normalizeCode(input.code);
     let registrantId: string | null = null;
@@ -167,7 +167,7 @@ export function ValidateView({
                                 onClick={() => setSelectedTagId(t!.id)}
                                 className="text-left text-indigo-600 hover:underline"
                               >
-                                {t!.name} (แถว {t!.row} ลำดับ {t!.order})
+                                {t!.name.trim() || "(ยังไม่มีชื่อ)"} (แถว {t!.row} ลำดับ {t!.order})
                               </button>
                             </li>
                           ))}
@@ -192,7 +192,7 @@ export function ValidateView({
                       onClick={() => setSelectedTagId(t.id)}
                       className="text-left text-indigo-600 hover:underline"
                     >
-                      <span className="font-mono text-amber-600">{t.code}</span> — {t.name} (แถว {t.row} ลำดับ {t.order})
+                      <span className="font-mono text-amber-600">{t.code}</span> — {t.name.trim() || "(ยังไม่มีชื่อ)"} (แถว {t.row} ลำดับ {t.order})
                     </button>
                   </li>
                 ))}

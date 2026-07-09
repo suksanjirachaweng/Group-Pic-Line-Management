@@ -27,12 +27,22 @@ export default async function GroupPhotosPage({ params }: { params: Promise<{ id
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">{university.name} — รูปหมู่</h1>
-          <Link
-            href={`/admin/universities/${universityId}/group-photos/legacy-reference`}
-            className="text-xs text-indigo-600 hover:underline"
-          >
-            จัดการรายชื่ออ้างอิงเก่า (Google Form)
-          </Link>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            <Link
+              href={`/admin/universities/${universityId}/group-photos/legacy-reference`}
+              className="text-indigo-600 hover:underline"
+            >
+              จัดการรายชื่ออ้างอิงเก่า (Google Form)
+            </Link>
+            <span className="text-gray-300">·</span>
+            <Link href={`/admin/universities/${universityId}/registrants`} className="text-indigo-600 hover:underline">
+              ดูรายชื่อผู้ลงทะเบียน LINE
+            </Link>
+            <span className="text-gray-300">·</span>
+            <Link href={`/admin/universities/${universityId}`} className="text-indigo-600 hover:underline">
+              ตั้งค่ามหาวิทยาลัย / LINE Channel
+            </Link>
+          </div>
         </div>
         <UploadGroupPhotoButton universityId={universityId} />
       </div>

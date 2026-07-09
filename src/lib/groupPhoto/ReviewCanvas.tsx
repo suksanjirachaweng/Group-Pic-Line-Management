@@ -382,7 +382,7 @@ export function ReviewCanvas({
               const color = colorForRow(t.row);
               const editable = !editableTagIds || editableTagIds.has(t.id);
               const isSelected = t.id === selectedTagId;
-              const labelText = labelMode === "code" ? t.code : t.name;
+              const labelText = labelMode === "code" ? t.code : t.name.trim() || "(ยังไม่มีชื่อ)";
               return (
                 <div
                   key={t.id}
@@ -447,6 +447,7 @@ export function ReviewCanvas({
             <input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
+              placeholder="เว้นว่างไว้ก่อนได้"
               className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
             />
             {saveError && (
@@ -463,7 +464,7 @@ export function ReviewCanvas({
               <button
                 type="button"
                 onClick={handleSaveClick}
-                disabled={saving || !editCode.trim() || !editName.trim()}
+                disabled={saving || !editCode.trim()}
                 className="rounded-md bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
               >
                 {saving ? "กำลังบันทึก..." : "บันทึก"}
