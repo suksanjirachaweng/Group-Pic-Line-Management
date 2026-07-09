@@ -1,17 +1,62 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { saveGroupPhotoTag, deleteGroupPhotoTag } from "@/lib/actions/groupPhotos";
 import { ocrCardCrop } from "@/lib/actions/ocr";
 import { TagMatchSource } from "@/generated/prisma/enums";
 import { clientPointToFullRes, fullResToFraction, extractCrop, pixelDistance } from "./coordinateMapping";
-import { useFaceDetection } from "./useFaceDetection";
+import { useFaceDetection, type FaceCandidate } from "./useFaceDetection";
 import { TagEditDialog, type DialogInitial, type RegistrantLookup, type ReferenceLookup, type SavePayload } from "./TagEditDialog";
 import { validateTags, problemTagIds } from "@/lib/groupPhoto/validateTags";
 
 const DISPLAY_MAX_WIDTH = 3500;
 const OCR_CROP_SIZE = 360;
+const OCR_BATCH_CONCURRENCY = 6;
+const MIN_SCALE = 0.05;
+const MAX_SCALE = 6;
+const ZOOM_STEP = 1.25;
+
+function isTypingTarget(el: EventTarget | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable;
+}
+
+// Cycled by row index so every tag in the same row renders the same color, distinguishing rows
+// at a glance (front-sitting row vs. each standing row behind it).
+const ROW_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#eab308", "#a855f7", "#06b6d4", "#f97316", "#ec4899"];
+
+function colorForRow(row: number): string {
+  const idx = ((row % ROW_COLORS.length) + ROW_COLORS.length) % ROW_COLORS.length;
+  return ROW_COLORS[idx];
+}
+
+/** Concurrency-limited OCR pass over every detected face candidate, so results stream in as they
+ * resolve rather than waiting for the whole (possibly 300+ person) batch to finish. */
+async function runOcrBatch(
+  bitmap: ImageBitmap,
+  points: FaceCandidate[],
+  universityId: string,
+  onResult: (id: string, code: string | null) => void,
+) {
+  let next = 0;
+  async function worker() {
+    while (next < points.length) {
+      const point = points[next++];
+      try {
+        const crop = await extractCrop(bitmap, point.x, point.y, OCR_CROP_SIZE);
+        const fd = new FormData();
+        fd.set("crop", crop, "crop.jpg");
+        const result = await ocrCardCrop(universityId, fd);
+        onResult(point.id, result.code ?? null);
+      } catch (err) {
+        console.error("Batch OCR failed for a face candidate:", err);
+        onResult(point.id, null);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(OCR_BATCH_CONCURRENCY, points.length) }, worker));
+}
 
 export type TagRecord = {
   id: string;
@@ -52,6 +97,11 @@ export function TagCanvas({
   const [ty, setTy] = useState(0);
   const [dialogInitial, setDialogInitial] = useState<DialogInitial | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [candidateCodes, setCandidateCodes] = useState<Record<string, string | null>>({});
+  const [candidateOcrPending, setCandidateOcrPending] = useState<Set<string>>(new Set());
+  const [labelMode, setLabelMode] = useState<"code" | "name">("code");
+  const [labelAngle, setLabelAngle] = useState(-30);
+  const [spacePressed, setSpacePressed] = useState(false);
 
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const fullBitmapRef = useRef<ImageBitmap | null>(null);
@@ -71,6 +121,35 @@ export function TagCanvas({
 
   const problems = useMemo(() => validateTags(tags), [tags]);
   const problemIds = useMemo(() => problemTagIds(problems), [problems]);
+
+  // Line segments connecting consecutive `order` positions within the same row — one straight
+  // line per adjacent pair, never crossing into the next row.
+  const rowLineSegments = useMemo(() => {
+    const byRow = new Map<number, TagRecord[]>();
+    for (const t of tags) {
+      const arr = byRow.get(t.row) ?? [];
+      arr.push(t);
+      byRow.set(t.row, arr);
+    }
+    const segments: { key: string; x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
+    for (const [row, rowTags] of byRow) {
+      const sorted = [...rowTags].sort((a, b) => a.order - b.order);
+      const color = colorForRow(row);
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const a = fullResToFraction(sorted[i].x, sorted[i].y, imageWidth, imageHeight);
+        const b = fullResToFraction(sorted[i + 1].x, sorted[i + 1].y, imageWidth, imageHeight);
+        segments.push({
+          key: `${sorted[i].id}-${sorted[i + 1].id}`,
+          x1: a.xFrac * 100,
+          y1: a.yFrac * 100,
+          x2: b.xFrac * 100,
+          y2: b.yFrac * 100,
+          color,
+        });
+      }
+    }
+    return segments;
+  }, [tags, imageWidth, imageHeight]);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,15 +180,46 @@ export function TagCanvas({
     };
   }, [imageUrl]);
 
+  // Every time a face-detection pass adds candidates, OCR them all right away — the recognized
+  // number shows up on the marker itself (no dialog needed) and gets reused, not re-fetched, if
+  // the candidate is later promoted into a real tag.
+  useEffect(() => {
+    const bitmap = fullBitmapRef.current;
+    if (!bitmap) return;
+    const todo = faceCandidates.filter((c) => !(c.id in candidateCodes) && !candidateOcrPending.has(c.id));
+    if (todo.length === 0) return;
+
+    (async () => {
+      setCandidateOcrPending((prev) => {
+        const next = new Set(prev);
+        for (const c of todo) next.add(c.id);
+        return next;
+      });
+      await runOcrBatch(bitmap, todo, universityId, (id, code) => {
+        setCandidateCodes((prev) => ({ ...prev, [id]: code }));
+        setCandidateOcrPending((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- candidateCodes/candidateOcrPending are read for the "already handled" check, not for re-triggering
+  }, [faceCandidates, universityId]);
+
   function computeNextRowOrder(): { row: number; order: number } {
     const defaultRow = tags.length > 0 ? tags[tags.length - 1].row : 0;
     const maxOrder = tags.filter((t) => t.row === defaultRow).reduce((m, t) => Math.max(m, t.order), -1);
     return { row: defaultRow, order: maxOrder + 1 };
   }
 
-  async function openNewTagDialog(x: number, y: number) {
+  async function openNewTagDialog(x: number, y: number, precomputedCode?: string | null) {
     const { row, order } = computeNextRowOrder();
-    setDialogInitial({ code: "", name: "", row, order, x, y, registrantId: null, matchSource: TagMatchSource.MANUAL });
+    setDialogInitial({ code: precomputedCode ?? "", name: "", row, order, x, y, registrantId: null, matchSource: TagMatchSource.MANUAL });
+
+    // A candidate already OCR'd during the batch face-detection pass — reuse that result instead
+    // of paying for a second OCR call on promotion.
+    if (precomputedCode !== undefined) return;
 
     const fullBitmap = fullBitmapRef.current;
     if (!fullBitmap) return;
@@ -132,6 +242,13 @@ export function TagCanvas({
   }
 
   function handleCanvasClick(e: ReactMouseEvent<HTMLCanvasElement>) {
+    // The browser still fires a native "click" on mouseup even after a drag pan (same element for
+    // mousedown/mouseup) — swallow that one click rather than opening a new-tag dialog. Also
+    // swallow plain clicks while Space is held (Photoshop's Hand tool doesn't add anything either).
+    if (draggedRef.current || spacePressed) {
+      draggedRef.current = false;
+      return;
+    }
     const canvas = displayCanvasRef.current;
     if (!canvas) return;
     const { x, y } = clientPointToFullRes(e.clientX, e.clientY, canvas, imageWidth, imageHeight);
@@ -156,8 +273,9 @@ export function TagCanvas({
   }
 
   function handlePromoteCandidate(candidateId: string, x: number, y: number) {
+    const knownCode = candidateCodes[candidateId];
     dismissCandidate(candidateId);
-    void openNewTagDialog(x, y);
+    void openNewTagDialog(x, y, knownCode ?? undefined);
   }
 
   async function handleSave(input: SavePayload) {
@@ -191,22 +309,55 @@ export function TagCanvas({
     setDialogInitial(null);
   }
 
+  function zoomBy(factor: number) {
+    setScale((s) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * factor)));
+  }
+
+  // Photoshop-style shortcuts: hold Space to pan-drag, Ctrl/Cmd +/- to zoom. Ignored while typing
+  // in a text field (e.g. the tag dialog's name input needs a literal space character).
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (isTypingTarget(e.target)) return;
+      if (e.code === "Space") {
+        e.preventDefault();
+        setSpacePressed(true);
+        return;
+      }
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "+" || e.key === "=") {
+          e.preventDefault();
+          zoomBy(ZOOM_STEP);
+        } else if (e.key === "-" || e.key === "_") {
+          e.preventDefault();
+          zoomBy(1 / ZOOM_STEP);
+        }
+      }
+    }
+    function handleKeyUp(e: KeyboardEvent) {
+      if (e.code === "Space") setSpacePressed(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+
   const draggingRef = useRef<{ x: number; y: number } | null>(null);
+  const draggedRef = useRef(false);
   function handleMouseDown(e: ReactMouseEvent) {
-    if (!e.shiftKey && e.button !== 1) return;
+    if (!spacePressed && e.button !== 1) return;
     draggingRef.current = { x: e.clientX - tx, y: e.clientY - ty };
   }
   function handleMouseMove(e: ReactMouseEvent) {
     if (!draggingRef.current) return;
+    draggedRef.current = true;
     setTx(e.clientX - draggingRef.current.x);
     setTy(e.clientY - draggingRef.current.y);
   }
   function handleMouseUp() {
     draggingRef.current = null;
-  }
-  function handleWheel(e: ReactWheelEvent) {
-    e.preventDefault();
-    setScale((s) => Math.min(6, Math.max(0.05, s * (e.deltaY < 0 ? 1.15 : 0.87))));
   }
 
   return (
@@ -216,11 +367,55 @@ export function TagCanvas({
         {problems.length > 0 && (
           <span className="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">{problems.length} รายการมีปัญหา</span>
         )}
+        <div className="ml-auto flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
+          <button
+            type="button"
+            onClick={() => setLabelMode("code")}
+            className={`rounded px-2 py-1 font-medium ${labelMode === "code" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+          >
+            รหัส
+          </button>
+          <button
+            type="button"
+            onClick={() => setLabelMode("name")}
+            className={`rounded px-2 py-1 font-medium ${labelMode === "name" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+          >
+            ชื่อ-นามสกุล
+          </button>
+        </div>
+        <label className="flex items-center gap-1 text-xs text-gray-600">
+          มุมป้าย
+          <input
+            type="number"
+            value={labelAngle}
+            onChange={(e) => setLabelAngle(Number(e.target.value))}
+            step={5}
+            className="w-14 rounded-md border border-gray-300 px-1.5 py-1 text-xs"
+          />
+        </label>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => zoomBy(1 / ZOOM_STEP)}
+            title="Zoom out (Ctrl -)"
+            className="rounded-md border border-gray-300 px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomBy(ZOOM_STEP)}
+            title="Zoom in (Ctrl +)"
+            className="rounded-md border border-gray-300 px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            +
+          </button>
+        </div>
         <button
           type="button"
           disabled={!loaded || isDetecting}
           onClick={() => fullBitmapRef.current && runFaceDetection(fullBitmapRef.current)}
-          className="ml-auto rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
           {isDetecting ? "กำลังตรวจจับใบหน้า..." : "ตรวจจับใบหน้า (ช่วยแนะนำตำแหน่ง)"}
         </button>
@@ -231,7 +426,7 @@ export function TagCanvas({
           ตรวจสอบ / Export
         </Link>
         <span className="hidden text-xs text-gray-400 lg:inline">
-          Shift+ลาก = เลื่อนภาพ, scroll = ซูม, คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไขคนที่ใกล้ที่สุด
+          Spacebar+ลาก = เลื่อนภาพ, Ctrl +/- หรือปุ่ม = ซูม, คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไขคนที่ใกล้ที่สุด
         </span>
       </div>
 
@@ -241,36 +436,90 @@ export function TagCanvas({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
       >
         <div className="absolute left-0 top-0 origin-top-left" style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}>
-          <canvas ref={displayCanvasRef} onClick={handleCanvasClick} onDoubleClick={handleCanvasDoubleClick} className="block cursor-crosshair" />
+          <canvas
+            ref={displayCanvasRef}
+            onClick={handleCanvasClick}
+            onDoubleClick={handleCanvasDoubleClick}
+            className={`block ${spacePressed ? "cursor-grab" : "cursor-crosshair"}`}
+          />
           <div className="pointer-events-none absolute inset-0">
+            <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+              {rowLineSegments.map((seg) => (
+                <line
+                  key={seg.key}
+                  x1={seg.x1}
+                  y1={seg.y1}
+                  x2={seg.x2}
+                  y2={seg.y2}
+                  stroke={seg.color}
+                  strokeWidth={0.45}
+                  strokeLinecap="round"
+                />
+              ))}
+            </svg>
             {tags.map((t) => {
               const { xFrac, yFrac } = fullResToFraction(t.x, t.y, imageWidth, imageHeight);
               const isProblem = problemIds.has(t.id);
+              const color = colorForRow(t.row);
+              const labelText = labelMode === "code" ? t.code : t.name;
               return (
                 <div
                   key={t.id}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 ${
-                    isProblem ? "border-red-500 bg-red-500/30" : "border-lime-400 bg-lime-400/20"
-                  }`}
-                  style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%`, width: 24, height: 24 }}
-                  title={`${t.code} — ${t.name}`}
-                />
+                  className="absolute -translate-x-1/2 -translate-y-1/2"
+                  style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%` }}
+                >
+                  <div
+                    className="rounded-full border-2 border-white"
+                    style={{
+                      width: 12,
+                      height: 12,
+                      backgroundColor: color,
+                      boxShadow: isProblem ? "0 0 0 2px #ef4444" : undefined,
+                    }}
+                    title={`${t.code} — ${t.name}`}
+                  />
+                  <div
+                    className="absolute left-0 top-0 origin-left whitespace-nowrap rounded px-1.5 py-0.5 text-[12px] font-semibold leading-none text-white shadow"
+                    style={{
+                      backgroundColor: color,
+                      transform: `translateY(-6px) rotate(${labelAngle}deg)`,
+                    }}
+                  >
+                    {labelText}
+                  </div>
+                </div>
               );
             })}
             {faceCandidates.map((c) => {
               const { xFrac, yFrac } = fullResToFraction(c.x, c.y, imageWidth, imageHeight);
+              const code = candidateCodes[c.id];
+              const pending = candidateOcrPending.has(c.id);
               return (
-                <button
+                <div
                   key={c.id}
-                  type="button"
-                  className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-dashed border-sky-400 bg-sky-400/10 hover:bg-sky-400/30"
-                  style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%`, width: 20, height: 20 }}
-                  onClick={() => handlePromoteCandidate(c.id, c.x, c.y)}
-                  title="คลิกเพื่อเพิ่มคนนี้"
-                />
+                  className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2"
+                  style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%` }}
+                >
+                  <button
+                    type="button"
+                    className="rounded-full border-2 border-dashed border-sky-400 bg-sky-400/10 hover:bg-sky-400/30"
+                    style={{ width: 16, height: 16 }}
+                    onClick={() => handlePromoteCandidate(c.id, c.x, c.y)}
+                    title="คลิกเพื่อเพิ่มคนนี้"
+                  />
+                  {code && (
+                    <div className="pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-sky-700/80 px-1 text-[10px] leading-tight text-white">
+                      {code}
+                    </div>
+                  )}
+                  {pending && !code && (
+                    <div className="pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap text-[10px] text-sky-200">
+                      …
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

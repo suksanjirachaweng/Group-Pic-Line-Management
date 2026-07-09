@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { validateTags } from "@/lib/groupPhoto/validateTags";
-import { PhotoReviewTagForm } from "./PhotoReviewTagForm";
+import { PhotoReviewView } from "./PhotoReviewView";
 
 export default async function PhotoReviewPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -29,25 +29,17 @@ export default async function PhotoReviewPage({ params }: { params: Promise<{ to
   }
 
   const problems = validateTags(photo.tags);
-  const problemIds = new Set(problems.flatMap((p) => (p.type === "DUPLICATE_CODE" ? p.tagIds : [p.tagId])));
-  const problemTags = photo.tags.filter((t) => problemIds.has(t.id));
+  const problemTagIds = new Set(problems.flatMap((p) => (p.type === "DUPLICATE_CODE" ? p.tagIds : [p.tagId])));
 
   return (
-    <div className="mx-auto max-w-lg p-6">
-      <h1 className="mb-1 text-lg font-semibold text-gray-900">{photo.name} — ช่วยตรวจสอบรายชื่อ</h1>
-      <p className="mb-4 text-sm text-gray-600">
-        รบกวนตรวจสอบและแก้ไขหมายเลข/ชื่อของคนต่อไปนี้ให้ถูกต้อง ({problemTags.length} คน)
-      </p>
-
-      {problemTags.length === 0 ? (
-        <p className="rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">ไม่มีรายการที่ต้องแก้ไขแล้ว — ขอบคุณครับ</p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {problemTags.map((t) => (
-            <PhotoReviewTagForm key={t.id} token={token} tag={t} />
-          ))}
-        </div>
-      )}
-    </div>
+    <PhotoReviewView
+      token={token}
+      photoName={photo.name}
+      imageUrl={photo.imageUrl}
+      imageWidth={photo.imageWidth}
+      imageHeight={photo.imageHeight}
+      tags={photo.tags}
+      problemTagIds={problemTagIds}
+    />
   );
 }
