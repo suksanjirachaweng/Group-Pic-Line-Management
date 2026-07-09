@@ -5,7 +5,10 @@ import { decryptSecret } from "@/lib/crypto";
 import { replyTextMessage } from "@/lib/line";
 import { buildLiffRegisterUrl } from "@/lib/liffUrl";
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ channelId: string }> }) {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ channelId: string }> },
+) {
   const { channelId } = await params;
 
   const channel = await prisma.channel.findUnique({ where: { id: channelId } });
@@ -29,7 +32,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   for (const event of body.events ?? []) {
     if (event.type !== "follow" && event.type !== "unfollow") continue;
-    const userId = event.source?.type === "user" ? event.source.userId : undefined;
+    const userId =
+      event.source?.type === "user" ? event.source.userId : undefined;
     if (!userId) continue;
 
     // A channel can serve multiple universities, so the same LINE user can have
@@ -61,14 +65,18 @@ async function sendRegistrationLinkIfSingleUniversity(
   replyToken: string,
 ) {
   const pool = await prisma.universityChannelPool.findMany({
-    where: { channelId: channel.id, isActive: true, university: { isActive: true } },
+    where: {
+      channelId: channel.id,
+      isActive: true,
+      university: { isActive: true },
+    },
     include: { university: true },
   });
   if (pool.length !== 1) return;
 
   const university = pool[0].university;
   const url = buildLiffRegisterUrl(channel.liffId, university.slug);
-  const text = `ขอบคุณที่เพิ่มเพื่อนนะครับ/ค่ะ!\n\nกดลิงก์ด้านล่างเพื่อลงทะเบียนรับภาพถ่ายหมู่ของ ${university.name} ได้เลย:\n${url}`;
+  const text = `ขอบคุณที่เพิ่มเพื่อนนะครับ/ค่ะ!\n\nกดลิงก์ด้านล่างเพื่อลงทะเบียนถ่ายภาพหมู่ของ ${university.name} ได้เลย:\n${url}`;
 
   try {
     await replyTextMessage(channel.accessTokenEncrypted, replyToken, text);
