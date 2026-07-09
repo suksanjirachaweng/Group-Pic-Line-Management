@@ -65,6 +65,8 @@ model University {
   rules           Rule[]
   admins          AdminUserUniversity[]
   sheetExportConfig SheetExportConfig?
+  groupPhotos       GroupPhoto[]
+  legacyReferences  GroupPhotoLegacyReference[]
 
   @@map("universities")
 }
@@ -216,6 +218,7 @@ model Registrant {
   ruleExecutions  RuleExecution[]
   messageJobs     MessageJob[]
   messageLogs     MessageLog[]
+  groupPhotoTags  GroupPhotoTag[]
 
   @@index([universityId, lineUserId])
   @@index([universityId, status])
@@ -351,4 +354,99 @@ model SheetExportConfig {
   university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
 
   @@map("sheet_export_configs")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2: group photo tagging
+// ---------------------------------------------------------------------------
+
+/// One faculty/group's graduation photo for a university. A university typically has 10-24 of
+/// these (one per faculty/group), each tagged independently.
+model GroupPhoto {
+  id           String   @id @default(cuid())
+  universityId String
+  name         String // also used verbatim as the export's "คณะ" column
+  imageUrl     String // plain string, storage-agnostic — swapping backends later is a data change, not a schema change
+  imageWidth   Int
+  imageHeight  Int
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  university University         @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  tags       GroupPhotoTag[]
+  shareLinks GroupPhotoShareLink[]
+
+  @@index([universityId])
+  @@map("group_photos")
+}
+
+enum TagMatchSource {
+  REGISTRANT
+  LEGACY_REFERENCE
+  MANUAL
+}
+
+/// One tagged person within a GroupPhoto — mirrors the legacy desktop tool's data model
+/// (name/code/row/order/X/Y) so exports stay byte-compatible with existing downstream files.
+model GroupPhotoTag {
+  id             String         @id @default(cuid())
+  groupPhotoId   String
+  code           String // raw as typed/OCR'd, e.g. "B1710"
+  normalizedCode String // digits-only, computed server-side — powers indexed duplicate/match queries
+  name           String
+  row            Int // แถว — 0 = front sitting row, 1+ = standing rows behind
+  order          Int // ลำดับ — position within the row, left to right
+  x              Float // full-resolution pixel space, matches legacy export exactly
+  y              Float
+  registrantId   String? // set when matched against a live Phase-1 Registrant (enables direct LINE send)
+  matchSource    TagMatchSource @default(MANUAL)
+  editedViaPublicLink Boolean   @default(false)
+  publicLinkEditedAt  DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  groupPhoto GroupPhoto  @relation(fields: [groupPhotoId], references: [id], onDelete: Cascade)
+  registrant Registrant? @relation(fields: [registrantId], references: [id], onDelete: SetNull)
+
+  // Deliberately no @@unique on (groupPhotoId, normalizedCode) — duplicates are a valid,
+  // expected transient state that the validator must be able to detect and flag.
+  @@index([groupPhotoId, normalizedCode])
+  @@index([groupPhotoId, row, order])
+  @@map("group_photo_tags")
+}
+
+/// Per-university reference data imported once from a legacy Google Form export, used ONLY for
+/// name lookup during tagging. Deliberately separate from Registrant — some universities never
+/// had LIFF/LINE registration at all, and these people must never gain LINE-messaging capability
+/// they don't actually have.
+model GroupPhotoLegacyReference {
+  id             String   @id @default(cuid())
+  universityId   String
+  name           String
+  code           String // raw as parsed, plain digits per the real sample format
+  normalizedCode String
+  phone          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  @@index([universityId, normalizedCode])
+  @@map("group_photo_legacy_references")
+}
+
+/// A public, unauthenticated link scoped to one GroupPhoto's flagged/problem tags. Anyone with
+/// the link can view and edit those rows directly — no login. No snapshot of which tags are
+/// "problem" tags is stored here; that's computed live by the same validator the admin UI uses.
+model GroupPhotoShareLink {
+  id           String   @id @default(cuid())
+  groupPhotoId String
+  token        String   @unique
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  groupPhoto GroupPhoto @relation(fields: [groupPhotoId], references: [id], onDelete: Cascade)
+
+  @@map("group_photo_share_links")
 }

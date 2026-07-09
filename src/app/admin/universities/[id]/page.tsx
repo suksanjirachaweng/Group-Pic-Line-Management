@@ -88,6 +88,12 @@ export default async function UniversityDetailPage({
               Rules
             </Link>
             <Link
+              href={`/admin/universities/${university.id}/group-photos`}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700"
+            >
+              Group photos
+            </Link>
+            <Link
               href={`/admin/universities/${university.id}/registrants`}
               className="rounded-md bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white"
             >
