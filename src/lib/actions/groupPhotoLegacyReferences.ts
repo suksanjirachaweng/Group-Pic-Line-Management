@@ -57,7 +57,7 @@ export async function importLegacyReferences(
     }),
   ]);
 
-  revalidatePath(`/admin/universities/${universityId}/group-photos/legacy-reference`);
+  revalidatePath(`/admin/universities/${universityId}/group-photos`);
   return { success: true, count: rows.length };
 }
 
@@ -153,6 +153,6 @@ export async function importLegacyReferencesFromSheetLink(
     }),
   ]);
 
-  revalidatePath(`/admin/universities/${universityId}/group-photos/legacy-reference`);
+  revalidatePath(`/admin/universities/${universityId}/group-photos`);
   return { success: true, count: rows.length };
 }
