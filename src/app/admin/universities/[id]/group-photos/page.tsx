@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getServiceAccountEmail } from "@/lib/sheets";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { validateTags } from "@/lib/groupPhoto/validateTags";
 import { LegacyReferenceUploadForm } from "./LegacyReferenceUploadForm";
@@ -29,12 +28,20 @@ const PHOTO_STATUS_CLASS: Record<PhotoStatus, string> = {
   DONE: "bg-green-100 text-green-700",
 };
 
+type CombinedRowSource = "Excel" | "Google Sheet" | "LINE";
+
 type CombinedRow = {
   key: string;
   name: string;
   code: string;
   phone: string;
-  source: "อ้างอิงเก่า (Excel/Sheet)" | "ลงทะเบียน LINE";
+  source: CombinedRowSource;
+};
+
+const COMBINED_ROW_SOURCE_CLASS: Record<CombinedRowSource, string> = {
+  Excel: "bg-amber-100 text-amber-700",
+  "Google Sheet": "bg-orange-100 text-orange-700",
+  LINE: "bg-green-100 text-green-700",
 };
 
 const ACTIVE_DATA_TAB_CLASS = "border-b-2 border-rose-500 px-1 py-3 text-sm font-medium text-rose-600";
@@ -137,7 +144,7 @@ async function DataTab({
       name: r.name,
       code: r.code,
       phone: r.phone ?? "—",
-      source: "อ้างอิงเก่า (Excel/Sheet)" as const,
+      source: (r.source === "GOOGLE_SHEET" ? "Google Sheet" : "Excel") as CombinedRowSource,
     })),
     ...registrantRows.map((r) => {
       const data = (r.data ?? {}) as Record<string, unknown>;
@@ -148,7 +155,7 @@ async function DataTab({
         name: r.displayName ?? "(ไม่มีชื่อ)",
         code: typeof rawCode === "string" && rawCode.trim() ? rawCode : "—",
         phone: typeof phoneValue === "string" && phoneValue.trim() ? phoneValue : "—",
-        source: "ลงทะเบียน LINE" as const,
+        source: "LINE" as const,
       };
     }),
   ];
@@ -178,11 +185,7 @@ async function DataTab({
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <LegacyReferenceUploadForm
-        universityId={universityId}
-        serviceAccountEmail={getServiceAccountEmail()}
-        registrantCount={registrantRows.length}
-      />
+      <LegacyReferenceUploadForm universityId={universityId} registrantCount={registrantRows.length} />
 
       <div className="mt-5 border-t border-gray-100 pt-4">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -225,11 +228,7 @@ async function DataTab({
                   <td className="px-3 py-1.5 font-mono">{r.code}</td>
                   <td className="px-3 py-1.5">{r.phone}</td>
                   <td className="px-3 py-1.5">
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-xs ${
-                        r.source === "ลงทะเบียน LINE" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
-                      }`}
-                    >
+                    <span className={`rounded px-1.5 py-0.5 text-xs ${COMBINED_ROW_SOURCE_CLASS[r.source]}`}>
                       {r.source}
                     </span>
                   </td>

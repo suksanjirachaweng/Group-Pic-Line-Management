@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess } from "@/lib/authz";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { getSheetsClient } from "@/lib/sheets";
+import { LegacyReferenceSource } from "@/generated/prisma/enums";
 
 export type LegacyImportState = { error: string } | { success: true; count: number } | null;
 
@@ -53,6 +54,7 @@ export async function importLegacyReferences(
         code: r.code,
         normalizedCode: normalizeCode(r.code),
         phone: r.phone,
+        source: LegacyReferenceSource.EXCEL_FILE,
       })),
     }),
   ]);
@@ -149,6 +151,7 @@ export async function importLegacyReferencesFromSheetLink(
         code: r.code,
         normalizedCode: normalizeCode(r.code),
         phone: r.phone,
+        source: LegacyReferenceSource.GOOGLE_SHEET,
       })),
     }),
   ]);

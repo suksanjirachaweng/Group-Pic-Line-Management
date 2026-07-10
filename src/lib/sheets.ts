@@ -17,17 +17,6 @@ export function getSheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
-/** The service account's own email — whoever imports from a Sheet must share it with this address first. */
-export function getServiceAccountEmail(): string | null {
-  const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (!json) return null;
-  try {
-    return JSON.parse(json).client_email ?? null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * One-way DB -> Sheet mirror for a single university: clears the sheet then writes the
  * full registrant table in a single batched call (keeps well under Sheets API's

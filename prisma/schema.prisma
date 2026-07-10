@@ -421,19 +421,25 @@ model GroupPhotoTag {
 /// had LIFF/LINE registration at all, and these people must never gain LINE-messaging capability
 /// they don't actually have.
 model GroupPhotoLegacyReference {
-  id             String   @id @default(cuid())
+  id             String                @id @default(cuid())
   universityId   String
   name           String
   code           String // raw as parsed, plain digits per the real sample format
   normalizedCode String
   phone          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  source         LegacyReferenceSource @default(EXCEL_FILE)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
   university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
 
   @@index([universityId, normalizedCode])
   @@map("group_photo_legacy_references")
+}
+
+enum LegacyReferenceSource {
+  EXCEL_FILE
+  GOOGLE_SHEET
 }
 
 /// A public, unauthenticated link scoped to one GroupPhoto's flagged/problem tags. Anyone with
