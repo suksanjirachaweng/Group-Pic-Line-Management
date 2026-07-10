@@ -112,9 +112,59 @@ export async function saveGroupPhotoTag(
     matchSource: input.matchSource,
   };
 
-  const tag = input.id
-    ? await prisma.groupPhotoTag.update({ where: { id: input.id, groupPhotoId }, data })
-    : await prisma.groupPhotoTag.create({ data });
+  // `row`/`order` are meant to stay a dense 0..N sequence per row (drives the row-line drawing
+  // and the legacy-format export's left-to-right ordering) — so placing a tag at a slot another
+  // tag already occupies "inserts" it there instead of colliding: everyone from that slot onward
+  // shifts over by one to make room, and moving a tag away from its old slot closes the gap it
+  // leaves behind. This lets a missed person get added in the middle of an already-tagged row
+  // without manually renumbering everyone after them by hand.
+  const tag = await prisma.$transaction(async (tx) => {
+    if (input.id) {
+      const existing = await tx.groupPhotoTag.findUniqueOrThrow({
+        where: { id: input.id, groupPhotoId },
+        select: { row: true, order: true },
+      });
+      if (existing.row === input.row) {
+        if (input.order > existing.order) {
+          await tx.groupPhotoTag.updateMany({
+            where: {
+              groupPhotoId,
+              row: input.row,
+              order: { gt: existing.order, lte: input.order },
+              id: { not: input.id },
+            },
+            data: { order: { decrement: 1 } },
+          });
+        } else if (input.order < existing.order) {
+          await tx.groupPhotoTag.updateMany({
+            where: {
+              groupPhotoId,
+              row: input.row,
+              order: { gte: input.order, lt: existing.order },
+              id: { not: input.id },
+            },
+            data: { order: { increment: 1 } },
+          });
+        }
+      } else {
+        await tx.groupPhotoTag.updateMany({
+          where: { groupPhotoId, row: existing.row, order: { gt: existing.order } },
+          data: { order: { decrement: 1 } },
+        });
+        await tx.groupPhotoTag.updateMany({
+          where: { groupPhotoId, row: input.row, order: { gte: input.order } },
+          data: { order: { increment: 1 } },
+        });
+      }
+      return tx.groupPhotoTag.update({ where: { id: input.id, groupPhotoId }, data });
+    }
+
+    await tx.groupPhotoTag.updateMany({
+      where: { groupPhotoId, row: input.row, order: { gte: input.order } },
+      data: { order: { increment: 1 } },
+    });
+    return tx.groupPhotoTag.create({ data });
+  });
 
   revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
   return { id: tag.id };

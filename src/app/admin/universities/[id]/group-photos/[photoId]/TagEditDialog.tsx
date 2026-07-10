@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { TagMatchSource } from "@/generated/prisma/enums";
+import { TagMatchSource, LegacyReferenceSource } from "@/generated/prisma/enums";
 
 export type RegistrantLookup = { id: string; name: string; normalizedCode: string; hasLine: boolean };
-export type ReferenceLookup = { name: string; normalizedCode: string };
+export type ReferenceLookup = { name: string; normalizedCode: string; source: LegacyReferenceSource };
 
 export type DialogInitial = {
   id?: string;
@@ -52,20 +52,42 @@ export function TagEditDialog({
   const [order, setOrder] = useState(0);
   const [registrantId, setRegistrantId] = useState<string | null>(null);
   const [matchSource, setMatchSource] = useState<TagMatchSource>(TagMatchSource.MANUAL);
+  const [referenceSource, setReferenceSource] = useState<LegacyReferenceSource | null>(null);
 
   // Reset form fields whenever a different `initial` object is passed in (a new tag opened, a
   // different tag selected, or OCR filling in the code on the currently-open dialog) — derived
   // during render rather than in an effect, per React's "you might not need an effect" guidance.
+  // Also re-checks the code against the current registrant/reference lookups on open: a tag's
+  // code can outlive the moment it was tagged (e.g. someone fixes their group_photo_index in
+  // LINE afterward), so opening it re-syncs the name/match instead of only doing that on the
+  // next keystroke in the code field. A code that still matches nothing keeps whatever was
+  // already saved, rather than blanking out a manually-entered name.
   const [syncedInitial, setSyncedInitial] = useState(initial);
   if (initial !== syncedInitial) {
     setSyncedInitial(initial);
     if (initial) {
       setCode(initial.code);
-      setName(initial.name);
       setRow(initial.row);
       setOrder(initial.order);
-      setRegistrantId(initial.registrantId);
-      setMatchSource(initial.matchSource);
+      const normalized = initial.code.replace(/\D+/g, "");
+      const reg = normalized ? registrantByCode.get(normalized) : undefined;
+      const ref = !reg && normalized ? referenceByCode.get(normalized) : undefined;
+      if (reg) {
+        setName(reg.name);
+        setRegistrantId(reg.id);
+        setMatchSource(TagMatchSource.REGISTRANT);
+        setReferenceSource(null);
+      } else if (ref) {
+        setName(ref.name);
+        setRegistrantId(null);
+        setMatchSource(TagMatchSource.LEGACY_REFERENCE);
+        setReferenceSource(ref.source);
+      } else {
+        setName(initial.name);
+        setRegistrantId(initial.registrantId);
+        setMatchSource(initial.matchSource);
+        setReferenceSource(null);
+      }
     }
   }
 
@@ -75,6 +97,7 @@ export function TagEditDialog({
     if (!normalized) {
       setRegistrantId(null);
       setMatchSource(TagMatchSource.MANUAL);
+      setReferenceSource(null);
       return;
     }
     const reg = registrantByCode.get(normalized);
@@ -82,6 +105,7 @@ export function TagEditDialog({
       setName(reg.name);
       setRegistrantId(reg.id);
       setMatchSource(TagMatchSource.REGISTRANT);
+      setReferenceSource(null);
       return;
     }
     const ref = referenceByCode.get(normalized);
@@ -89,10 +113,12 @@ export function TagEditDialog({
       setName(ref.name);
       setRegistrantId(null);
       setMatchSource(TagMatchSource.LEGACY_REFERENCE);
+      setReferenceSource(ref.source);
       return;
     }
     setRegistrantId(null);
     setMatchSource(TagMatchSource.MANUAL);
+    setReferenceSource(null);
   }
 
   if (!open || !initial) return null;
@@ -114,9 +140,22 @@ export function TagEditDialog({
 
         <label className="mt-3 block text-xs font-medium text-gray-700">
           ชื่อ-นามสกุล
-          {matchSource === TagMatchSource.REGISTRANT && <span className="ml-1 text-green-600">(พบในระบบลงทะเบียน)</span>}
-          {matchSource === TagMatchSource.LEGACY_REFERENCE && <span className="ml-1 text-blue-600">(พบในไฟล์เก่า)</span>}
-          {matchSource === TagMatchSource.MANUAL && code && <span className="ml-1 text-amber-600">(ไม่พบ — กรอกเอง)</span>}
+          {matchSource === TagMatchSource.REGISTRANT && (
+            <span className="ml-1.5 rounded bg-green-100 px-1.5 py-0.5 text-xs font-semibold text-green-700">LINE</span>
+          )}
+          {matchSource === TagMatchSource.LEGACY_REFERENCE && referenceSource === LegacyReferenceSource.GOOGLE_SHEET && (
+            <span className="ml-1.5 rounded bg-orange-100 px-1.5 py-0.5 text-xs font-semibold text-orange-700">
+              Google Sheet
+            </span>
+          )}
+          {matchSource === TagMatchSource.LEGACY_REFERENCE && referenceSource !== LegacyReferenceSource.GOOGLE_SHEET && (
+            <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700">Excel</span>
+          )}
+          {matchSource === TagMatchSource.MANUAL && code && (
+            <span className="ml-1.5 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-semibold text-gray-500">
+              Manual — ไม่พบข้อมูล
+            </span>
+          )}
         </label>
         <input
           value={name}
@@ -145,6 +184,7 @@ export function TagEditDialog({
             />
           </div>
         </div>
+        <p className="mt-1.5 text-xs text-gray-400">ถ้าลำดับซ้ำกับคนอื่นในแถวเดียวกัน คนที่เหลือจะขยับ +1 ให้อัตโนมัติ</p>
 
         <div className="mt-4 flex justify-between gap-2">
           {onDelete ? (

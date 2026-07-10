@@ -33,7 +33,7 @@ export default async function GroupPhotoTaggingPage({
     }),
     prisma.groupPhotoLegacyReference.findMany({
       where: { universityId },
-      select: { name: true, normalizedCode: true },
+      select: { name: true, normalizedCode: true, source: true },
     }),
   ]);
 

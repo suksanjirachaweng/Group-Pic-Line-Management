@@ -8,6 +8,7 @@ import { clientPointToFullRes, fullResToFraction, extractCrop, pixelDistance } f
 import { useFaceDetection, type FaceCandidate } from "./useFaceDetection";
 import { TagEditDialog, type DialogInitial, type RegistrantLookup, type ReferenceLookup, type SavePayload } from "./TagEditDialog";
 import { validateTags, problemTagIds } from "@/lib/groupPhoto/validateTags";
+import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { TagLabel, TagDisplayFieldPicker, type TagDisplayField } from "@/lib/groupPhoto/TagLabel";
 import { colorForRow } from "@/lib/groupPhoto/rowColor";
 
@@ -18,6 +19,8 @@ const MIN_SCALE = 0.05;
 const MAX_SCALE = 6;
 const ZOOM_STEP = 1.25;
 const BULK_NUDGE_STEP = 20;
+const SEARCH_ZOOM = 1.2;
+const DOUBLE_CLICK_MAX_SCREEN_PX = 30;
 
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -64,6 +67,46 @@ export type TagRecord = {
   matchSource: TagMatchSource;
 };
 
+/**
+ * Mirrors saveGroupPhotoTag's row/order "insert, don't collide" shift locally so the in-memory
+ * tag list matches the DB immediately after a save, without a refetch. Must stay in lockstep with
+ * that server action's logic — see its comment for why each branch shifts the way it does.
+ */
+function applyRowOrderShift(
+  prevTags: TagRecord[],
+  savedId: string | undefined,
+  targetRow: number,
+  targetOrder: number,
+): TagRecord[] {
+  const existing = savedId ? prevTags.find((t) => t.id === savedId) : undefined;
+  if (!existing) {
+    return prevTags.map((t) => (t.row === targetRow && t.order >= targetOrder ? { ...t, order: t.order + 1 } : t));
+  }
+  if (existing.row === targetRow) {
+    if (targetOrder > existing.order) {
+      return prevTags.map((t) =>
+        t.id !== savedId && t.row === targetRow && t.order > existing.order && t.order <= targetOrder
+          ? { ...t, order: t.order - 1 }
+          : t,
+      );
+    }
+    if (targetOrder < existing.order) {
+      return prevTags.map((t) =>
+        t.id !== savedId && t.row === targetRow && t.order >= targetOrder && t.order < existing.order
+          ? { ...t, order: t.order + 1 }
+          : t,
+      );
+    }
+    return prevTags;
+  }
+  return prevTags.map((t) => {
+    if (t.id === savedId) return t;
+    if (t.row === existing.row && t.order > existing.order) return { ...t, order: t.order - 1 };
+    if (t.row === targetRow && t.order >= targetOrder) return { ...t, order: t.order + 1 };
+    return t;
+  });
+}
+
 export function TagCanvas({
   universityId,
   groupPhotoId,
@@ -89,6 +132,7 @@ export function TagCanvas({
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [dialogInitial, setDialogInitial] = useState<DialogInitial | null>(null);
+  const [ocrEnabled, setOcrEnabled] = useState(true);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [candidateCodes, setCandidateCodes] = useState<Record<string, string | null>>({});
   const [candidateOcrPending, setCandidateOcrPending] = useState<Set<string>>(new Set());
@@ -103,9 +147,12 @@ export function TagCanvas({
   const [bulkDy, setBulkDy] = useState(0);
   const [bulkScale, setBulkScale] = useState(1);
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchIndex, setSearchIndex] = useState(-1);
 
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const fullBitmapRef = useRef<ImageBitmap | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const { candidates: faceCandidates, isDetecting, detect: runFaceDetection, dismiss: dismissCandidate } = useFaceDetection();
 
@@ -122,6 +169,47 @@ export function TagCanvas({
 
   const problems = useMemo(() => validateTags(tags), [tags]);
   const problemIds = useMemo(() => problemTagIds(problems), [problems]);
+
+  // Search by code or name/surname — cycles through matches on repeated search, jumping the
+  // viewport to each one in turn (Ctrl-F-style "find next"), which matters once a photo has
+  // hundreds of tags spread across a huge image.
+  const searchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const qCode = normalizeCode(searchQuery);
+    return tags.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.code.toLowerCase().includes(q) ||
+        (qCode && t.normalizedCode.includes(qCode)),
+    );
+  }, [tags, searchQuery]);
+  const highlightedTagId = searchIndex >= 0 ? searchMatches[searchIndex]?.id : undefined;
+
+  function centerOn(x: number, y: number) {
+    const canvas = displayCanvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+    const targetScale = Math.max(scale, SEARCH_ZOOM);
+    const displayX = (x / imageWidth) * canvas.width;
+    const displayY = (y / imageHeight) * canvas.height;
+    const rect = container.getBoundingClientRect();
+    setScale(targetScale);
+    setTx(rect.width / 2 - displayX * targetScale);
+    setTy(rect.height / 2 - displayY * targetScale);
+  }
+
+  function handleSearchNext() {
+    if (searchMatches.length === 0) return;
+    const idx = (searchIndex + 1 + searchMatches.length) % searchMatches.length;
+    setSearchIndex(idx);
+    centerOn(searchMatches[idx].x, searchMatches[idx].y);
+  }
+
+  function handleSearchChange(value: string) {
+    setSearchQuery(value);
+    setSearchIndex(-1);
+  }
 
   // Anchor for the bulk position adjustment — scaling around the image center is the sensible
   // default when a re-uploaded image shifted everyone (see updateGroupPhotoImage/bulkAdjustTagPositions).
@@ -200,6 +288,7 @@ export function TagCanvas({
   // number shows up on the marker itself (no dialog needed) and gets reused, not re-fetched, if
   // the candidate is later promoted into a real tag.
   useEffect(() => {
+    if (!ocrEnabled) return;
     const bitmap = fullBitmapRef.current;
     if (!bitmap) return;
     const todo = faceCandidates.filter((c) => !(c.id in candidateCodes) && !candidateOcrPending.has(c.id));
@@ -221,21 +310,40 @@ export function TagCanvas({
       });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- candidateCodes/candidateOcrPending are read for the "already handled" check, not for re-triggering
-  }, [faceCandidates, universityId]);
+  }, [faceCandidates, universityId, ocrEnabled]);
 
-  function computeNextRowOrder(): { row: number; order: number } {
-    const defaultRow = tags.length > 0 ? tags[tags.length - 1].row : 0;
-    const maxOrder = tags.filter((t) => t.row === defaultRow).reduce((m, t) => Math.max(m, t.order), -1);
-    return { row: defaultRow, order: maxOrder + 1 };
+  // Suggests where a new point probably belongs, so adding a missed person doesn't always start
+  // from a blank "row 0" guess — both fields stay manually editable in the dialog either way,
+  // same as the legacy tool where a human always picked the row themselves.
+  function suggestRowOrder(x: number, y: number): { row: number; order: number } {
+    if (tags.length === 0) return { row: 0, order: 0 };
+    // Default row: whichever existing tag is geometrically closest to the click — a new person
+    // is almost always tagged right next to who they're standing/sitting beside.
+    let nearest = tags[0];
+    let best = pixelDistance(x, y, nearest.x, nearest.y);
+    for (const t of tags) {
+      const d = pixelDistance(x, y, t.x, t.y);
+      if (d < best) {
+        best = d;
+        nearest = t;
+      }
+    }
+    // Default order: insert left-to-right by X position among that row's existing tags, so a
+    // person missed in the middle of an already-tagged row lands between their real neighbors —
+    // saving then shifts everyone from that slot onward over by one automatically (server + local
+    // state both apply the same shift, see applyRowOrderShift).
+    const order = tags.filter((t) => t.row === nearest.row && t.x < x).length;
+    return { row: nearest.row, order };
   }
 
   async function openNewTagDialog(x: number, y: number, precomputedCode?: string | null) {
-    const { row, order } = computeNextRowOrder();
+    const { row, order } = suggestRowOrder(x, y);
     setDialogInitial({ code: precomputedCode ?? "", name: "", row, order, x, y, registrantId: null, matchSource: TagMatchSource.MANUAL });
 
     // A candidate already OCR'd during the batch face-detection pass — reuse that result instead
     // of paying for a second OCR call on promotion.
     if (precomputedCode !== undefined) return;
+    if (!ocrEnabled) return;
 
     const fullBitmap = fullBitmapRef.current;
     if (!fullBitmap) return;
@@ -257,23 +365,46 @@ export function TagCanvas({
     }
   }
 
+  // A genuine double-click still fires its own separate "click" event on the second mouseup
+  // (browsers always dispatch click, click, dblclick for that gesture) — without this delay, a
+  // Shift-held double-click would briefly open an "add new" dialog (and kick off an OCR request)
+  // a moment before the double-click handler below replaced it with the intended "edit" dialog.
+  // Deferring the "add new" action lets a following double-click cancel it outright instead of
+  // racing it. Plain (non-Shift) double-clicks never reach this at all now, per the legacy tool's
+  // own convention: Shift+click = add a new point, double-click = edit the nearest existing one.
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    };
+  }, []);
+
   function handleCanvasClick(e: ReactMouseEvent<HTMLCanvasElement>) {
     // The browser still fires a native "click" on mouseup even after a drag pan (same element for
     // mousedown/mouseup) — swallow that one click rather than opening a new-tag dialog. Also
-    // swallow plain clicks while Space is held (Photoshop's Hand tool doesn't add anything either)
-    // or while bulk-adjusting (that's a dedicated mode, not a moment to add a new person).
-    if (draggedRef.current || spacePressed || bulkAdjustMode) {
+    // swallow plain clicks while Space is held (Photoshop's Hand tool doesn't add anything either),
+    // while bulk-adjusting (that's a dedicated mode, not a moment to add a new person), or when
+    // Shift isn't held — matches the legacy desktop tool's Shift+click = add new point.
+    if (draggedRef.current || spacePressed || bulkAdjustMode || !e.shiftKey) {
       draggedRef.current = false;
       return;
     }
     const canvas = displayCanvasRef.current;
     if (!canvas) return;
     const { x, y } = clientPointToFullRes(e.clientX, e.clientY, canvas, imageWidth, imageHeight);
-    void openNewTagDialog(x, y);
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = setTimeout(() => {
+      clickTimerRef.current = null;
+      void openNewTagDialog(x, y);
+    }, 250);
   }
 
   function handleCanvasDoubleClick(e: ReactMouseEvent<HTMLCanvasElement>) {
     e.preventDefault();
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
     const canvas = displayCanvasRef.current;
     if (!canvas || tags.length === 0 || bulkAdjustMode) return;
     const { x, y } = clientPointToFullRes(e.clientX, e.clientY, canvas, imageWidth, imageHeight);
@@ -286,6 +417,12 @@ export function TagCanvas({
         nearest = t;
       }
     }
+    // getBoundingClientRect() already reflects the current CSS pan/zoom transform, so this ratio
+    // converts a fixed on-screen click radius into full-res pixels correctly at any zoom level —
+    // same trick clientPointToFullRes uses, rather than tracking the `scale` state separately.
+    const rect = canvas.getBoundingClientRect();
+    const maxDistance = DOUBLE_CLICK_MAX_SCREEN_PX * (imageWidth / rect.width);
+    if (best > maxDistance) return;
     setDialogInitial(nearest);
   }
 
@@ -309,12 +446,14 @@ export function TagCanvas({
       matchSource: input.matchSource,
     });
     const normalizedCode = input.code.replace(/\D+/g, "");
-    if (dialogInitial.id) {
-      const id = dialogInitial.id;
-      setTags((prev) => prev.map((t) => (t.id === id ? { ...t, ...input, normalizedCode } : t)));
-    } else {
-      setTags((prev) => [...prev, { id: result.id, x: dialogInitial.x, y: dialogInitial.y, ...input, normalizedCode }]);
-    }
+    setTags((prev) => {
+      const shifted = applyRowOrderShift(prev, dialogInitial.id, input.row, input.order);
+      if (dialogInitial.id) {
+        const id = dialogInitial.id;
+        return shifted.map((t) => (t.id === id ? { ...t, ...input, normalizedCode } : t));
+      }
+      return [...shifted, { id: result.id, x: dialogInitial.x, y: dialogInitial.y, ...input, normalizedCode }];
+    });
     setDialogInitial(null);
   }
 
@@ -413,6 +552,38 @@ export function TagCanvas({
 
         <div className="mx-1 h-5 w-px bg-gray-200" />
 
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSearchNext();
+              }
+            }}
+            placeholder="ค้นหาชื่อ/นามสกุล/รหัส"
+            className="w-40 rounded-md border border-gray-300 px-2 py-1.5"
+          />
+          <button
+            type="button"
+            onClick={handleSearchNext}
+            disabled={searchMatches.length === 0}
+            title="ไปยังคนที่พบ (Enter = ถัดไป)"
+            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            ค้นหา
+          </button>
+          {searchQuery.trim() && (
+            <span className="whitespace-nowrap text-gray-400">
+              {searchMatches.length > 0 ? `${searchIndex >= 0 ? searchIndex + 1 : 0}/${searchMatches.length}` : "ไม่พบ"}
+            </span>
+          )}
+        </div>
+
+        <div className="mx-1 h-5 w-px bg-gray-200" />
+
         <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
 
         <label className="flex items-center gap-1 text-gray-600">
@@ -447,6 +618,14 @@ export function TagCanvas({
 
         <div className="mx-1 h-5 w-px bg-gray-200" />
 
+        <label
+          className="flex items-center gap-1.5 text-gray-600"
+          title="อ่านตัวเลขจากป้ายอัตโนมัติตอนเพิ่มคนใหม่/ตรวจจับใบหน้า — ปิดถ้าไม่อยากเสียเวลา/ค่าใช้จ่าย OCR"
+        >
+          <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} />
+          OCR
+        </label>
+
         <button
           type="button"
           disabled={!loaded || isDetecting || hasDetected}
@@ -471,11 +650,12 @@ export function TagCanvas({
         </button>
 
         <span className="ml-auto hidden text-gray-400 lg:inline">
-          Space+ลาก = เลื่อน, Ctrl +/- = ซูม, คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
+          Space+ลาก = เลื่อน, Ctrl +/- = ซูม, Shift+คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
         </span>
       </div>
 
       <div
+        ref={containerRef}
         className="relative flex-1 overflow-hidden bg-gray-800"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -510,20 +690,25 @@ export function TagCanvas({
               const p = previewPoint(t);
               const { xFrac, yFrac } = fullResToFraction(p.x, p.y, imageWidth, imageHeight);
               const isProblem = problemIds.has(t.id);
+              const isHighlighted = t.id === highlightedTagId;
               const color = colorForRow(t.row);
               return (
                 <div
                   key={t.id}
                   className="absolute -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%` }}
+                  style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%`, zIndex: isHighlighted ? 10 : undefined }}
                 >
                   <div
                     className="rounded-full border-2 border-white"
                     style={{
-                      width: 12,
-                      height: 12,
+                      width: isHighlighted ? 18 : 12,
+                      height: isHighlighted ? 18 : 12,
                       backgroundColor: color,
-                      boxShadow: isProblem ? "0 0 0 2px #ef4444" : undefined,
+                      boxShadow: isHighlighted
+                        ? "0 0 0 4px #6366f1"
+                        : isProblem
+                          ? "0 0 0 2px #ef4444"
+                          : undefined,
                     }}
                     title={`${t.code} — ${t.name}`}
                   />
