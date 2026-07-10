@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { TagCanvas } from "./TagCanvas";
 import { UpdatePhotoImageButton } from "./UpdatePhotoImageButton";
+import { ImportMarkFileButton } from "./ImportMarkFileButton";
 import type { RegistrantLookup, ReferenceLookup } from "./TagEditDialog";
 
 export default async function GroupPhotoTaggingPage({
@@ -62,6 +63,7 @@ export default async function GroupPhotoTaggingPage({
         </Link>
         <h1 className="text-sm font-semibold text-gray-900">{photo.name}</h1>
         <UpdatePhotoImageButton universityId={universityId} groupPhotoId={photo.id} />
+        <ImportMarkFileButton universityId={universityId} groupPhotoId={photo.id} />
       </div>
       <div className="flex-1">
         <TagCanvas

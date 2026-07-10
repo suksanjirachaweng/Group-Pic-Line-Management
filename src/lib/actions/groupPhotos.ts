@@ -1,6 +1,7 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
+import * as XLSX from "xlsx";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess } from "@/lib/authz";
@@ -176,4 +177,94 @@ export async function sendProblemTagMessages(
   });
 
   return { count: eligible.length };
+}
+
+export type MarkFileImportState = { error: string } | { success: true; count: number } | null;
+
+/**
+ * Bulk-loads tag positions from a file matching the legacy desktop tool's export format (see
+ * LEGACY_EXCEL_HEADERS: ชื่อ-นามสกุล, CODE, แถว, ลำดับ, X, Y, คณะ) — for photos that already have
+ * a ground-truth mark file instead of needing manual placement or face-detect. Replaces every
+ * existing tag on this photo, matching importLegacyReferences' "whole-set replace" semantics.
+ * Uses the `xlsx` package (not exceljs) because the real files are legacy binary .xls, which
+ * exceljs can't read.
+ */
+export async function importGroupPhotoTagsFromMarkFile(
+  universityId: string,
+  groupPhotoId: string,
+  _prevState: MarkFileImportState,
+  formData: FormData,
+): Promise<MarkFileImportState> {
+  await requireUniversityAccess(universityId);
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "ยังไม่ได้เลือกไฟล์" };
+
+  let rows: unknown[][];
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const workbook = XLSX.read(buffer, { type: "buffer" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    if (!sheet) return { error: "ไฟล์ไม่มีชีทข้อมูล" };
+    rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null }) as unknown[][];
+  } catch (err) {
+    return { error: `อ่านไฟล์ไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}` };
+  }
+
+  const parsed: { name: string; code: string; row: number; order: number; x: number; y: number }[] = [];
+  for (const r of rows.slice(1)) {
+    const code = String(r[1] ?? "").trim();
+    if (!code) continue;
+    const row = Number(r[2]);
+    const order = Number(r[3]);
+    const x = Number(r[4]);
+    const y = Number(r[5]);
+    if ([row, order, x, y].some((n) => Number.isNaN(n))) continue;
+    parsed.push({ name: String(r[0] ?? "").trim(), code, row, order, x, y });
+  }
+
+  if (parsed.length === 0) {
+    return { error: "ไม่พบข้อมูลที่ใช้ได้ในไฟล์ (ต้องมีคอลัมน์: ชื่อ-นามสกุล, CODE, แถว, ลำดับ, X, Y)" };
+  }
+
+  const [registrantRows, referenceRows] = await Promise.all([
+    prisma.registrant.findMany({ where: { universityId }, select: { id: true, data: true } }),
+    prisma.groupPhotoLegacyReference.findMany({ where: { universityId }, select: { normalizedCode: true } }),
+  ]);
+  const registrantByCode = new Map<string, string>();
+  for (const r of registrantRows) {
+    const raw = (r.data as Record<string, unknown> | null)?.group_photo_index;
+    if (typeof raw === "string" && raw.trim()) registrantByCode.set(normalizeCode(raw), r.id);
+  }
+  const legacyCodes = new Set(referenceRows.map((r) => r.normalizedCode));
+
+  await prisma.$transaction([
+    prisma.groupPhotoTag.deleteMany({ where: { groupPhotoId } }),
+    prisma.groupPhotoTag.createMany({
+      data: parsed.map((p) => {
+        const normalizedCode = normalizeCode(p.code);
+        const registrantId = registrantByCode.get(normalizedCode) ?? null;
+        const matchSource: TagMatchSource = registrantId
+          ? TagMatchSource.REGISTRANT
+          : legacyCodes.has(normalizedCode)
+            ? TagMatchSource.LEGACY_REFERENCE
+            : TagMatchSource.MANUAL;
+        return {
+          groupPhotoId,
+          code: p.code,
+          normalizedCode,
+          name: p.name,
+          row: p.row,
+          order: p.order,
+          x: p.x,
+          y: p.y,
+          registrantId,
+          matchSource,
+        };
+      }),
+    }),
+  ]);
+
+  revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
+  return { success: true, count: parsed.length };
 }
