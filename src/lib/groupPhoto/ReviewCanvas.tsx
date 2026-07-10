@@ -359,7 +359,9 @@ export function ReviewCanvas({
           <canvas
             ref={displayCanvasRef}
             onClick={handleCanvasClick}
-            className={`block ${spacePressed ? "cursor-grab" : "cursor-default"}`}
+            onContextMenu={(e) => e.preventDefault()}
+            onDragStart={(e) => e.preventDefault()}
+            className={`block select-none ${spacePressed ? "cursor-grab" : "cursor-default"}`}
           />
           <div className="pointer-events-none absolute inset-0">
             <svg
