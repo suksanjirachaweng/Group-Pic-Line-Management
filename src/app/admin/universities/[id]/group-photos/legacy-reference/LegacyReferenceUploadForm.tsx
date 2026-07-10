@@ -26,7 +26,13 @@ export function LegacyReferenceUploadForm({
   return (
     <div className="space-y-3">
       <form action={fileFormAction} className="flex items-center gap-2">
-        <input type="file" name="file" accept=".xlsx,.xls" required className="text-sm" />
+        <input
+          type="file"
+          name="file"
+          accept=".xlsx,.xls"
+          required
+          className="cursor-pointer text-sm text-gray-500 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-gray-700 file:hover:bg-gray-200"
+        />
         <button
           type="submit"
           disabled={fileIsPending}
