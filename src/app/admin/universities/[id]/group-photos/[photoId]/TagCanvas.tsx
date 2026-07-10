@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { saveGroupPhotoTag, deleteGroupPhotoTag, bulkAdjustTagPositions } from "@/lib/actions/groupPhotos";
 import { ocrCardCrop } from "@/lib/actions/ocr";
@@ -406,30 +405,33 @@ export function TagCanvas({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-3 py-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-white px-3 py-2 text-xs">
         <span className="text-gray-600">แท็กแล้ว {tags.length} คน</span>
         {problems.length > 0 && (
-          <span className="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">{problems.length} รายการมีปัญหา</span>
+          <span className="rounded bg-red-50 px-2 py-0.5 font-medium text-red-700">{problems.length} ปัญหา</span>
         )}
-        <div className="ml-auto">
-          <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
-        </div>
-        <label className="flex items-center gap-1 text-xs text-gray-600">
+
+        <div className="mx-1 h-5 w-px bg-gray-200" />
+
+        <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
+
+        <label className="flex items-center gap-1 text-gray-600">
           มุมป้าย
           <input
             type="number"
             value={labelAngle}
             onChange={(e) => setLabelAngle(Number(e.target.value))}
             step={5}
-            className="w-14 rounded-md border border-gray-300 px-1.5 py-1 text-xs"
+            className="w-14 rounded-md border border-gray-300 px-1.5 py-1"
           />
         </label>
+
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => zoomBy(1 / ZOOM_STEP)}
             title="Zoom out (Ctrl -)"
-            className="rounded-md border border-gray-300 px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
           >
             −
           </button>
@@ -437,11 +439,14 @@ export function TagCanvas({
             type="button"
             onClick={() => zoomBy(ZOOM_STEP)}
             title="Zoom in (Ctrl +)"
-            className="rounded-md border border-gray-300 px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
           >
             +
           </button>
         </div>
+
+        <div className="mx-1 h-5 w-px bg-gray-200" />
+
         <button
           type="button"
           disabled={!loaded || isDetecting || hasDetected}
@@ -450,42 +455,23 @@ export function TagCanvas({
             setHasDetected(true);
             runFaceDetection(fullBitmapRef.current);
           }}
-          title={hasDetected ? "ตรวจจับไปแล้วในรูปนี้ — กดซ้ำจะได้ผลลัพธ์เดิม" : undefined}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          title={hasDetected ? "ตรวจจับไปแล้วในรูปนี้ — กดซ้ำจะได้ผลลัพธ์เดิม" : "ช่วยแนะนำตำแหน่งคนที่ยังไม่ได้แท็ก"}
+          className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
-          {isDetecting ? "กำลังตรวจจับใบหน้า..." : hasDetected ? "ตรวจจับใบหน้าแล้ว" : "ตรวจจับใบหน้า (ช่วยแนะนำตำแหน่ง)"}
+          {isDetecting ? "กำลังตรวจจับ..." : hasDetected ? "ตรวจจับแล้ว" : "ตรวจจับใบหน้า"}
         </button>
         <button
           type="button"
           disabled={tags.length === 0 || bulkAdjustMode}
           onClick={() => setBulkAdjustMode(true)}
-          title="เลื่อน/ย่อขยายจุดที่แท็กไว้ทั้งหมดพร้อมกัน — ใช้เวลาอัปเดตรูปแล้วตำแหน่งเพี้ยน"
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          title="เลื่อน/ย่อขยายจุดที่แท็กไว้ทั้งหมดพร้อมกัน — ใช้เมื่ออัปเดตรูปแล้วตำแหน่งเพี้ยน"
+          className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
-          ปรับตำแหน่งทั้งหมด
+          ปรับตำแหน่ง
         </button>
-        <a
-          href={`/api/group-photos/${groupPhotoId}/export/excel`}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-        >
-          Export Excel (.xlsx)
-        </a>
-        <a
-          href={`/api/group-photos/${groupPhotoId}/export/text`}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-        >
-          Export ข้อความ (.txt)
-        </a>
-        <Link
-          href={`/group-photos/${groupPhotoId}/validate`}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
-        >
-          ตรวจสอบ / Export
-        </Link>
-        <span className="hidden text-xs text-gray-400 lg:inline">
-          Spacebar+ลาก = เลื่อนภาพ, Ctrl +/- หรือปุ่ม = ซูม, คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไขคนที่ใกล้ที่สุด
+
+        <span className="ml-auto hidden text-gray-400 lg:inline">
+          Space+ลาก = เลื่อน, Ctrl +/- = ซูม, คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
         </span>
       </div>
 

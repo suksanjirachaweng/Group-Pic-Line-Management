@@ -4,7 +4,7 @@ export const ALL_TAG_DISPLAY_FIELDS: { field: TagDisplayField; label: string }[]
   { field: "order", label: "ลำดับ" },
   { field: "code", label: "รหัส" },
   { field: "name", label: "ชื่อ-นามสกุล" },
-  { field: "line", label: "เส้นต่อระหว่างจุด" },
+  { field: "line", label: "เส้นต่อ" },
 ];
 
 /** Checkbox row for picking which fields render on markers — shared by the admin tagging canvas
@@ -17,7 +17,7 @@ export function TagDisplayFieldPicker({
   onChange: (next: Set<TagDisplayField>) => void;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs">
       {ALL_TAG_DISPLAY_FIELDS.map(({ field, label }) => {
         const checked = value.has(field);
         return (

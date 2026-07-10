@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type TouchEvent as ReactTouchEvent,
 } from "react";
 import { TagLabel, type TagDisplayField } from "./TagLabel";
 import { colorForRow } from "./rowColor";
@@ -240,6 +241,74 @@ export function ReviewCanvas({
   function handleMouseUp() {
     draggingRef.current = null;
   }
+
+  // Touch equivalent of the mouse handlers above — no Spacebar on mobile, so a single-finger
+  // drag pans directly; a second finger switches to pinch-zoom, anchored at the pinch midpoint
+  // so the point under your fingers stays put. `touch-none` on the container (below) hands all
+  // gesture handling to us — otherwise the browser's own pinch-zoom/scroll would fight this.
+  const touchPanRef = useRef<{ x: number; y: number } | null>(null);
+  const pinchRef = useRef<{
+    startDist: number;
+    startScale: number;
+    startTx: number;
+    startTy: number;
+    midX: number;
+    midY: number;
+  } | null>(null);
+
+  function touchDistance(a: React.Touch, b: React.Touch): number {
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  }
+
+  function handleTouchStart(e: ReactTouchEvent) {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (e.touches.length === 2) {
+      const [a, b] = [e.touches[0], e.touches[1]];
+      pinchRef.current = {
+        startDist: touchDistance(a, b),
+        startScale: scale,
+        startTx: tx,
+        startTy: ty,
+        midX: (a.clientX + b.clientX) / 2 - (rect?.left ?? 0),
+        midY: (a.clientY + b.clientY) / 2 - (rect?.top ?? 0),
+      };
+      touchPanRef.current = null;
+    } else if (e.touches.length === 1) {
+      const t = e.touches[0];
+      touchPanRef.current = { x: t.clientX - tx, y: t.clientY - ty };
+      pinchRef.current = null;
+    }
+  }
+  function handleTouchMove(e: ReactTouchEvent) {
+    if (pinchRef.current && e.touches.length === 2) {
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const { startDist, startScale, startTx, startTy, midX, midY } = pinchRef.current;
+      const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, startScale * (touchDistance(a, b) / startDist)));
+      const ratio = newScale / startScale;
+      draggedRef.current = true;
+      setScale(newScale);
+      setTx(midX - (midX - startTx) * ratio);
+      setTy(midY - (midY - startTy) * ratio);
+    } else if (touchPanRef.current && e.touches.length === 1) {
+      const t = e.touches[0];
+      draggedRef.current = true;
+      setTx(t.clientX - touchPanRef.current.x);
+      setTy(t.clientY - touchPanRef.current.y);
+    }
+  }
+  function handleTouchEnd(e: ReactTouchEvent) {
+    if (e.touches.length === 0) {
+      touchPanRef.current = null;
+      pinchRef.current = null;
+    } else if (e.touches.length === 1) {
+      // Lifted one finger out of a pinch — resume panning from the remaining finger instead of
+      // jumping (recompute the anchor from its current position, not the pinch's last midpoint).
+      const t = e.touches[0];
+      touchPanRef.current = { x: t.clientX - tx, y: t.clientY - ty };
+      pinchRef.current = null;
+    }
+  }
+
   function handleCanvasClick() {
     if (draggedRef.current || spacePressed) {
       draggedRef.current = false;
@@ -334,20 +403,27 @@ export function ReviewCanvas({
             +
           </button>
         </div>
-        <span className="text-gray-400">
+        <span className="hidden text-gray-400 sm:inline">
           Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ
           {!readOnly && ", คลิกจุด = แก้ไข"}
           {onDoubleClickTag && ", ดับเบิลคลิกจุด = แก้ไข"}
+        </span>
+        <span className="text-gray-400 sm:hidden">
+          ลากด้วยนิ้ว = เลื่อนภาพ, สองนิ้วบีบ/ขยาย = ซูม
+          {onDoubleClickTag && ", แตะจุด 2 ครั้ง = แก้ไข"}
         </span>
       </div>
 
       <div
         ref={containerRef}
-        className="relative flex-1 overflow-hidden bg-gray-800"
+        className="relative flex-1 touch-none overflow-hidden bg-gray-800"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         <div
           className="absolute left-0 top-0 origin-top-left"
@@ -395,7 +471,7 @@ export function ReviewCanvas({
                   className={`absolute -translate-x-1/2 -translate-y-1/2 transition-opacity duration-150 ${interactive ? "pointer-events-auto cursor-pointer" : ""} ${isDimmed ? "opacity-25" : "opacity-100"}`}
                   style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%` }}
                   onClick={
-                    editable
+                    interactive
                       ? (e) => {
                           e.stopPropagation();
                           onSelectTag(t.id);

@@ -32,12 +32,14 @@ function TagRow({
   isSelected,
   isProblem,
   onSelect,
+  onDoubleClick,
   groupedByRow = false,
 }: {
   tag: PublicValidateTagRecord;
   isSelected: boolean;
   isProblem: boolean;
   onSelect: () => void;
+  onDoubleClick: () => void;
   groupedByRow?: boolean;
 }) {
   const rowColor = colorForRow(tag.row);
@@ -53,6 +55,7 @@ function TagRow({
       <button
         type="button"
         onClick={onSelect}
+        onDoubleClick={onDoubleClick}
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:brightness-95"
       >
         {isSelected ? (
@@ -181,20 +184,20 @@ export function PublicValidateView({
   }
 
   return (
-    <div className="flex h-screen flex-col">
-      <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-2">
+    <div className="flex h-dvh flex-col">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-gray-200 bg-white px-3 py-2 sm:px-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto" />
         <h1 className="text-sm font-semibold text-gray-900">{photoName} — ตรวจสอบความถูกต้อง</h1>
         <span className="text-sm text-gray-600">แท็กแล้ว {tags.length} คน</span>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
           <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         {sidebarOpen && (
-          <div className="w-96 shrink-0 overflow-y-auto border-r border-gray-200 bg-white p-4">
+          <div className="max-h-[45vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white p-4 md:h-auto md:max-h-none md:w-96 md:border-b-0 md:border-r">
           <div className="mb-3 flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
             <button
               type="button"
@@ -241,6 +244,7 @@ export function PublicValidateView({
                                   isSelected={t.id === selectedTagId}
                                   isProblem
                                   onSelect={() => setSelectedTagId(t.id)}
+                                  onDoubleClick={() => openEditDialog(t)}
                                 />
                               ))}
                           </ul>
@@ -264,6 +268,7 @@ export function PublicValidateView({
                         isSelected={t.id === selectedTagId}
                         isProblem
                         onSelect={() => setSelectedTagId(t.id)}
+                        onDoubleClick={() => openEditDialog(t)}
                       />
                     ))}
                   </ul>
@@ -295,6 +300,7 @@ export function PublicValidateView({
                           isSelected={t.id === selectedTagId}
                           isProblem={problemTagIdSet.has(t.id)}
                           onSelect={() => setSelectedTagId(t.id)}
+                          onDoubleClick={() => openEditDialog(t)}
                           groupedByRow
                         />
                       ))}
@@ -312,12 +318,19 @@ export function PublicValidateView({
           type="button"
           onClick={() => setSidebarOpen((v) => !v)}
           title={sidebarOpen ? "ย่อแผงรายชื่อ" : "แสดงแผงรายชื่อ"}
-          className="flex w-5 shrink-0 items-center justify-center border-r border-gray-200 bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-700"
+          className="hidden w-5 shrink-0 items-center justify-center border-r border-gray-200 bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-700 md:flex"
         >
           {sidebarOpen ? "‹" : "›"}
         </button>
+        <button
+          type="button"
+          onClick={() => setSidebarOpen((v) => !v)}
+          className="flex shrink-0 items-center justify-center gap-1 border-b border-gray-200 bg-gray-50 py-2 text-xs font-medium text-gray-600 active:bg-gray-100 md:hidden"
+        >
+          {sidebarOpen ? "ซ่อนรายชื่อ ▲" : "แสดงรายชื่อ ▼"}
+        </button>
 
-        <div className="flex-1">
+        <div className="min-h-0 flex-1">
           <ReviewCanvas
             imageUrl={imageUrl}
             imageWidth={imageWidth}
