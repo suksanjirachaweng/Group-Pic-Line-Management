@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess } from "@/lib/authz";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
+import { getSheetsClient } from "@/lib/sheets";
 
 export type LegacyImportState = { error: string } | { success: true; count: number } | null;
 
@@ -41,6 +42,102 @@ export async function importLegacyReferences(
 
   if (rows.length === 0) {
     return { error: "ไม่พบข้อมูลที่ใช้ได้ในไฟล์ (คอลัมน์ที่ต้องมี: เวลา, ว่าง, ชื่อ, รหัส, เบอร์โทร)" };
+  }
+
+  await prisma.$transaction([
+    prisma.groupPhotoLegacyReference.deleteMany({ where: { universityId } }),
+    prisma.groupPhotoLegacyReference.createMany({
+      data: rows.map((r) => ({
+        universityId,
+        name: r.name,
+        code: r.code,
+        normalizedCode: normalizeCode(r.code),
+        phone: r.phone,
+      })),
+    }),
+  ]);
+
+  revalidatePath(`/admin/universities/${universityId}/group-photos/legacy-reference`);
+  return { success: true, count: rows.length };
+}
+
+/** Accepts either a bare spreadsheet id or a full Google Sheets URL (with an optional `gid` tab reference). */
+function parseSheetUrl(input: string): { spreadsheetId: string; gid: string | null } | null {
+  const trimmed = input.trim();
+  const idMatch = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  const spreadsheetId = idMatch ? idMatch[1] : /^[a-zA-Z0-9-_]+$/.test(trimmed) ? trimmed : null;
+  if (!spreadsheetId) return null;
+  const gidMatch = trimmed.match(/[?#&]gid=(\d+)/);
+  return { spreadsheetId, gid: gidMatch ? gidMatch[1] : null };
+}
+
+/**
+ * Imports directly from a live Google Sheet (e.g. a Google Form's response sheet) instead of a
+ * one-off file upload — the same form link/sheet is reused across many events and years, so an
+ * optional timestamp range lets the admin pull just the rows for the current one. Same column
+ * layout as the file-upload path (timestamp, email, name, code, phone) but WITH a header row,
+ * since that's how a real Google Form response sheet is always shaped — row 0 is always skipped.
+ */
+export async function importLegacyReferencesFromSheetLink(
+  universityId: string,
+  _prevState: LegacyImportState,
+  formData: FormData,
+): Promise<LegacyImportState> {
+  await requireUniversityAccess(universityId);
+
+  const sheetUrl = String(formData.get("sheetUrl") ?? "").trim();
+  if (!sheetUrl) return { error: "กรุณาใส่ลิงก์ Google Sheet" };
+  const parsed = parseSheetUrl(sheetUrl);
+  if (!parsed) return { error: "ลิงก์ Google Sheet ไม่ถูกต้อง" };
+
+  const startRaw = String(formData.get("startDate") ?? "").trim();
+  const endRaw = String(formData.get("endDate") ?? "").trim();
+  const start = startRaw ? new Date(startRaw) : null;
+  const end = endRaw ? new Date(endRaw) : null;
+
+  let values: unknown[][];
+  try {
+    const sheets = getSheetsClient();
+    const meta = await sheets.spreadsheets.get({
+      spreadsheetId: parsed.spreadsheetId,
+      fields: "sheets.properties",
+    });
+    const tabs = meta.data.sheets ?? [];
+    const targetTab = parsed.gid ? tabs.find((t) => String(t.properties?.sheetId) === parsed.gid) : tabs[0];
+    const sheetTitle = targetTab?.properties?.title;
+    if (!sheetTitle) return { error: "ไม่พบชีทที่ระบุใน Google Sheet นี้" };
+
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: parsed.spreadsheetId,
+      range: `'${sheetTitle}'!A:E`,
+    });
+    values = res.data.values ?? [];
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { error: `อ่าน Google Sheet ไม่สำเร็จ (ตรวจสอบว่าแชร์สิทธิ์ให้ service account แล้ว): ${message}` };
+  }
+
+  const rows: { name: string; code: string; phone: string | null }[] = [];
+  for (const row of values.slice(1)) {
+    const timestampRaw = String(row[0] ?? "").trim();
+    const name = String(row[2] ?? "").trim();
+    const code = String(row[3] ?? "").trim();
+    const phoneRaw = row[4];
+    const phone = phoneRaw ? String(phoneRaw).trim() : null;
+    if (!name || !code) continue;
+
+    if (start || end) {
+      const timestamp = timestampRaw ? new Date(timestampRaw) : null;
+      if (!timestamp || Number.isNaN(timestamp.getTime())) continue;
+      if (start && timestamp < start) continue;
+      if (end && timestamp > end) continue;
+    }
+
+    rows.push({ name, code, phone });
+  }
+
+  if (rows.length === 0) {
+    return { error: "ไม่พบข้อมูลที่ใช้ได้ในช่วงเวลาที่เลือก" };
   }
 
   await prisma.$transaction([

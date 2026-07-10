@@ -69,6 +69,7 @@ export function ReviewCanvas({
   onSelectTag,
   onSave,
   labelMode = "code",
+  readOnly = false,
 }: {
   imageUrl: string;
   imageWidth: number;
@@ -78,11 +79,14 @@ export function ReviewCanvas({
   editableTagIds?: Set<string>;
   selectedTagId: string | null;
   onSelectTag: (id: string | null) => void;
-  onSave: (
+  onSave?: (
     tagId: string,
     input: { code: string; name: string },
   ) => Promise<{ error?: string } | void>;
   labelMode?: "code" | "name";
+  /** Pure viewing — nothing is clickable and the edit popup never appears (e.g. a registrant
+   * looking up their own tagged position). `selectedTagId` still drives centering/highlighting. */
+  readOnly?: boolean;
 }) {
   const [loaded, setLoaded] = useState(false);
   const [scale, setScale] = useState(0.25);
@@ -282,7 +286,7 @@ export function ReviewCanvas({
   }, [tags, imageWidth, imageHeight]);
 
   async function handleSaveClick() {
-    if (!selectedTag) return;
+    if (!selectedTag || !onSave) return;
     setSaving(true);
     setSaveError(null);
     const result = await onSave(selectedTag.id, {
@@ -336,7 +340,7 @@ export function ReviewCanvas({
           </button>
         </div>
         <span className="text-gray-400">
-          Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ, คลิกจุด = แก้ไข
+          Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ{readOnly ? "" : ", คลิกจุด = แก้ไข"}
         </span>
       </div>
 
@@ -380,7 +384,7 @@ export function ReviewCanvas({
               const xFrac = t.x / imageWidth;
               const yFrac = t.y / imageHeight;
               const color = colorForRow(t.row);
-              const editable = !editableTagIds || editableTagIds.has(t.id);
+              const editable = !readOnly && (!editableTagIds || editableTagIds.has(t.id));
               const isSelected = t.id === selectedTagId;
               const labelText = labelMode === "code" ? t.code : t.name.trim() || "(ยังไม่มีชื่อ)";
               return (
@@ -426,7 +430,7 @@ export function ReviewCanvas({
           </div>
         </div>
 
-        {selectedTag && popupPos && (
+        {!readOnly && selectedTag && popupPos && (
           <div
             className="absolute z-10 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-xl"
             style={{ left: popupPos.left, top: popupPos.top }}

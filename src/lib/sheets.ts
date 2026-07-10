@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 const SHEET_RANGE = "Sheet1";
 
-function getSheetsClient() {
+export function getSheetsClient() {
   const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!json) {
     throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is not set");
@@ -15,6 +15,17 @@ function getSheetsClient() {
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
   return google.sheets({ version: "v4", auth });
+}
+
+/** The service account's own email — whoever imports from a Sheet must share it with this address first. */
+export function getServiceAccountEmail(): string | null {
+  const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!json) return null;
+  try {
+    return JSON.parse(json).client_email ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**

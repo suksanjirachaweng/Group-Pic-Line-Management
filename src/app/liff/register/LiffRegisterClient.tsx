@@ -13,7 +13,16 @@ type FieldDef = {
   isRequired: boolean;
 };
 
-type RegistrationSummary = { id: string; registeredAt: string; data: Record<string, string> };
+type TaggedPhoto = { groupPhotoId: string; tagId: string; photoName: string };
+
+// A registrant's code can be tagged in more than one group photo (e.g. photographed with more
+// than one faculty), so this is a list, not a single optional link.
+type RegistrationSummary = {
+  id: string;
+  registeredAt: string;
+  data: Record<string, string>;
+  taggedPhotos: TaggedPhoto[];
+};
 
 type FormContext = {
   fields: FieldDef[];
@@ -211,10 +220,18 @@ export default function LiffRegisterClient() {
         throw new Error(body.error ?? "ลงทะเบียนไม่สำเร็จ กรุณาลองใหม่อีกครั้ง / Registration failed. Please try again.");
       }
       const body: { registrantId: string } = await res.json();
-      const savedEntry: RegistrationSummary = { id: body.registrantId, registeredAt: new Date().toISOString(), data: formValues };
-      const registrations = editingId
-        ? status.registrations.map((r) => (r.id === editingId ? savedEntry : r))
-        : [...status.registrations, savedEntry];
+
+      // Refetch (rather than hand-building the saved entry) so `taggedPhotos` is accurate — a
+      // freshly-submitted registration usually has none yet, but an edited one might already.
+      let registrations = status.registrations;
+      if (profile) {
+        const registrationsRes = await fetch(
+          `/api/universities/${universitySlug}/registrations?lineUserId=${encodeURIComponent(profile.userId)}`,
+        );
+        if (registrationsRes.ok) {
+          registrations = (await registrationsRes.json()).registrations;
+        }
+      }
       setStatus({
         step: "done",
         wasEdit: !!editingId,
@@ -306,6 +323,7 @@ export default function LiffRegisterClient() {
                       </div>
                     ))}
                   </dl>
+                  <TaggedPhotoLinks photos={reg.taggedPhotos} />
                 </li>
               );
             })}
@@ -385,6 +403,7 @@ export default function LiffRegisterClient() {
                     ) : (
                       <p className="text-sm text-gray-400">(ไม่มีข้อมูลสรุป / No summary available)</p>
                     )}
+                    <TaggedPhotoLinks photos={reg.taggedPhotos} />
                   </li>
                 ))}
               </ul>
@@ -493,6 +512,25 @@ export default function LiffRegisterClient() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TaggedPhotoLinks({ photos }: { photos: TaggedPhoto[] }) {
+  if (photos.length === 0) return null;
+  return (
+    <div className="mt-2.5 flex flex-wrap gap-2">
+      {photos.map((p) => (
+        <a
+          key={p.tagId}
+          href={`/photo-view/${p.groupPhotoId}?tag=${p.tagId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="brand-border brand-text inline-flex items-center gap-1 rounded-lg border bg-white px-2.5 py-1 text-xs font-semibold"
+        >
+          ดูรูปหมู่: {p.photoName} →
+        </a>
+      ))}
     </div>
   );
 }

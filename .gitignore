@@ -45,3 +45,7 @@ next-env.d.ts
 
 # claude code session state (not project source)
 .claude/*.lock
+
+# pc-photo-server (self-hosted, not part of the Vercel deploy)
+pc-photo-server/node_modules
+pc-photo-server/storage

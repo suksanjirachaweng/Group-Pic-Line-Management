@@ -38,7 +38,7 @@ export default async function UniversitiesPage() {
           {universities.map((u) => (
             <li key={u.id}>
               <Link
-                href={`/admin/universities/${u.id}`}
+                href={`/admin/universities/${u.id}/group-photos`}
                 className="flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50"
               >
                 <span className="flex items-center gap-2">

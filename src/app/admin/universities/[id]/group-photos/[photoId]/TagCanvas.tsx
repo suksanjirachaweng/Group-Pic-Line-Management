@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { saveGroupPhotoTag, deleteGroupPhotoTag } from "@/lib/actions/groupPhotos";
+import { saveGroupPhotoTag, deleteGroupPhotoTag, bulkAdjustTagPositions } from "@/lib/actions/groupPhotos";
 import { ocrCardCrop } from "@/lib/actions/ocr";
 import { TagMatchSource } from "@/generated/prisma/enums";
 import { clientPointToFullRes, fullResToFraction, extractCrop, pixelDistance } from "./coordinateMapping";
@@ -16,6 +16,7 @@ const OCR_BATCH_CONCURRENCY = 6;
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 6;
 const ZOOM_STEP = 1.25;
+const BULK_NUDGE_STEP = 20;
 
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -103,6 +104,11 @@ export function TagCanvas({
   const [labelAngle, setLabelAngle] = useState(-30);
   const [hasDetected, setHasDetected] = useState(false);
   const [spacePressed, setSpacePressed] = useState(false);
+  const [bulkAdjustMode, setBulkAdjustMode] = useState(false);
+  const [bulkDx, setBulkDx] = useState(0);
+  const [bulkDy, setBulkDy] = useState(0);
+  const [bulkScale, setBulkScale] = useState(1);
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const fullBitmapRef = useRef<ImageBitmap | null>(null);
@@ -123,6 +129,18 @@ export function TagCanvas({
   const problems = useMemo(() => validateTags(tags), [tags]);
   const problemIds = useMemo(() => problemTagIds(problems), [problems]);
 
+  // Anchor for the bulk position adjustment — scaling around the image center is the sensible
+  // default when a re-uploaded image shifted everyone (see updateGroupPhotoImage/bulkAdjustTagPositions).
+  const bulkAnchorX = imageWidth / 2;
+  const bulkAnchorY = imageHeight / 2;
+  function previewPoint(t: { x: number; y: number }): { x: number; y: number } {
+    if (!bulkAdjustMode) return t;
+    return {
+      x: bulkAnchorX + (t.x - bulkAnchorX) * bulkScale + bulkDx,
+      y: bulkAnchorY + (t.y - bulkAnchorY) * bulkScale + bulkDy,
+    };
+  }
+
   // Line segments connecting consecutive `order` positions within the same row — one straight
   // line per adjacent pair, never crossing into the next row.
   const rowLineSegments = useMemo(() => {
@@ -137,8 +155,10 @@ export function TagCanvas({
       const sorted = [...rowTags].sort((a, b) => a.order - b.order);
       const color = colorForRow(row);
       for (let i = 0; i < sorted.length - 1; i++) {
-        const a = fullResToFraction(sorted[i].x, sorted[i].y, imageWidth, imageHeight);
-        const b = fullResToFraction(sorted[i + 1].x, sorted[i + 1].y, imageWidth, imageHeight);
+        const pa = previewPoint(sorted[i]);
+        const pb = previewPoint(sorted[i + 1]);
+        const a = fullResToFraction(pa.x, pa.y, imageWidth, imageHeight);
+        const b = fullResToFraction(pb.x, pb.y, imageWidth, imageHeight);
         segments.push({
           key: `${sorted[i].id}-${sorted[i + 1].id}`,
           x1: a.xFrac * 100,
@@ -150,7 +170,8 @@ export function TagCanvas({
       }
     }
     return segments;
-  }, [tags, imageWidth, imageHeight]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- previewPoint closes over bulk*/imageWidth/imageHeight, all listed explicitly below
+  }, [tags, imageWidth, imageHeight, bulkAdjustMode, bulkDx, bulkDy, bulkScale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -245,8 +266,9 @@ export function TagCanvas({
   function handleCanvasClick(e: ReactMouseEvent<HTMLCanvasElement>) {
     // The browser still fires a native "click" on mouseup even after a drag pan (same element for
     // mousedown/mouseup) — swallow that one click rather than opening a new-tag dialog. Also
-    // swallow plain clicks while Space is held (Photoshop's Hand tool doesn't add anything either).
-    if (draggedRef.current || spacePressed) {
+    // swallow plain clicks while Space is held (Photoshop's Hand tool doesn't add anything either)
+    // or while bulk-adjusting (that's a dedicated mode, not a moment to add a new person).
+    if (draggedRef.current || spacePressed || bulkAdjustMode) {
       draggedRef.current = false;
       return;
     }
@@ -259,7 +281,7 @@ export function TagCanvas({
   function handleCanvasDoubleClick(e: ReactMouseEvent<HTMLCanvasElement>) {
     e.preventDefault();
     const canvas = displayCanvasRef.current;
-    if (!canvas || tags.length === 0) return;
+    if (!canvas || tags.length === 0 || bulkAdjustMode) return;
     const { x, y } = clientPointToFullRes(e.clientX, e.clientY, canvas, imageWidth, imageHeight);
     let nearest = tags[0];
     let best = pixelDistance(x, y, nearest.x, nearest.y);
@@ -312,6 +334,32 @@ export function TagCanvas({
 
   function zoomBy(factor: number) {
     setScale((s) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * factor)));
+  }
+
+  function resetBulkAdjust() {
+    setBulkAdjustMode(false);
+    setBulkDx(0);
+    setBulkDy(0);
+    setBulkScale(1);
+  }
+
+  async function handleBulkSave() {
+    setBulkSaving(true);
+    try {
+      await bulkAdjustTagPositions(universityId, groupPhotoId, {
+        dx: bulkDx,
+        dy: bulkDy,
+        scale: bulkScale,
+        anchorX: bulkAnchorX,
+        anchorY: bulkAnchorY,
+      });
+      setTags((prev) => prev.map((t) => ({ ...t, ...previewPoint(t) })));
+      resetBulkAdjust();
+    } catch (err) {
+      window.alert(`บันทึกตำแหน่งใหม่ไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`);
+    } finally {
+      setBulkSaving(false);
+    }
   }
 
   // Photoshop-style shortcuts: hold Space to pan-drag, Ctrl/Cmd +/- to zoom. Ignored while typing
@@ -425,6 +473,15 @@ export function TagCanvas({
         >
           {isDetecting ? "กำลังตรวจจับใบหน้า..." : hasDetected ? "ตรวจจับใบหน้าแล้ว" : "ตรวจจับใบหน้า (ช่วยแนะนำตำแหน่ง)"}
         </button>
+        <button
+          type="button"
+          disabled={tags.length === 0 || bulkAdjustMode}
+          onClick={() => setBulkAdjustMode(true)}
+          title="เลื่อน/ย่อขยายจุดที่แท็กไว้ทั้งหมดพร้อมกัน — ใช้เวลาอัปเดตรูปแล้วตำแหน่งเพี้ยน"
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          ปรับตำแหน่งทั้งหมด
+        </button>
         <Link
           href={`/admin/universities/${universityId}/group-photos/${groupPhotoId}/validate`}
           className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
@@ -466,7 +523,8 @@ export function TagCanvas({
               ))}
             </svg>
             {tags.map((t) => {
-              const { xFrac, yFrac } = fullResToFraction(t.x, t.y, imageWidth, imageHeight);
+              const p = previewPoint(t);
+              const { xFrac, yFrac } = fullResToFraction(p.x, p.y, imageWidth, imageHeight);
               const isProblem = problemIds.has(t.id);
               const color = colorForRow(t.row);
               const labelText = labelMode === "code" ? t.code : t.name.trim() || "(ยังไม่มีชื่อ)";
@@ -530,6 +588,109 @@ export function TagCanvas({
             })}
           </div>
         </div>
+
+        {bulkAdjustMode && (
+          <div className="absolute right-3 top-3 z-20 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-xl">
+            <p className="mb-2 text-xs font-semibold text-gray-900">ปรับตำแหน่งทั้งหมด ({tags.length} คน)</p>
+            <div className="mb-2 grid grid-cols-3 gap-1">
+              <div />
+              <button
+                type="button"
+                onClick={() => setBulkDy((d) => d - BULK_NUDGE_STEP)}
+                className="rounded-md border border-gray-300 py-1 text-sm hover:bg-gray-50"
+              >
+                ↑
+              </button>
+              <div />
+              <button
+                type="button"
+                onClick={() => setBulkDx((d) => d - BULK_NUDGE_STEP)}
+                className="rounded-md border border-gray-300 py-1 text-sm hover:bg-gray-50"
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkDx(0);
+                  setBulkDy(0);
+                }}
+                className="rounded-md border border-gray-300 py-1 text-[10px] hover:bg-gray-50"
+              >
+                รีเซ็ต
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkDx((d) => d + BULK_NUDGE_STEP)}
+                className="rounded-md border border-gray-300 py-1 text-sm hover:bg-gray-50"
+              >
+                →
+              </button>
+              <div />
+              <button
+                type="button"
+                onClick={() => setBulkDy((d) => d + BULK_NUDGE_STEP)}
+                className="rounded-md border border-gray-300 py-1 text-sm hover:bg-gray-50"
+              >
+                ↓
+              </button>
+              <div />
+            </div>
+
+            <div className="mb-2 grid grid-cols-2 gap-2 text-xs text-gray-600">
+              <label>
+                dx (px)
+                <input
+                  type="number"
+                  value={bulkDx}
+                  onChange={(e) => setBulkDx(Number(e.target.value))}
+                  className="mt-0.5 w-full rounded-md border border-gray-300 px-1.5 py-1"
+                />
+              </label>
+              <label>
+                dy (px)
+                <input
+                  type="number"
+                  value={bulkDy}
+                  onChange={(e) => setBulkDy(Number(e.target.value))}
+                  className="mt-0.5 w-full rounded-md border border-gray-300 px-1.5 py-1"
+                />
+              </label>
+            </div>
+
+            <label className="mb-1 flex items-center justify-between text-xs text-gray-600">
+              ขนาด (scale)
+              <span>{Math.round(bulkScale * 100)}%</span>
+            </label>
+            <input
+              type="range"
+              min={0.5}
+              max={2}
+              step={0.01}
+              value={bulkScale}
+              onChange={(e) => setBulkScale(Number(e.target.value))}
+              className="mb-3 w-full"
+            />
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={resetBulkAdjust}
+                className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkSave}
+                disabled={bulkSaving}
+                className="rounded-md bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {bulkSaving ? "กำลังบันทึก..." : "บันทึกตำแหน่งใหม่"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <TagEditDialog

@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Separate standalone CommonJS Node project (its own package.json/deps, runs on the
+    // admin's own PC, not part of this app's build) — not this config's concern.
+    "pc-photo-server/**",
   ]),
 ]);
 

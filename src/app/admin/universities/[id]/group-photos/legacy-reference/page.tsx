@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getServiceAccountEmail } from "@/lib/sheets";
 import { LegacyReferenceUploadForm } from "./LegacyReferenceUploadForm";
 
 export default async function LegacyReferencePage({ params }: { params: Promise<{ id: string }> }) {
@@ -31,7 +32,7 @@ export default async function LegacyReferencePage({ params }: { params: Promise<
         ไฟล์ที่อัปโหลดใหม่จะแทนที่ข้อมูลเดิมทั้งหมด
       </p>
 
-      <LegacyReferenceUploadForm universityId={universityId} />
+      <LegacyReferenceUploadForm universityId={universityId} serviceAccountEmail={getServiceAccountEmail()} />
 
       <p className="mt-4 text-sm text-gray-600">มีข้อมูลอยู่ {count} รายการ</p>
       {sample.length > 0 && (

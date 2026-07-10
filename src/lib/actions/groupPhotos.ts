@@ -35,6 +35,50 @@ export async function deleteGroupPhoto(universityId: string, groupPhotoId: strin
   revalidatePath(`/admin/universities/${universityId}/group-photos`);
 }
 
+/**
+ * Replaces just the image file behind an existing photo (e.g. a retouched version with a title
+ * bar added) — tags are left untouched since they belong to the GroupPhoto row, not the image
+ * itself. The new image's geometry may not line up with the old one, so this is normally paired
+ * with a bulk position adjustment (see `bulkAdjustTagPositions`) on the tagging page.
+ */
+export async function updateGroupPhotoImage(
+  universityId: string,
+  groupPhotoId: string,
+  input: { imageUrl: string; imageWidth: number; imageHeight: number },
+): Promise<void> {
+  await requireUniversityAccess(universityId);
+  await prisma.groupPhoto.update({ where: { id: groupPhotoId, universityId }, data: input });
+  revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
+  revalidatePath(`/admin/universities/${universityId}/group-photos`);
+}
+
+/**
+ * Shifts and/or scales every tag in a photo around a single anchor point in one pass — for when
+ * a re-uploaded image (see `updateGroupPhotoImage`) shifted everyone's position relative to the
+ * old one (e.g. added padding, slight crop/zoom difference), so re-tagging from scratch isn't
+ * necessary.
+ */
+export async function bulkAdjustTagPositions(
+  universityId: string,
+  groupPhotoId: string,
+  input: { dx: number; dy: number; scale: number; anchorX: number; anchorY: number },
+): Promise<void> {
+  await requireUniversityAccess(universityId);
+  const tags = await prisma.groupPhotoTag.findMany({ where: { groupPhotoId }, select: { id: true, x: true, y: true } });
+  await prisma.$transaction(
+    tags.map((t) =>
+      prisma.groupPhotoTag.update({
+        where: { id: t.id },
+        data: {
+          x: input.anchorX + (t.x - input.anchorX) * input.scale + input.dx,
+          y: input.anchorY + (t.y - input.anchorY) * input.scale + input.dy,
+        },
+      }),
+    ),
+  );
+  revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
+}
+
 export type SaveTagInput = {
   id?: string; // present = update an existing tag, absent = create a new one
   code: string;
