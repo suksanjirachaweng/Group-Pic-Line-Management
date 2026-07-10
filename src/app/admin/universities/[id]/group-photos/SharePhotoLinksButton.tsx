@@ -27,7 +27,7 @@ export function SharePhotoLinksButton({
     const origin = window.location.origin;
     const lines = photos
       .filter((p) => selectedIds.has(p.id))
-      .map((p) => `${p.name}\n${origin}/admin/universities/${universityId}/group-photos/${p.id}`)
+      .map((p) => `${p.name}\n${origin}/admin/universities/${universityId}/group-photos/${p.id}/validate`)
       .join("\n\n");
     setText(lines);
     setCopied(false);

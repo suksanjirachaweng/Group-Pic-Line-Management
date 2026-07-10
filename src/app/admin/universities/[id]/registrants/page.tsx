@@ -126,7 +126,10 @@ export default async function RegistrantsPage({
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-900">
+        <h1 className="flex items-center gap-3 text-lg font-semibold text-gray-900">
+          <Link href={`/admin/universities/${universityId}`} className="text-sm font-normal text-gray-500 hover:text-gray-700">
+            ← กลับ
+          </Link>
           {university.name} — Registrants
           <span className="ml-2 text-sm font-normal text-gray-400">{total} total</span>
         </h1>
