@@ -53,7 +53,7 @@ export function SharePhotoLinksButton({
             <h3 className="mb-1 text-sm font-semibold text-gray-900">ข้อความสำหรับส่งต่อ</h3>
             <p className="mb-3 text-xs text-gray-500">
               คัดลอกข้อความนี้ไปส่งให้ผู้อื่น (เช่น ทาง LINE) เพื่อให้เปิดลิงก์ดูรูปและตรวจสอบ/export ข้อมูลได้เลย
-              (ไม่ต้องมีบัญชีแอดมิน — ดูอย่างเดียว แก้ไขไม่ได้)
+              (ไม่ต้องมีบัญชีแอดมิน — ใครมีลิงก์นี้สามารถแก้ไขรหัส/ชื่อของแต่ละจุดได้ด้วย)
             </p>
             <textarea
               readOnly

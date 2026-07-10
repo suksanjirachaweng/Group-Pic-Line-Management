@@ -7,6 +7,8 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { TagLabel, type TagDisplayField } from "./TagLabel";
+import { colorForRow } from "./rowColor";
 
 const DISPLAY_MAX_WIDTH = 3500;
 const MIN_SCALE = 0.05;
@@ -16,22 +18,7 @@ const REVIEW_ZOOM = 1.2;
 const POPUP_WIDTH = 260;
 const POPUP_HEIGHT = 200;
 
-// Same per-row palette as the main tagging canvas, so a row reads as the same color in both views.
-const ROW_COLORS = [
-  "#ef4444",
-  "#3b82f6",
-  "#22c55e",
-  "#eab308",
-  "#a855f7",
-  "#06b6d4",
-  "#f97316",
-  "#ec4899",
-];
-function colorForRow(row: number): string {
-  const idx =
-    ((row % ROW_COLORS.length) + ROW_COLORS.length) % ROW_COLORS.length;
-  return ROW_COLORS[idx];
-}
+const DEFAULT_DISPLAY_FIELDS = new Set<TagDisplayField>(["code", "line"]);
 
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -68,7 +55,8 @@ export function ReviewCanvas({
   selectedTagId,
   onSelectTag,
   onSave,
-  labelMode = "code",
+  onDoubleClickTag,
+  displayFields = DEFAULT_DISPLAY_FIELDS,
   readOnly = false,
 }: {
   imageUrl: string;
@@ -83,10 +71,17 @@ export function ReviewCanvas({
     tagId: string,
     input: { code: string; name: string },
   ) => Promise<{ error?: string } | void>;
-  labelMode?: "code" | "name";
+  /** Which fields to render on each marker's label + whether to draw the row-order connecting
+   * lines. Defaults to the original fixed look (code label + lines) for callers that don't
+   * expose a display picker. */
+  displayFields?: Set<TagDisplayField>;
   /** Pure viewing — nothing is clickable and the edit popup never appears (e.g. a registrant
    * looking up their own tagged position). `selectedTagId` still drives centering/highlighting. */
   readOnly?: boolean;
+  /** Opt-in double-click hook, independent of `editable`/`readOnly` — lets a caller open its own
+   * full dialog (e.g. the public /validate page) rather than the small inline popup below, even
+   * when single-click editing is otherwise disabled. Selects + centers the tag first. */
+  onDoubleClickTag?: (tag: ReviewTag) => void;
 }) {
   const [loaded, setLoaded] = useState(false);
   const [scale, setScale] = useState(0.25);
@@ -340,7 +335,9 @@ export function ReviewCanvas({
           </button>
         </div>
         <span className="text-gray-400">
-          Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ{readOnly ? "" : ", คลิกจุด = แก้ไข"}
+          Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ
+          {!readOnly && ", คลิกจุด = แก้ไข"}
+          {onDoubleClickTag && ", ดับเบิลคลิกจุด = แก้ไข"}
         </span>
       </div>
 
@@ -364,41 +361,53 @@ export function ReviewCanvas({
             className={`block select-none ${spacePressed ? "cursor-grab" : "cursor-default"}`}
           />
           <div className="pointer-events-none absolute inset-0">
-            <svg
-              className="absolute inset-0 h-full w-full"
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-            >
-              {rowLineSegments.map((seg) => (
-                <line
-                  key={seg.key}
-                  x1={seg.x1}
-                  y1={seg.y1}
-                  x2={seg.x2}
-                  y2={seg.y2}
-                  stroke={seg.color}
-                  strokeWidth={0.45}
-                  strokeLinecap="round"
-                />
-              ))}
-            </svg>
+            {displayFields.has("line") && (
+              <svg
+                className="absolute inset-0 h-full w-full"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+              >
+                {rowLineSegments.map((seg) => (
+                  <line
+                    key={seg.key}
+                    x1={seg.x1}
+                    y1={seg.y1}
+                    x2={seg.x2}
+                    y2={seg.y2}
+                    stroke={seg.color}
+                    strokeWidth={0.45}
+                    strokeLinecap="round"
+                  />
+                ))}
+              </svg>
+            )}
             {tags.map((t) => {
               const xFrac = t.x / imageWidth;
               const yFrac = t.y / imageHeight;
               const color = colorForRow(t.row);
               const editable = !readOnly && (!editableTagIds || editableTagIds.has(t.id));
               const isSelected = t.id === selectedTagId;
-              const labelText = labelMode === "code" ? t.code : t.name.trim() || "(ยังไม่มีชื่อ)";
+              const isDimmed = selectedTagId !== null && !isSelected;
+              const interactive = editable || !!onDoubleClickTag;
               return (
                 <div
                   key={t.id}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 ${editable ? "pointer-events-auto cursor-pointer" : ""}`}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 transition-opacity duration-150 ${interactive ? "pointer-events-auto cursor-pointer" : ""} ${isDimmed ? "opacity-25" : "opacity-100"}`}
                   style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%` }}
                   onClick={
                     editable
                       ? (e) => {
                           e.stopPropagation();
                           onSelectTag(t.id);
+                        }
+                      : undefined
+                  }
+                  onDoubleClick={
+                    onDoubleClickTag
+                      ? (e) => {
+                          e.stopPropagation();
+                          onSelectTag(t.id);
+                          onDoubleClickTag(t);
                         }
                       : undefined
                   }
@@ -417,15 +426,7 @@ export function ReviewCanvas({
                     }}
                     title={`${t.code} — ${t.name}`}
                   />
-                  <div
-                    className="absolute left-0 top-0 origin-left whitespace-nowrap rounded px-1.5 py-0.5 text-[12px] font-semibold leading-none text-white shadow"
-                    style={{
-                      backgroundColor: color,
-                      transform: "translateY(-6px) rotate(-30deg)",
-                    }}
-                  >
-                    {labelText}
-                  </div>
+                  <TagLabel order={t.order} code={t.code} name={t.name} color={color} fields={displayFields} angle={-30} />
                 </div>
               );
             })}

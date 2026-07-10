@@ -9,6 +9,8 @@ import { clientPointToFullRes, fullResToFraction, extractCrop, pixelDistance } f
 import { useFaceDetection, type FaceCandidate } from "./useFaceDetection";
 import { TagEditDialog, type DialogInitial, type RegistrantLookup, type ReferenceLookup, type SavePayload } from "./TagEditDialog";
 import { validateTags, problemTagIds } from "@/lib/groupPhoto/validateTags";
+import { TagLabel, TagDisplayFieldPicker, type TagDisplayField } from "@/lib/groupPhoto/TagLabel";
+import { colorForRow } from "@/lib/groupPhoto/rowColor";
 
 const DISPLAY_MAX_WIDTH = 3500;
 const OCR_CROP_SIZE = 360;
@@ -21,15 +23,6 @@ const BULK_NUDGE_STEP = 20;
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
   return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable;
-}
-
-// Cycled by row index so every tag in the same row renders the same color, distinguishing rows
-// at a glance (front-sitting row vs. each standing row behind it).
-const ROW_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#eab308", "#a855f7", "#06b6d4", "#f97316", "#ec4899"];
-
-function colorForRow(row: number): string {
-  const idx = ((row % ROW_COLORS.length) + ROW_COLORS.length) % ROW_COLORS.length;
-  return ROW_COLORS[idx];
 }
 
 /** Concurrency-limited OCR pass over every detected face candidate, so results stream in as they
@@ -100,7 +93,9 @@ export function TagCanvas({
   const [ocrLoading, setOcrLoading] = useState(false);
   const [candidateCodes, setCandidateCodes] = useState<Record<string, string | null>>({});
   const [candidateOcrPending, setCandidateOcrPending] = useState<Set<string>>(new Set());
-  const [labelMode, setLabelMode] = useState<"code" | "name">("code");
+  const [displayFields, setDisplayFields] = useState<Set<TagDisplayField>>(
+    () => new Set<TagDisplayField>(["code", "name", "line"]),
+  );
   const [labelAngle, setLabelAngle] = useState(-30);
   const [hasDetected, setHasDetected] = useState(false);
   const [spacePressed, setSpacePressed] = useState(false);
@@ -416,21 +411,8 @@ export function TagCanvas({
         {problems.length > 0 && (
           <span className="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">{problems.length} รายการมีปัญหา</span>
         )}
-        <div className="ml-auto flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
-          <button
-            type="button"
-            onClick={() => setLabelMode("code")}
-            className={`rounded px-2 py-1 font-medium ${labelMode === "code" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
-          >
-            รหัส
-          </button>
-          <button
-            type="button"
-            onClick={() => setLabelMode("name")}
-            className={`rounded px-2 py-1 font-medium ${labelMode === "name" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
-          >
-            ชื่อ-นามสกุล
-          </button>
+        <div className="ml-auto">
+          <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
         </div>
         <label className="flex items-center gap-1 text-xs text-gray-600">
           มุมป้าย
@@ -482,6 +464,18 @@ export function TagCanvas({
         >
           ปรับตำแหน่งทั้งหมด
         </button>
+        <a
+          href={`/api/group-photos/${groupPhotoId}/export/excel`}
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Export Excel (.xlsx)
+        </a>
+        <a
+          href={`/api/group-photos/${groupPhotoId}/export/text`}
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Export ข้อความ (.txt)
+        </a>
         <Link
           href={`/group-photos/${groupPhotoId}/validate`}
           target="_blank"
@@ -510,26 +504,27 @@ export function TagCanvas({
             className={`block ${spacePressed ? "cursor-grab" : "cursor-crosshair"}`}
           />
           <div className="pointer-events-none absolute inset-0">
-            <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-              {rowLineSegments.map((seg) => (
-                <line
-                  key={seg.key}
-                  x1={seg.x1}
-                  y1={seg.y1}
-                  x2={seg.x2}
-                  y2={seg.y2}
-                  stroke={seg.color}
-                  strokeWidth={0.45}
-                  strokeLinecap="round"
-                />
-              ))}
-            </svg>
+            {displayFields.has("line") && (
+              <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                {rowLineSegments.map((seg) => (
+                  <line
+                    key={seg.key}
+                    x1={seg.x1}
+                    y1={seg.y1}
+                    x2={seg.x2}
+                    y2={seg.y2}
+                    stroke={seg.color}
+                    strokeWidth={0.45}
+                    strokeLinecap="round"
+                  />
+                ))}
+              </svg>
+            )}
             {tags.map((t) => {
               const p = previewPoint(t);
               const { xFrac, yFrac } = fullResToFraction(p.x, p.y, imageWidth, imageHeight);
               const isProblem = problemIds.has(t.id);
               const color = colorForRow(t.row);
-              const labelText = labelMode === "code" ? t.code : t.name.trim() || "(ยังไม่มีชื่อ)";
               return (
                 <div
                   key={t.id}
@@ -546,15 +541,7 @@ export function TagCanvas({
                     }}
                     title={`${t.code} — ${t.name}`}
                   />
-                  <div
-                    className="absolute left-0 top-0 origin-left whitespace-nowrap rounded px-1.5 py-0.5 text-[12px] font-semibold leading-none text-white shadow"
-                    style={{
-                      backgroundColor: color,
-                      transform: `translateY(-6px) rotate(${labelAngle}deg)`,
-                    }}
-                  >
-                    {labelText}
-                  </div>
+                  <TagLabel order={t.order} code={t.code} name={t.name} color={color} fields={displayFields} angle={labelAngle} />
                 </div>
               );
             })}

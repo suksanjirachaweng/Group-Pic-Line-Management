@@ -20,7 +20,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="flex items-center gap-6">
             <span className="flex items-center gap-2 font-semibold text-gray-900">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/nsl-logo.jpg" alt="Newsalon" className="h-7 w-7 rounded-full object-cover" />
+              <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto" />
               Group Pic Registration <span className="text-indigo-600">— Admin</span>
             </span>
             <nav className="flex gap-4 text-sm">

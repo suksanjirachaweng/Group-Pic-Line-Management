@@ -42,3 +42,40 @@ export async function updateTagViaPublicLink(
   revalidatePath(`/photo-review/${token}`);
   return { success: true };
 }
+
+/**
+ * Same no-session, URL-is-the-credential model as updateTagViaPublicLink above, but keyed on the
+ * group photo id directly rather than a share-link token — this backs the double-click edit
+ * dialog on the public /group-photos/[photoId]/validate page, which anyone holding that link can
+ * already view and export from (explicit product decision: whoever has the link can also fix a
+ * mis-OCR'd code or missing name right there, not just admins).
+ */
+export async function updateGroupPhotoTagViaValidatePage(
+  photoId: string,
+  tagId: string,
+  _prevState: PublicUpdateState,
+  formData: FormData,
+): Promise<PublicUpdateState> {
+  const tag = await prisma.groupPhotoTag.findUnique({ where: { id: tagId } });
+  if (!tag || tag.groupPhotoId !== photoId) {
+    return { error: "ไม่พบข้อมูลนี้ในรูปนี้" };
+  }
+
+  const name = String(formData.get("name") ?? "").trim();
+  const code = String(formData.get("code") ?? "").trim();
+  if (!code) return { error: "กรุณากรอกหมายเลข" };
+
+  await prisma.groupPhotoTag.update({
+    where: { id: tagId },
+    data: {
+      name,
+      code,
+      normalizedCode: normalizeCode(code),
+      editedViaPublicLink: true,
+      publicLinkEditedAt: new Date(),
+    },
+  });
+
+  revalidatePath(`/group-photos/${photoId}/validate`);
+  return { success: true };
+}
