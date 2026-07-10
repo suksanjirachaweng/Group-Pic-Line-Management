@@ -1,15 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { saveGroupPhotoTag } from "@/lib/actions/groupPhotos";
-import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { validateTags } from "@/lib/groupPhoto/validateTags";
 import { ReviewCanvas, type ReviewTag } from "@/lib/groupPhoto/ReviewCanvas";
 import { TagMatchSource } from "@/generated/prisma/enums";
-import { ProblemActionsPanel } from "./ProblemActionsPanel";
 
-export type ValidateTagRecord = {
+export type PublicValidateTagRecord = {
   id: string;
   code: string;
   normalizedCode: string;
@@ -18,52 +14,39 @@ export type ValidateTagRecord = {
   order: number;
   x: number;
   y: number;
-  registrantId: string | null;
   matchSource: TagMatchSource;
-  registrantLineUserId: string | null;
-  registrantChannelId: string | null;
 };
 
-export function ValidateView({
-  universityId,
+/**
+ * Public, read-only version of the tagging validate report — no login, no editing, no
+ * messaging, and no links back into the admin area (see ImportMarkFileButton/SharePhotoLinksButton
+ * callers: this is the page a forwarded link opens for someone without an admin account).
+ */
+export function PublicValidateView({
   photoId,
   photoName,
   imageUrl,
   imageWidth,
   imageHeight,
   initialTags,
-  registrantByCode,
-  referenceByCode,
 }: {
-  universityId: string;
   photoId: string;
   photoName: string;
   imageUrl: string;
   imageWidth: number;
   imageHeight: number;
-  initialTags: ValidateTagRecord[];
-  registrantByCode: Map<string, { id: string }>;
-  referenceByCode: Set<string>;
+  initialTags: PublicValidateTagRecord[];
 }) {
-  const [tags, setTags] = useState(initialTags);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
 
-  const problems = useMemo(() => validateTags(tags), [tags]);
+  const problems = useMemo(() => validateTags(initialTags), [initialTags]);
   const duplicateGroups = problems.filter((p) => p.type === "DUPLICATE_CODE");
   const unmatchedIds = new Set(problems.filter((p) => p.type === "UNMATCHED_CODE").map((p) => p.tagId));
-  const unmatchedTags = tags.filter((t) => unmatchedIds.has(t.id));
-  const tagsById = new Map(tags.map((t) => [t.id, t]));
+  const unmatchedTags = initialTags.filter((t) => unmatchedIds.has(t.id));
+  const tagsById = new Map(initialTags.map((t) => [t.id, t]));
   const problemTagIdSet = new Set(problems.flatMap((p) => (p.type === "DUPLICATE_CODE" ? p.tagIds : [p.tagId])));
-  const problemTags = tags
-    .filter((t) => problemTagIdSet.has(t.id))
-    .map((t) => ({
-      id: t.id,
-      name: t.name,
-      code: t.code,
-      canDirectMessage: !!(t.registrantId && t.registrantLineUserId && t.registrantChannelId),
-    }));
 
-  const reviewTags: ReviewTag[] = tags.map((t) => ({
+  const reviewTags: ReviewTag[] = initialTags.map((t) => ({
     id: t.id,
     code: t.code,
     name: t.name,
@@ -74,63 +57,22 @@ export function ValidateView({
     isProblem: problemTagIdSet.has(t.id),
   }));
 
-  async function handleSave(tagId: string, input: { code: string; name: string }) {
-    const tag = tagsById.get(tagId);
-    if (!tag) return { error: "ไม่พบข้อมูลนี้" };
-    if (!input.code.trim()) return { error: "กรุณากรอกรหัส" };
-
-    const normalized = normalizeCode(input.code);
-    let registrantId: string | null = null;
-    let matchSource: TagMatchSource = TagMatchSource.MANUAL;
-    const reg = registrantByCode.get(normalized);
-    if (reg) {
-      registrantId = reg.id;
-      matchSource = TagMatchSource.REGISTRANT;
-    } else if (referenceByCode.has(normalized)) {
-      matchSource = TagMatchSource.LEGACY_REFERENCE;
-    }
-
-    await saveGroupPhotoTag(universityId, photoId, {
-      id: tag.id,
-      code: input.code,
-      name: input.name,
-      row: tag.row,
-      order: tag.order,
-      x: tag.x,
-      y: tag.y,
-      registrantId,
-      matchSource,
-    });
-
-    setTags((prev) =>
-      prev.map((t) =>
-        t.id === tagId
-          ? { ...t, code: input.code, name: input.name, normalizedCode: normalized, registrantId, matchSource }
-          : t,
-      ),
-    );
-  }
-
   return (
     <div className="flex h-screen flex-col">
       <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-2">
-        <Link
-          href={`/admin/universities/${universityId}/group-photos/${photoId}`}
-          className="text-sm text-gray-500 hover:text-gray-700"
-        >
-          ← กลับไปแท็ก
-        </Link>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/nsl-logo.jpg" alt="Newsalon" className="h-7 w-7 rounded-full object-cover" />
         <h1 className="text-sm font-semibold text-gray-900">{photoName} — ตรวจสอบความถูกต้อง</h1>
-        <span className="text-sm text-gray-600">แท็กแล้ว {tags.length} คน</span>
+        <span className="text-sm text-gray-600">แท็กแล้ว {initialTags.length} คน</span>
         <div className="ml-auto flex gap-2">
           <a
-            href={`/api/admin/universities/${universityId}/group-photos/${photoId}/export/excel`}
+            href={`/api/group-photos/${photoId}/export/excel`}
             className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
           >
             Export Excel (.xlsx)
           </a>
           <a
-            href={`/api/admin/universities/${universityId}/group-photos/${photoId}/export/text`}
+            href={`/api/group-photos/${photoId}/export/text`}
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Export ข้อความ (.txt)
@@ -199,10 +141,6 @@ export function ValidateView({
               </ul>
             </div>
           )}
-
-          {problemTags.length > 0 && (
-            <ProblemActionsPanel universityId={universityId} groupPhotoId={photoId} problemTags={problemTags} />
-          )}
         </div>
 
         <div className="flex-1">
@@ -213,7 +151,7 @@ export function ValidateView({
             tags={reviewTags}
             selectedTagId={selectedTagId}
             onSelectTag={setSelectedTagId}
-            onSave={handleSave}
+            readOnly
           />
         </div>
       </div>

@@ -3,11 +3,9 @@
 import { useState } from "react";
 
 export function SharePhotoLinksButton({
-  universityId,
   selectFormId,
   photos,
 }: {
-  universityId: string;
   selectFormId: string;
   photos: { id: string; name: string }[];
 }) {
@@ -27,7 +25,7 @@ export function SharePhotoLinksButton({
     const origin = window.location.origin;
     const lines = photos
       .filter((p) => selectedIds.has(p.id))
-      .map((p) => `${p.name}\n${origin}/admin/universities/${universityId}/group-photos/${p.id}/validate`)
+      .map((p) => `${p.name}\n${origin}/group-photos/${p.id}/validate`)
       .join("\n\n");
     setText(lines);
     setCopied(false);
@@ -54,8 +52,8 @@ export function SharePhotoLinksButton({
           <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-1 text-sm font-semibold text-gray-900">ข้อความสำหรับส่งต่อ</h3>
             <p className="mb-3 text-xs text-gray-500">
-              คัดลอกข้อความนี้ไปส่งให้ผู้อื่น (เช่น ทาง LINE) เพื่อให้เปิดลิงก์และดำเนินการแท็กรูปนี้ต่อได้
-              (ผู้เปิดต้องมีบัญชีแอดมินที่เข้าถึงมหาวิทยาลัยนี้ได้)
+              คัดลอกข้อความนี้ไปส่งให้ผู้อื่น (เช่น ทาง LINE) เพื่อให้เปิดลิงก์ดูรูปและตรวจสอบ/export ข้อมูลได้เลย
+              (ไม่ต้องมีบัญชีแอดมิน — ดูอย่างเดียว แก้ไขไม่ได้)
             </p>
             <textarea
               readOnly

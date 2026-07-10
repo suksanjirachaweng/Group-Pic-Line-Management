@@ -483,7 +483,9 @@ export function TagCanvas({
           ปรับตำแหน่งทั้งหมด
         </button>
         <Link
-          href={`/admin/universities/${universityId}/group-photos/${groupPhotoId}/validate`}
+          href={`/group-photos/${groupPhotoId}/validate`}
+          target="_blank"
+          rel="noreferrer"
           className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
         >
           ตรวจสอบ / Export

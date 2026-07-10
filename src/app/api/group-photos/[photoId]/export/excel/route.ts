@@ -1,24 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
-import { requireUniversityAccess, AuthzError } from "@/lib/authz";
 import { LEGACY_EXCEL_HEADERS } from "@/lib/groupPhoto/exportFormat";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string; photoId: string }> },
-) {
-  const { id: universityId, photoId } = await params;
-
-  try {
-    await requireUniversityAccess(universityId);
-  } catch (err) {
-    if (err instanceof AuthzError) return new NextResponse(err.message, { status: 403 });
-    throw err;
-  }
+/**
+ * Public counterpart of /api/admin/.../export/excel — deliberately no auth check, so a
+ * forwarded /group-photos/[photoId]/validate link works for reviewers without an admin
+ * account. Scoped by photoId alone (no universityId needed, unlike the admin route).
+ */
+export async function GET(request: NextRequest, { params }: { params: Promise<{ photoId: string }> }) {
+  const { photoId } = await params;
 
   const photo = await prisma.groupPhoto.findUnique({
-    where: { id: photoId, universityId },
+    where: { id: photoId },
     include: { tags: { orderBy: [{ row: "asc" }, { order: "asc" }] } },
   });
   if (!photo) return new NextResponse("Group photo not found", { status: 404 });

@@ -286,7 +286,6 @@ async function PhotosTab({ universityId }: { universityId: string }) {
     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
         <SharePhotoLinksButton
-          universityId={universityId}
           selectFormId={PHOTO_SELECT_FORM_ID}
           photos={photos.map((p) => ({ id: p.id, name: p.name }))}
         />
