@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { evaluateOnRegistrationRules } from "@/lib/rules/trigger";
+import { syncRegistrantGroupPhotoTags } from "@/lib/groupPhoto/syncRegistrantTags";
 
 const registerSchema = z.object({
   universitySlug: z.string().min(1),
@@ -76,6 +77,15 @@ export async function POST(request: Request) {
         data: cleanData,
       },
     });
+  }
+
+  // Best-effort: keep this registrant's group-photo tag(s) in sync with their (possibly just
+  // corrected) code right away, rather than waiting for an admin to reopen the tagging page —
+  // plenty of graduates never revisit their self-check link to trigger that page's own fallback.
+  try {
+    await syncRegistrantGroupPhotoTags(university.id, registrant.id);
+  } catch (err) {
+    console.error("Group-photo tag sync failed for registrant", registrant.id, err);
   }
 
   // Best-effort: a bug in a rule's condition tree shouldn't fail the registration itself.
