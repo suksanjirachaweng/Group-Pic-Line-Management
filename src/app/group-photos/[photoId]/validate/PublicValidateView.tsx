@@ -171,6 +171,16 @@ export function PublicValidateView({
     y: t.y,
     isProblem: problemTagIdSet.has(t.id),
   }));
+  // In the default "problems" tab, the photo shows only the flagged points — matching exactly
+  // what the sidebar lists, so a first-time visitor sees "here are the N spots to check" instead
+  // of hunting for a handful of red rings among hundreds of unrelated pins. Switching to "all"
+  // shows everyone, for browsing the whole photo.
+  const visibleReviewTags = listMode === "problems" ? reviewTags.filter((t) => t.isProblem) : reviewTags;
+
+  function switchListMode(mode: "problems" | "all") {
+    setListMode(mode);
+    setSelectedTagId(null);
+  }
 
   function openEditDialog(tag: PublicValidateTagRecord) {
     setEditingTagId(tag.id);
@@ -277,17 +287,19 @@ export function PublicValidateView({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         {sidebarOpen && (
           <div className="max-h-[45vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white p-4 md:h-auto md:max-h-none md:w-96 md:border-b-0 md:border-r">
+          <p className="mb-3 text-xs text-gray-500">แตะรายชื่อด้านล่าง เพื่อดูตำแหน่งในรูป</p>
+
           <div className="mb-3 flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
             <button
               type="button"
-              onClick={() => setListMode("problems")}
+              onClick={() => switchListMode("problems")}
               className={`flex-1 rounded px-2 py-1 font-medium ${listMode === "problems" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
             >
               เฉพาะที่มีปัญหา ({problems.length})
             </button>
             <button
               type="button"
-              onClick={() => setListMode("all")}
+              onClick={() => switchListMode("all")}
               className={`flex-1 rounded px-2 py-1 font-medium ${listMode === "all" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
             >
               ทั้งหมด ({tags.length})
@@ -300,7 +312,7 @@ export function PublicValidateView({
                 <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">ไม่พบปัญหา — ข้อมูลพร้อม export</p>
               ) : (
                 <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  พบ {problems.length} รายการที่อาจต้องตรวจสอบก่อน export (ยัง export ได้ตามปกติ) — คลิกรายการเพื่อดูตำแหน่งในรูป
+                  พบ {problems.length} รายการที่อาจต้องตรวจสอบก่อน export (ยัง export ได้ตามปกติ) — รูปด้านขวาแสดงเฉพาะจุดเหล่านี้
                 </p>
               )}
 
@@ -357,7 +369,7 @@ export function PublicValidateView({
           ) : (
             <>
               <p className="mb-4 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                รายชื่อทั้งหมด {tags.length} คน — คลิกเพื่อดูตำแหน่งในรูป แล้วดับเบิลคลิกที่จุดเพื่อแก้ไขรหัส/ชื่อ (เผื่อสะกดผิด)
+                รายชื่อทั้งหมด {tags.length} คน — ดับเบิลคลิกที่จุดในรูปเพื่อแก้ไขรหัส/ชื่อ (เผื่อสะกดผิด)
               </p>
               <div className="space-y-4">
                 {tagsByRow.map(([row, rowTags]) => {
@@ -414,7 +426,7 @@ export function PublicValidateView({
             imageUrl={imageUrl}
             imageWidth={imageWidth}
             imageHeight={imageHeight}
-            tags={reviewTags}
+            tags={visibleReviewTags}
             selectedTagId={selectedTagId}
             onSelectTag={setSelectedTagId}
             displayFields={displayFields}
@@ -424,6 +436,7 @@ export function PublicValidateView({
             }}
             readOnly
             grayUnselected
+            labelOnlySelected
           />
         </div>
       </div>
