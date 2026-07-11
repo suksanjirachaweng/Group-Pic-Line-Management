@@ -5,7 +5,7 @@ import { ReviewCanvas, type ReviewTag } from "@/lib/groupPhoto/ReviewCanvas";
 import type { TagDisplayField } from "@/lib/groupPhoto/TagLabel";
 import { updateOwnTagPosition, reportTagProblem, confirmOwnTag } from "@/lib/actions/publicGroupPhoto";
 
-const PHOTO_VIEW_DISPLAY_FIELDS = new Set<TagDisplayField>(["code"]);
+const PHOTO_VIEW_DISPLAY_FIELDS = new Set<TagDisplayField>(["code", "name"]);
 
 export function PhotoViewClient({
   groupPhotoId,
