@@ -117,7 +117,7 @@ export function PublicValidateView({
   const [listMode, setListMode] = useState<"problems" | "all">("problems");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [displayFields, setDisplayFields] = useState<Set<TagDisplayField>>(
-    () => new Set<TagDisplayField>(["code", "name"]),
+    () => new Set<TagDisplayField>(["name"]),
   );
   const [editingTagId, setEditingTagId] = useState<string | null>(null);
   const [editCode, setEditCode] = useState("");
@@ -423,6 +423,7 @@ export function PublicValidateView({
               if (full) openEditDialog(full);
             }}
             readOnly
+            grayUnselected
           />
         </div>
       </div>

@@ -18,6 +18,8 @@ const ZOOM_STEP = 1.25;
 const REVIEW_ZOOM = 1.2;
 const POPUP_WIDTH = 260;
 const POPUP_HEIGHT = 200;
+const UNSELECTED_MARKER_SIZE = 9;
+const GRAY_MARKER_COLOR = "#9ca3af";
 
 const DEFAULT_DISPLAY_FIELDS = new Set<TagDisplayField>(["code", "line"]);
 
@@ -62,6 +64,7 @@ export function ReviewCanvas({
   soloLabelTagId,
   placementTagId,
   onPlaceTag,
+  grayUnselected = false,
 }: {
   imageUrl: string;
   imageWidth: number;
@@ -96,6 +99,11 @@ export function ReviewCanvas({
    * gesture (which would fight the existing single-finger-pan/pinch-zoom touch handling below). */
   placementTagId?: string | null;
   onPlaceTag?: (tagId: string, x: number, y: number) => void;
+  /** Grays out every marker/label except the selected one, instead of each row's own color — for
+   * the public /validate page, where dozens of row colors at once read as noisy clutter but the
+   * text still needs to stay legible. Off by default so photo-view/photo-review keep their
+   * per-row coloring. */
+  grayUnselected?: boolean;
 }) {
   const [loaded, setLoaded] = useState(false);
   const [scale, setScale] = useState(0.25);
@@ -482,13 +490,14 @@ export function ReviewCanvas({
             {tags.map((t) => {
               const xFrac = t.x / imageWidth;
               const yFrac = t.y / imageHeight;
-              const color = colorForRow(t.row);
               const editable = !readOnly && (!editableTagIds || editableTagIds.has(t.id));
               const isSelected = t.id === selectedTagId;
               const isDimmed = selectedTagId !== null && !isSelected;
               const interactive = editable || !!onDoubleClickTag;
               const isSolo = soloLabelTagId != null && t.id === soloLabelTagId;
               const hideLabel = soloLabelTagId != null && !isSolo;
+              const grayed = hideLabel || (grayUnselected && !isSelected);
+              const color = grayed ? GRAY_MARKER_COLOR : colorForRow(t.row);
               return (
                 <div
                   key={t.id}
@@ -513,8 +522,8 @@ export function ReviewCanvas({
                   }
                 >
                   <TagMarker
-                    color={isSolo ? color : hideLabel ? "#9ca3af" : color}
-                    size={isSolo ? 22 : isSelected ? 20 : 14}
+                    color={color}
+                    size={isSolo ? 22 : isSelected ? 20 : UNSELECTED_MARKER_SIZE}
                     pulse={isSelected || isSolo}
                     ring={isSolo ? "0 0 0 3px #facc15" : isSelected ? "0 0 0 3px #facc15" : t.isProblem ? "0 0 0 2px #ef4444" : undefined}
                     title={hideLabel ? undefined : `${t.code} — ${t.name}`}
