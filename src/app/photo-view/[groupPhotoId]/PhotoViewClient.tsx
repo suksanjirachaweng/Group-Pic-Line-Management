@@ -7,6 +7,71 @@ import { updateOwnTagPosition, reportTagProblem, confirmOwnTag } from "@/lib/act
 
 const PHOTO_VIEW_DISPLAY_FIELDS = new Set<TagDisplayField>(["code", "name"]);
 
+/** True only when a name has no Thai script and at least one Latin letter — an empty/placeholder
+ * name or one that's all digits/punctuation stays on the Thai default rather than flipping. */
+function isEnglishName(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  return !/[฀-๿]/.test(trimmed) && /[A-Za-z]/.test(trimmed);
+}
+
+const STRINGS = {
+  th: {
+    groupPhoto: "รูปถ่ายหมู่",
+    noName: "(ยังไม่มีชื่อ)",
+    yourPosition: (code: string, name: string) => (
+      <>
+        ตำแหน่งของคุณ: <span className="font-mono font-semibold">{code}</span> {name}
+      </>
+    ),
+    confirmedBanner: "✓ ยืนยันข้อมูลถูกต้องแล้ว ขอบคุณครับ — ปิดหน้าต่างนี้ได้เลย",
+    tapCorrectPosition: "แตะตำแหน่งที่ถูกต้องของคุณในรูป",
+    cancel: "ยกเลิก",
+    saving: "กำลังบันทึก...",
+    savePosition: "บันทึกตำแหน่งใหม่",
+    confirmCorrect: "✓ ข้อมูลถูกต้อง",
+    confirming: "กำลังยืนยัน...",
+    editNameCode: "✎ ชื่อ/รหัสผิด",
+    wrongPosition: "⌖ ตำแหน่งผิด",
+    reportedAlready: "แจ้งปัญหาแล้ว ✓",
+    reporting: "กำลังแจ้ง...",
+    notMyPhoto: "⚠ ไม่ใช่รูปของฉัน",
+    reportConfirmTitle: "แจ้งปัญหารูปนี้?",
+    reportConfirmBody: "แอดมินจะตรวจสอบให้ภายหลังครับ",
+    confirmReport: "ยืนยันแจ้งปัญหา",
+    savePositionError: (msg: string) => `บันทึกไม่สำเร็จ: ${msg}`,
+    reportError: (msg: string) => `แจ้งไม่สำเร็จ: ${msg}`,
+    confirmError: (msg: string) => `ยืนยันไม่สำเร็จ: ${msg}`,
+  },
+  en: {
+    groupPhoto: "Group photo",
+    noName: "(no name yet)",
+    yourPosition: (code: string, name: string) => (
+      <>
+        Your position: <span className="font-mono font-semibold">{code}</span> {name}
+      </>
+    ),
+    confirmedBanner: "✓ Confirmed correct, thank you — you can close this window now.",
+    tapCorrectPosition: "Tap your correct position in the photo",
+    cancel: "Cancel",
+    saving: "Saving...",
+    savePosition: "Save new position",
+    confirmCorrect: "✓ Correct",
+    confirming: "Confirming...",
+    editNameCode: "✎ Wrong name/code",
+    wrongPosition: "⌖ Wrong position",
+    reportedAlready: "Reported ✓",
+    reporting: "Reporting...",
+    notMyPhoto: "⚠ Not my photo",
+    reportConfirmTitle: "Report a problem with this photo?",
+    reportConfirmBody: "An admin will review this later.",
+    confirmReport: "Confirm report",
+    savePositionError: (msg: string) => `Failed to save: ${msg}`,
+    reportError: (msg: string) => `Failed to report: ${msg}`,
+    confirmError: (msg: string) => `Failed to confirm: ${msg}`,
+  },
+};
+
 export function PhotoViewClient({
   groupPhotoId,
   photoName,
@@ -43,6 +108,7 @@ export function PhotoViewClient({
   const [confirmError, setConfirmError] = useState<string | null>(null);
 
   const ownTag = localTags.find((t) => t.id === initialTagId) ?? null;
+  const T = isEnglishName(ownTag?.name ?? "") ? STRINGS.en : STRINGS.th;
 
   const displayTags = pendingPosition && initialTagId
     ? localTags.map((t) => (t.id === initialTagId ? { ...t, x: pendingPosition.x, y: pendingPosition.y } : t))
@@ -68,7 +134,7 @@ export function PhotoViewClient({
       setPendingPosition(null);
       setPlacing(false);
     } catch (err) {
-      setPositionError(`บันทึกไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`);
+      setPositionError(T.savePositionError(err instanceof Error ? err.message : "unknown error"));
     } finally {
       setSavingPosition(false);
     }
@@ -83,7 +149,7 @@ export function PhotoViewClient({
       await reportTagProblem(groupPhotoId, initialTagId);
       setReported(true);
     } catch (err) {
-      setReportError(`แจ้งไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`);
+      setReportError(T.reportError(err instanceof Error ? err.message : "unknown error"));
     } finally {
       setReporting(false);
     }
@@ -105,7 +171,7 @@ export function PhotoViewClient({
         }
       }, 1200);
     } catch (err) {
-      setConfirmError(`ยืนยันไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`);
+      setConfirmError(T.confirmError(err instanceof Error ? err.message : "unknown error"));
     } finally {
       setConfirming(false);
     }
@@ -117,32 +183,27 @@ export function PhotoViewClient({
         <div>
           <h1 className="whitespace-pre-wrap text-sm font-semibold leading-snug text-gray-900">{photoName}</h1>
           {ownTag ? (
-            <p className="text-xs text-gray-600">
-              ตำแหน่งของคุณ: <span className="font-mono font-semibold">{ownTag.code}</span>{" "}
-              {ownTag.name || "(ยังไม่มีชื่อ)"}
-            </p>
+            <p className="text-xs text-gray-600">{T.yourPosition(ownTag.code, ownTag.name || T.noName)}</p>
           ) : (
-            <p className="text-xs text-gray-600">รูปถ่ายหมู่</p>
+            <p className="text-xs text-gray-600">{T.groupPhoto}</p>
           )}
         </div>
 
         {confirmed && (
-          <div className="rounded-md bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
-            ✓ ยืนยันข้อมูลถูกต้องแล้ว ขอบคุณครับ — ปิดหน้าต่างนี้ได้เลย
-          </div>
+          <div className="rounded-md bg-green-50 px-3 py-2 text-sm font-medium text-green-700">{T.confirmedBanner}</div>
         )}
         {confirmError && <p className="text-xs text-red-600">{confirmError}</p>}
 
         {placing && (
           <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            <p className="font-medium">แตะตำแหน่งที่ถูกต้องของคุณในรูป</p>
+            <p className="font-medium">{T.tapCorrectPosition}</p>
             <div className="mt-2 flex items-center gap-2">
               <button
                 type="button"
                 onClick={cancelPlacing}
                 className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
               >
-                ยกเลิก
+                {T.cancel}
               </button>
               <button
                 type="button"
@@ -150,7 +211,7 @@ export function PhotoViewClient({
                 disabled={!pendingPosition || savingPosition}
                 className="rounded-md bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
               >
-                {savingPosition ? "กำลังบันทึก..." : "บันทึกตำแหน่งใหม่"}
+                {savingPosition ? T.saving : T.savePosition}
               </button>
             </div>
             {positionError && <p className="mt-1.5 text-red-600">{positionError}</p>}
@@ -183,14 +244,14 @@ export function PhotoViewClient({
               disabled={confirming}
               className={`rounded-md bg-green-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 ${editLiffUrl ? "" : "col-span-2"}`}
             >
-              {confirming ? "กำลังยืนยัน..." : "✓ ข้อมูลถูกต้อง"}
+              {confirming ? T.confirming : T.confirmCorrect}
             </button>
             {editLiffUrl && (
               <a
                 href={editLiffUrl}
                 className="rounded-md border border-gray-300 px-3 py-2.5 text-center text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
-                ✎ ชื่อ/รหัสผิด
+                {T.editNameCode}
               </a>
             )}
             <button
@@ -198,7 +259,7 @@ export function PhotoViewClient({
               onClick={startPlacing}
               className="rounded-md border border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
-              ⌖ ตำแหน่งผิด
+              {T.wrongPosition}
             </button>
             <button
               type="button"
@@ -206,7 +267,7 @@ export function PhotoViewClient({
               disabled={reported || reporting}
               className="rounded-md border border-red-300 px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
             >
-              {reported ? "แจ้งปัญหาแล้ว ✓" : reporting ? "กำลังแจ้ง..." : "⚠ ไม่ใช่รูปของฉัน"}
+              {reported ? T.reportedAlready : reporting ? T.reporting : T.notMyPhoto}
             </button>
           </div>
           {reportError && <p className="mt-2 text-xs text-red-600">{reportError}</p>}
@@ -219,22 +280,22 @@ export function PhotoViewClient({
           onClick={() => setShowReportConfirm(false)}
         >
           <div className="w-full max-w-xs rounded-lg bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-semibold text-gray-900">แจ้งปัญหารูปนี้?</p>
-            <p className="mt-1 text-xs text-gray-600">แอดมินจะตรวจสอบให้ภายหลังครับ</p>
+            <p className="text-sm font-semibold text-gray-900">{T.reportConfirmTitle}</p>
+            <p className="mt-1 text-xs text-gray-600">{T.reportConfirmBody}</p>
             <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setShowReportConfirm(false)}
                 className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
               >
-                ยกเลิก
+                {T.cancel}
               </button>
               <button
                 type="button"
                 onClick={handleReportConfirmed}
                 className="rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-700"
               >
-                ยืนยันแจ้งปัญหา
+                {T.confirmReport}
               </button>
             </div>
           </div>

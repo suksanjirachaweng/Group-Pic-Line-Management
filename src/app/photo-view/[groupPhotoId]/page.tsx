@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { buildLiffRegisterUrl } from "@/lib/liffUrl";
+import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { PhotoViewClient } from "./PhotoViewClient";
 
 /**
@@ -24,7 +25,26 @@ export default async function PhotoViewPage({
   });
   if (!photo) notFound();
 
-  const ownTag = tag ? photo.tags.find((t) => t.id === tag) : undefined;
+  let ownTag = tag ? photo.tags.find((t) => t.id === tag) : undefined;
+
+  // The tag id in the URL is a snapshot from whenever this link was generated/sent — if the
+  // registrant has since corrected their own group_photo_index in LINE, `ownTag` is now wherever
+  // they *used* to be tagged, not where they current belong. Re-resolve against their live code
+  // (rather than the tag's stored registrantId, which nothing keeps in sync in real time) so a
+  // months-old LINE message still lands on the right spot.
+  if (ownTag?.registrantId) {
+    const registrant = await prisma.registrant.findUnique({
+      where: { id: ownTag.registrantId },
+      select: { data: true },
+    });
+    const rawCode = (registrant?.data as Record<string, unknown> | null)?.group_photo_index;
+    const currentCode = typeof rawCode === "string" ? normalizeCode(rawCode) : "";
+    if (currentCode && currentCode !== ownTag.normalizedCode) {
+      const rematched = photo.tags.find((t) => t.normalizedCode === currentCode);
+      if (rematched) ownTag = rematched;
+    }
+  }
+
   const initialTagId = ownTag ? ownTag.id : null;
 
   // Resolves a link back to the graduate's own registration edit screen (for when the tagged

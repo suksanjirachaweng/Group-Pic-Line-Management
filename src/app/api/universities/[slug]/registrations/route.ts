@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 
 export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -18,18 +19,34 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
     orderBy: { registeredAt: "asc" },
   });
 
-  // A registrant's code can be tagged in more than one group photo (e.g. photographed with more
-  // than one faculty), so this is a one-to-many lookup, not a single match.
+  // Matched by each registrant's *current* group_photo_index, not by a tag's stored registrantId
+  // — that link is only ever refreshed when an admin re-opens the tagging page, so it goes stale
+  // the moment someone corrects their code in LINE after already being tagged. A registrant's code
+  // can also be tagged in more than one group photo (e.g. photographed with more than one
+  // faculty), so this is a one-to-many lookup, not a single match.
+  const codeToRegistrantId = new Map<string, string>();
+  for (const r of registrants) {
+    const data = (r.data ?? {}) as Record<string, unknown>;
+    const rawCode = data.group_photo_index;
+    if (typeof rawCode !== "string" || !rawCode.trim()) continue;
+    const normalizedCode = normalizeCode(rawCode);
+    if (normalizedCode) codeToRegistrantId.set(normalizedCode, r.id);
+  }
+
   const tags = await prisma.groupPhotoTag.findMany({
-    where: { registrantId: { in: registrants.map((r) => r.id) } },
+    where: {
+      normalizedCode: { in: [...codeToRegistrantId.keys()] },
+      groupPhoto: { universityId: university.id },
+    },
     include: { groupPhoto: { select: { id: true, name: true } } },
   });
   const taggedPhotosByRegistrant = new Map<string, { groupPhotoId: string; tagId: string; photoName: string }[]>();
   for (const t of tags) {
-    if (!t.registrantId) continue;
-    const list = taggedPhotosByRegistrant.get(t.registrantId) ?? [];
+    const registrantId = codeToRegistrantId.get(t.normalizedCode);
+    if (!registrantId) continue;
+    const list = taggedPhotosByRegistrant.get(registrantId) ?? [];
     list.push({ groupPhotoId: t.groupPhoto.id, tagId: t.id, photoName: t.groupPhoto.name });
-    taggedPhotosByRegistrant.set(t.registrantId, list);
+    taggedPhotosByRegistrant.set(registrantId, list);
   }
 
   return NextResponse.json({
