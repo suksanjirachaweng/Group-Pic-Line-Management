@@ -81,7 +81,7 @@ export function PhotoViewClient({
     <div className="flex h-screen flex-col">
       <div className="space-y-2 border-b border-gray-200 bg-white px-4 py-3">
         <div>
-          <h1 className="text-sm font-semibold text-gray-900">{photoName}</h1>
+          <h1 className="whitespace-pre-wrap text-sm font-semibold leading-snug text-gray-900">{photoName}</h1>
           {ownTag ? (
             <p className="text-xs text-gray-600">
               ตำแหน่งของคุณ: <span className="font-mono font-semibold">{ownTag.code}</span>{" "}

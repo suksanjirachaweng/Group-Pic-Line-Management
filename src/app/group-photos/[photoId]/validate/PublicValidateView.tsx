@@ -207,61 +207,69 @@ export function PublicValidateView({
     <div className="flex h-dvh flex-col">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-gray-200 bg-white px-3 py-2 sm:px-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto" />
-        {editingTitle ? (
-          <div className="flex items-center gap-1.5">
-            <input
-              autoFocus
-              value={titleValue}
-              onChange={(e) => setTitleValue(e.target.value)}
-              placeholder={photoName}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void saveTitle();
-                } else if (e.key === "Escape") {
-                  setEditingTitle(false);
-                }
-              }}
-              className="rounded-md border border-gray-300 px-2 py-1 text-sm"
-            />
-            <button
-              type="button"
-              disabled={titleSaving}
-              onClick={saveTitle}
-              className="rounded-md bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {titleSaving ? "..." : "บันทึก"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditingTitle(false)}
-              className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
-            >
-              ยกเลิก
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5">
-            <h1 className="text-sm font-semibold text-gray-900">{displayTitle} — ตรวจสอบความถูกต้อง</h1>
-            {currentTitle?.trim() && currentTitle.trim() !== photoName && (
-              <span className="text-xs text-gray-400">(คณะ: {photoName})</span>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setTitleValue(currentTitle ?? "");
-                setEditingTitle(true);
-              }}
-              title="แก้ไขหัวข้อรูป"
-              className="text-gray-400 hover:text-gray-600"
-            >
-              ✎
-            </button>
-          </div>
-        )}
-        <span className="text-sm text-gray-600">แท็กแล้ว {tags.length} คน</span>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
+        <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto shrink-0" />
+        <div className="flex min-w-0 flex-1 justify-center">
+          {editingTitle ? (
+            <div className="flex w-full max-w-xl flex-col items-center gap-1.5">
+              <textarea
+                autoFocus
+                rows={3}
+                value={titleValue}
+                onChange={(e) => setTitleValue(e.target.value)}
+                placeholder={photoName}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    void saveTitle();
+                  } else if (e.key === "Escape") {
+                    setEditingTitle(false);
+                  }
+                }}
+                className="w-full resize-none rounded-md border border-gray-300 px-2.5 py-1.5 text-center text-sm leading-snug"
+              />
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={titleSaving}
+                  onClick={saveTitle}
+                  className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {titleSaving ? "..." : "บันทึก"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingTitle(false)}
+                  className="rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                >
+                  ยกเลิก
+                </button>
+                <span className="text-xs text-gray-400">Ctrl/Cmd+Enter = บันทึก</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-0.5 text-center">
+              <div className="flex items-center gap-1.5">
+                <h1 className="whitespace-pre-wrap text-sm font-semibold leading-snug text-gray-900">{displayTitle}</h1>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTitleValue(currentTitle ?? "");
+                    setEditingTitle(true);
+                  }}
+                  title="แก้ไขหัวข้อรูป"
+                  className="shrink-0 text-gray-400 hover:text-gray-600"
+                >
+                  ✎
+                </button>
+              </div>
+              {currentTitle?.trim() && currentTitle.trim() !== photoName && (
+                <span className="text-xs text-gray-400">(คณะ: {photoName})</span>
+              )}
+              <span className="text-xs text-gray-500">ตรวจสอบความถูกต้อง — แท็กแล้ว {tags.length} คน</span>
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
         </div>
       </div>

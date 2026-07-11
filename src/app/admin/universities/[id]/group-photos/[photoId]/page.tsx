@@ -65,13 +65,19 @@ export default async function GroupPhotoTaggingPage({
 
   return (
     <div className="flex h-screen flex-col">
-      <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-2.5">
-        <Link href={`/admin/universities/${universityId}/group-photos`} className="text-sm text-gray-500 hover:text-gray-700">
+      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-2.5">
+        <Link
+          href={`/admin/universities/${universityId}/group-photos`}
+          className="shrink-0 text-sm text-gray-500 hover:text-gray-700"
+        >
           ← กลับ
         </Link>
-        <PhotoTitleEditor universityId={universityId} groupPhotoId={photo.id} name={photo.name} title={photo.title} />
-        <PhotoStatusSelector universityId={universityId} groupPhotoId={photo.id} status={photo.status} />
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 justify-center">
+          <PhotoTitleEditor universityId={universityId} groupPhotoId={photo.id} name={photo.name} title={photo.title} />
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <PhotoStatusSelector universityId={universityId} groupPhotoId={photo.id} status={photo.status} />
+          <div className="h-5 w-px bg-gray-200" />
           <UpdatePhotoImageButton universityId={universityId} groupPhotoId={photo.id} />
           <ImportMarkFileButton universityId={universityId} groupPhotoId={photo.id} />
           <div className="h-5 w-px bg-gray-200" />
