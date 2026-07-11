@@ -65,7 +65,6 @@ export function ReviewCanvas({
   placementTagId,
   onPlaceTag,
   grayUnselected = false,
-  labelOnlySelected = false,
 }: {
   imageUrl: string;
   imageWidth: number;
@@ -105,12 +104,6 @@ export function ReviewCanvas({
    * text still needs to stay legible. Off by default so photo-view/photo-review keep their
    * per-row coloring. */
   grayUnselected?: boolean;
-  /** Only the selected tag gets a text label — every other tag is a bare pin, so nothing ever
-   * overlaps regardless of how densely packed the photo is. For the public /validate page, where
-   * dozens/hundreds of rotated ribbon labels at once was unreadable clutter for a first-time
-   * visitor; distinct from `soloLabelTagId` (a fixed tag) since this follows whatever the viewer
-   * currently has selected. */
-  labelOnlySelected?: boolean;
 }) {
   const [loaded, setLoaded] = useState(false);
   const [scale, setScale] = useState(0.25);
@@ -502,7 +495,7 @@ export function ReviewCanvas({
               const isDimmed = selectedTagId !== null && !isSelected;
               const interactive = editable || !!onDoubleClickTag;
               const isSolo = soloLabelTagId != null && t.id === soloLabelTagId;
-              const hideLabel = (soloLabelTagId != null && !isSolo) || (labelOnlySelected && !isSelected);
+              const hideLabel = soloLabelTagId != null && !isSolo;
               const grayed = hideLabel || (grayUnselected && !isSelected);
               const color = grayed ? GRAY_MARKER_COLOR : colorForRow(t.row);
               return (

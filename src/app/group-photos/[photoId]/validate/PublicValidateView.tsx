@@ -441,7 +441,6 @@ export function PublicValidateView({
             }}
             readOnly
             grayUnselected
-            labelOnlySelected
           />
         </div>
       </div>
