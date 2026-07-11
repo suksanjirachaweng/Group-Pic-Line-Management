@@ -408,10 +408,15 @@ export function PublicValidateView({
         <button
           type="button"
           onClick={() => setSidebarOpen((v) => !v)}
-          title={sidebarOpen ? "ย่อแผงรายชื่อ" : "แสดงแผงรายชื่อ"}
-          className="hidden w-5 shrink-0 items-center justify-center border-r border-gray-200 bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-700 md:flex"
+          title={sidebarOpen ? "ซ่อนรายชื่อ" : "แสดงรายชื่อ"}
+          className="hidden shrink-0 flex-col items-center justify-center gap-2 border-r border-gray-200 bg-gray-50 px-1.5 py-3 text-gray-500 hover:bg-gray-100 hover:text-gray-700 md:flex"
         >
-          {sidebarOpen ? "‹" : "›"}
+          <span aria-hidden className="text-base leading-none">
+            {sidebarOpen ? "‹" : "›"}
+          </span>
+          <span className="text-[11px] font-medium tracking-wide [writing-mode:vertical-rl]">
+            {sidebarOpen ? "ซ่อนรายชื่อ" : "แสดงรายชื่อ"}
+          </span>
         </button>
         <button
           type="button"
