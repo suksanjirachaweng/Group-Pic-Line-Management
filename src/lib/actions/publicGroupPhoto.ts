@@ -135,3 +135,23 @@ export async function reportTagProblem(groupPhotoId: string, tagId: string): Pro
 
   revalidatePath(`/photo-view/${groupPhotoId}`);
 }
+
+/**
+ * The happy-path counterpart to reportTagProblem — the graduate confirms their name/code/position
+ * are all correct. Flips the linked Registrant to CONFIRMED so admins can see who's already
+ * verified their own placement without opening every photo; a no-op on the Registrant when the tag
+ * isn't matched to one (nothing to flip).
+ */
+export async function confirmOwnTag(groupPhotoId: string, tagId: string): Promise<void> {
+  const tag = await prisma.groupPhotoTag.findUnique({
+    where: { id: tagId },
+    select: { groupPhotoId: true, registrantId: true },
+  });
+  if (!tag || tag.groupPhotoId !== groupPhotoId) throw new Error("ไม่พบข้อมูลนี้ในรูปนี้");
+
+  if (tag.registrantId) {
+    await prisma.registrant.update({ where: { id: tag.registrantId }, data: { status: RegistrantStatus.CONFIRMED } });
+  }
+
+  revalidatePath(`/photo-view/${groupPhotoId}`);
+}
