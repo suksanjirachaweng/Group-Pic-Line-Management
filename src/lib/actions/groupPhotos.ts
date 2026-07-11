@@ -8,7 +8,7 @@ import { requireUniversityAccess } from "@/lib/authz";
 import { getAppBaseUrl } from "@/lib/appUrl";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { interpolateTemplate } from "@/lib/rules/evaluate";
-import { TagMatchSource } from "@/generated/prisma/enums";
+import { TagMatchSource, GroupPhotoStatus, TagHistorySource } from "@/generated/prisma/enums";
 
 export async function createGroupPhoto(
   universityId: string,
@@ -163,7 +163,11 @@ export async function saveGroupPhotoTag(
       where: { groupPhotoId, row: input.row, order: { gte: input.order } },
       data: { order: { increment: 1 } },
     });
-    return tx.groupPhotoTag.create({ data });
+    const created = await tx.groupPhotoTag.create({ data });
+    await tx.groupPhotoTagHistory.create({
+      data: { tagId: created.id, code: created.code, name: created.name, row: created.row, order: created.order, source: "ADMIN" },
+    });
+    return created;
   });
 
   revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
@@ -174,6 +178,134 @@ export async function deleteGroupPhotoTag(universityId: string, groupPhotoId: st
   await requireUniversityAccess(universityId);
   await prisma.groupPhotoTag.delete({ where: { id: tagId, groupPhotoId } });
   revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
+}
+
+/**
+ * Sets the display heading shown on the tagging/validate/photo-view pages — deliberately separate
+ * from `name` (which stays the export's "คณะ" column verbatim) since a photo's public-facing title
+ * doesn't always match that raw column value. `null`/empty falls back to `name` wherever it's shown.
+ */
+export async function updateGroupPhotoTitle(
+  universityId: string,
+  groupPhotoId: string,
+  title: string | null,
+): Promise<void> {
+  await requireUniversityAccess(universityId);
+  await prisma.groupPhoto.update({ where: { id: groupPhotoId, universityId }, data: { title } });
+  revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
+}
+
+/**
+ * Direct drag-to-reposition on the admin canvas — a plain click selects the nearest tag, dragging
+ * it (without holding Space, which is reserved for panning) moves just its x/y. Logs to
+ * GroupPhotoTagHistory like every other position/data change so the audit trail stays complete.
+ */
+export async function moveGroupPhotoTag(
+  universityId: string,
+  groupPhotoId: string,
+  tagId: string,
+  x: number,
+  y: number,
+): Promise<void> {
+  await requireUniversityAccess(universityId);
+  const tag = await prisma.groupPhotoTag.findUnique({
+    where: { id: tagId, groupPhotoId },
+    select: { code: true, name: true, row: true, order: true },
+  });
+  if (!tag) throw new Error("ไม่พบข้อมูลนี้ในรูปนี้");
+
+  await prisma.$transaction([
+    prisma.groupPhotoTag.update({ where: { id: tagId }, data: { x, y } }),
+    prisma.groupPhotoTagHistory.create({
+      data: { tagId, code: tag.code, name: tag.name, row: tag.row, order: tag.order, source: "ADMIN" },
+    }),
+  ]);
+  revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
+}
+
+export async function updateGroupPhotoStatus(
+  universityId: string,
+  groupPhotoId: string,
+  status: GroupPhotoStatus,
+): Promise<void> {
+  await requireUniversityAccess(universityId);
+  await prisma.groupPhoto.update({ where: { id: groupPhotoId, universityId }, data: { status } });
+  revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
+  revalidatePath(`/admin/universities/${universityId}/group-photos`);
+}
+
+export type TagHistoryEntry = {
+  id: string;
+  code: string;
+  name: string;
+  row: number;
+  order: number;
+  source: TagHistorySource;
+  createdAt: string;
+};
+
+export async function getGroupPhotoTagHistory(universityId: string, tagId: string): Promise<TagHistoryEntry[]> {
+  await requireUniversityAccess(universityId);
+  const rows = await prisma.groupPhotoTagHistory.findMany({
+    where: { tag: { groupPhoto: { universityId } }, tagId },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+}
+
+/**
+ * Re-checks every tag in a photo against the current registrant/legacy-reference data and
+ * silently applies any better match it finds — e.g. someone fixes their group_photo_index in
+ * LINE after they were already tagged, and the tag should pick that up without an admin having
+ * to reopen and re-save it by hand. Only runs while the photo isn't marked DONE yet (marking it
+ * done is the explicit "stop auto-touching this" signal); called once per page load from the
+ * tagging page's server component, not on any interval.
+ */
+export async function autoSyncGroupPhotoTags(universityId: string, groupPhotoId: string): Promise<void> {
+  await requireUniversityAccess(universityId);
+
+  const photo = await prisma.groupPhoto.findUnique({ where: { id: groupPhotoId, universityId }, select: { status: true } });
+  if (!photo || photo.status === "DONE") return;
+
+  const tags = await prisma.groupPhotoTag.findMany({ where: { groupPhotoId } });
+  if (tags.length === 0) return;
+
+  const [registrantRows, referenceRows] = await Promise.all([
+    prisma.registrant.findMany({ where: { universityId }, select: { id: true, displayName: true, data: true } }),
+    prisma.groupPhotoLegacyReference.findMany({ where: { universityId }, select: { name: true, normalizedCode: true } }),
+  ]);
+
+  const registrantByCode = new Map<string, { id: string; name: string }>();
+  for (const r of registrantRows) {
+    const data = (r.data ?? {}) as Record<string, unknown>;
+    const rawCode = data.group_photo_index;
+    if (typeof rawCode !== "string" || !rawCode.trim()) continue;
+    const normalized = normalizeCode(rawCode);
+    if (!normalized) continue;
+    registrantByCode.set(normalized, { id: r.id, name: r.displayName ?? "(ไม่มีชื่อ)" });
+  }
+  const referenceByCode = new Map(referenceRows.map((r) => [r.normalizedCode, r]));
+
+  for (const tag of tags) {
+    if (!tag.normalizedCode) continue;
+    const reg = registrantByCode.get(tag.normalizedCode);
+    const ref = !reg ? referenceByCode.get(tag.normalizedCode) : undefined;
+
+    let next: { name: string; registrantId: string | null; matchSource: TagMatchSource } | null = null;
+    if (reg && (tag.registrantId !== reg.id || tag.name !== reg.name || tag.matchSource !== TagMatchSource.REGISTRANT)) {
+      next = { name: reg.name, registrantId: reg.id, matchSource: TagMatchSource.REGISTRANT };
+    } else if (ref && !reg && (tag.name !== ref.name || tag.matchSource !== TagMatchSource.LEGACY_REFERENCE || tag.registrantId)) {
+      next = { name: ref.name, registrantId: null, matchSource: TagMatchSource.LEGACY_REFERENCE };
+    }
+    if (!next) continue;
+
+    await prisma.$transaction([
+      prisma.groupPhotoTag.update({ where: { id: tag.id }, data: next }),
+      prisma.groupPhotoTagHistory.create({
+        data: { tagId: tag.id, code: tag.code, name: next.name, row: tag.row, order: tag.order, source: "AUTO_SYNC" },
+      }),
+    ]);
+  }
 }
 
 export async function createGroupPhotoShareLink(

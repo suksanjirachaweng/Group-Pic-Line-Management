@@ -1,5 +1,48 @@
 export type TagDisplayField = "order" | "code" | "name" | "line";
 
+/**
+ * A pin/teardrop marker whose TIP (not its bounding box) sits exactly on the tagged (x,y) point —
+ * a plain dot only communicates "somewhere around here," which gets ambiguous once markers are
+ * small or crowded together. Must be rendered inside a wrapper positioned at that exact point
+ * with no centering transform (unlike a symmetric dot, a pin's own box isn't centered on the
+ * point it's marking) — see the `-45deg` rotation anchored at the box's own bottom-left corner,
+ * which is what keeps that corner fixed exactly at the wrapper's origin while the rest of the
+ * shape swings into place. Shared by the admin tagging canvas and the read-only review canvas so
+ * every page draws marks the same way.
+ */
+export function TagMarker({
+  color,
+  size = 14,
+  ring,
+  pulse,
+  title,
+}: {
+  color: string;
+  size?: number;
+  ring?: string;
+  pulse?: boolean;
+  title?: string;
+}) {
+  return (
+    <div
+      className={`absolute ${pulse ? "animate-pulse" : ""}`}
+      style={{
+        left: 0,
+        top: -size,
+        width: size,
+        height: size,
+        backgroundColor: color,
+        border: "2px solid white",
+        borderRadius: "50% 50% 50% 0",
+        transform: "rotate(-45deg)",
+        transformOrigin: "0% 100%",
+        boxShadow: ring,
+      }}
+      title={title}
+    />
+  );
+}
+
 export const ALL_TAG_DISPLAY_FIELDS: { field: TagDisplayField; label: string }[] = [
   { field: "order", label: "ลำดับ" },
   { field: "code", label: "รหัส" },

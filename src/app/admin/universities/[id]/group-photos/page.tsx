@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
-import { validateTags } from "@/lib/groupPhoto/validateTags";
+import type { GroupPhotoStatus } from "@/generated/prisma/enums";
 import { LegacyReferenceUploadForm } from "./LegacyReferenceUploadForm";
 import { UploadGroupPhotoButton } from "./UploadGroupPhotoButton";
 import { DeleteGroupPhotoButton } from "./DeleteGroupPhotoButton";
@@ -14,15 +14,13 @@ import { SharePhotoLinksButton } from "./SharePhotoLinksButton";
 const PAGE_SIZE = 50;
 const PHOTO_SELECT_FORM_ID = "photo-select-form";
 
-type PhotoStatus = "NOT_STARTED" | "NEEDS_EDIT" | "DONE";
-
-const PHOTO_STATUS_LABEL: Record<PhotoStatus, string> = {
+const PHOTO_STATUS_LABEL: Record<GroupPhotoStatus, string> = {
   NOT_STARTED: "เริ่มดำเนินการ",
   NEEDS_EDIT: "เปิดให้แก้ไข",
   DONE: "แก้ไขเสร็จแล้ว",
 };
 
-const PHOTO_STATUS_CLASS: Record<PhotoStatus, string> = {
+const PHOTO_STATUS_CLASS: Record<GroupPhotoStatus, string> = {
   NOT_STARTED: "bg-gray-100 text-gray-500",
   NEEDS_EDIT: "bg-amber-100 text-amber-700",
   DONE: "bg-green-100 text-green-700",
@@ -273,13 +271,7 @@ async function PhotosTab({ universityId }: { universityId: string }) {
   const photos = await prisma.groupPhoto.findMany({
     where: { universityId },
     orderBy: { sortOrder: "asc" },
-    include: { tags: { select: { id: true, normalizedCode: true, matchSource: true } } },
-  });
-
-  const photosWithStatus = photos.map((p) => {
-    const status: PhotoStatus =
-      p.tags.length === 0 ? "NOT_STARTED" : validateTags(p.tags).length > 0 ? "NEEDS_EDIT" : "DONE";
-    return { ...p, status };
+    include: { _count: { select: { tags: true } } },
   });
 
   return (
@@ -292,7 +284,7 @@ async function PhotosTab({ universityId }: { universityId: string }) {
         <UploadGroupPhotoButton universityId={universityId} />
       </div>
 
-      {photosWithStatus.length === 0 ? (
+      {photos.length === 0 ? (
         <p className="text-sm text-gray-400">ยังไม่มีรูปหมู่ — อัปโหลดรูปแรกได้เลย</p>
       ) : (
         <form id={PHOTO_SELECT_FORM_ID}>
@@ -301,7 +293,7 @@ async function PhotosTab({ universityId }: { universityId: string }) {
               <PhotoSelectAll formId={PHOTO_SELECT_FORM_ID} />
               <span className="text-xs text-gray-500">เลือกทั้งหมด</span>
             </li>
-            {photosWithStatus.map((p) => (
+            {photos.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <input type="checkbox" name="photoIds" value={p.id} aria-label={`เลือก ${p.name}`} />
@@ -316,7 +308,7 @@ async function PhotosTab({ universityId }: { universityId: string }) {
                   </span>
                 </div>
                 <div className="flex flex-none items-center gap-3">
-                  <span className="text-xs text-gray-400">{p.tags.length} คน</span>
+                  <span className="text-xs text-gray-400">{p._count.tags} คน</span>
                   <DeleteGroupPhotoButton universityId={universityId} groupPhotoId={p.id} photoName={p.name} />
                 </div>
               </li>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { saveGroupPhotoTag, deleteGroupPhotoTag, bulkAdjustTagPositions } from "@/lib/actions/groupPhotos";
+import { saveGroupPhotoTag, deleteGroupPhotoTag, bulkAdjustTagPositions, moveGroupPhotoTag } from "@/lib/actions/groupPhotos";
 import { ocrCardCrop } from "@/lib/actions/ocr";
 import { TagMatchSource } from "@/generated/prisma/enums";
 import { clientPointToFullRes, fullResToFraction, extractCrop, pixelDistance } from "./coordinateMapping";
@@ -9,7 +9,7 @@ import { useFaceDetection, type FaceCandidate } from "./useFaceDetection";
 import { TagEditDialog, type DialogInitial, type RegistrantLookup, type ReferenceLookup, type SavePayload } from "./TagEditDialog";
 import { validateTags, problemTagIds } from "@/lib/groupPhoto/validateTags";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
-import { TagLabel, TagDisplayFieldPicker, type TagDisplayField } from "@/lib/groupPhoto/TagLabel";
+import { TagLabel, TagMarker, TagDisplayFieldPicker, type TagDisplayField } from "@/lib/groupPhoto/TagLabel";
 import { colorForRow } from "@/lib/groupPhoto/rowColor";
 
 const DISPLAY_MAX_WIDTH = 3500;
@@ -65,6 +65,7 @@ export type TagRecord = {
   y: number;
   registrantId: string | null;
   matchSource: TagMatchSource;
+  reportedProblem: boolean;
 };
 
 /**
@@ -149,6 +150,8 @@ export function TagCanvas({
   const [bulkSaving, setBulkSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchIndex, setSearchIndex] = useState(-1);
+  const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
+  const [dragPreview, setDragPreview] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const fullBitmapRef = useRef<ImageBitmap | null>(null);
@@ -169,6 +172,7 @@ export function TagCanvas({
 
   const problems = useMemo(() => validateTags(tags), [tags]);
   const problemIds = useMemo(() => problemTagIds(problems), [problems]);
+  const reportedCount = useMemo(() => tags.filter((t) => t.reportedProblem).length, [tags]);
 
   // Search by code or name/surname — cycles through matches on repeated search, jumping the
   // viewport to each one in turn (Ctrl-F-style "find next"), which matters once a photo has
@@ -337,6 +341,7 @@ export function TagCanvas({
   }
 
   async function openNewTagDialog(x: number, y: number, precomputedCode?: string | null) {
+    setSelectedTagId(null);
     const { row, order } = suggestRowOrder(x, y);
     setDialogInitial({ code: precomputedCode ?? "", name: "", row, order, x, y, registrantId: null, matchSource: TagMatchSource.MANUAL });
 
@@ -379,14 +384,46 @@ export function TagCanvas({
     };
   }, []);
 
+  // Shared nearest-tag lookup, used by both double-click-to-edit and plain-click-to-select/drag —
+  // getBoundingClientRect() already reflects the current CSS pan/zoom transform, so this ratio
+  // converts a fixed on-screen click radius into full-res pixels correctly at any zoom level,
+  // rather than tracking the `scale` state separately.
+  function findNearestTagWithinThreshold(clientX: number, clientY: number): TagRecord | null {
+    const canvas = displayCanvasRef.current;
+    if (!canvas || tags.length === 0) return null;
+    const { x, y } = clientPointToFullRes(clientX, clientY, canvas, imageWidth, imageHeight);
+    let nearest = tags[0];
+    let best = pixelDistance(x, y, nearest.x, nearest.y);
+    for (const t of tags) {
+      const d = pixelDistance(x, y, t.x, t.y);
+      if (d < best) {
+        best = d;
+        nearest = t;
+      }
+    }
+    const rect = canvas.getBoundingClientRect();
+    const maxDistance = DOUBLE_CLICK_MAX_SCREEN_PX * (imageWidth / rect.width);
+    return best <= maxDistance ? nearest : null;
+  }
+
   function handleCanvasClick(e: ReactMouseEvent<HTMLCanvasElement>) {
     // The browser still fires a native "click" on mouseup even after a drag pan (same element for
     // mousedown/mouseup) — swallow that one click rather than opening a new-tag dialog. Also
     // swallow plain clicks while Space is held (Photoshop's Hand tool doesn't add anything either),
-    // while bulk-adjusting (that's a dedicated mode, not a moment to add a new person), or when
-    // Shift isn't held — matches the legacy desktop tool's Shift+click = add new point.
-    if (draggedRef.current || spacePressed || bulkAdjustMode || !e.shiftKey) {
+    // or while bulk-adjusting (that's a dedicated mode, not a moment to add a new person).
+    if (draggedRef.current || spacePressed || bulkAdjustMode) {
       draggedRef.current = false;
+      return;
+    }
+    // A plain click/drag that started on an existing tag was already handled entirely in
+    // handleMouseDown/handleMouseUp (select or reposition) — swallow the click that inevitably
+    // follows so it doesn't also fall through to the deselect/add-new logic below.
+    if (tagInteractedRef.current) {
+      tagInteractedRef.current = false;
+      return;
+    }
+    if (!e.shiftKey) {
+      setSelectedTagId(null);
       return;
     }
     const canvas = displayCanvasRef.current;
@@ -405,24 +442,10 @@ export function TagCanvas({
       clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
     }
-    const canvas = displayCanvasRef.current;
-    if (!canvas || tags.length === 0 || bulkAdjustMode) return;
-    const { x, y } = clientPointToFullRes(e.clientX, e.clientY, canvas, imageWidth, imageHeight);
-    let nearest = tags[0];
-    let best = pixelDistance(x, y, nearest.x, nearest.y);
-    for (const t of tags) {
-      const d = pixelDistance(x, y, t.x, t.y);
-      if (d < best) {
-        best = d;
-        nearest = t;
-      }
-    }
-    // getBoundingClientRect() already reflects the current CSS pan/zoom transform, so this ratio
-    // converts a fixed on-screen click radius into full-res pixels correctly at any zoom level —
-    // same trick clientPointToFullRes uses, rather than tracking the `scale` state separately.
-    const rect = canvas.getBoundingClientRect();
-    const maxDistance = DOUBLE_CLICK_MAX_SCREEN_PX * (imageWidth / rect.width);
-    if (best > maxDistance) return;
+    if (bulkAdjustMode) return;
+    const nearest = findNearestTagWithinThreshold(e.clientX, e.clientY);
+    if (!nearest) return;
+    setSelectedTagId(null);
     setDialogInitial(nearest);
   }
 
@@ -452,7 +475,10 @@ export function TagCanvas({
         const id = dialogInitial.id;
         return shifted.map((t) => (t.id === id ? { ...t, ...input, normalizedCode } : t));
       }
-      return [...shifted, { id: result.id, x: dialogInitial.x, y: dialogInitial.y, ...input, normalizedCode }];
+      return [
+        ...shifted,
+        { id: result.id, x: dialogInitial.x, y: dialogInitial.y, ...input, normalizedCode, reportedProblem: false },
+      ];
     });
     setDialogInitial(null);
   }
@@ -528,18 +554,66 @@ export function TagCanvas({
 
   const draggingRef = useRef<{ x: number; y: number } | null>(null);
   const draggedRef = useRef(false);
+  // A plain mousedown that lands on an existing tag starts a "select or drag" gesture: released
+  // without moving = select that point (matches the legacy tool's "click = select"); released
+  // after moving = the point follows the cursor and its new x/y is saved. Space+drag still pans
+  // the whole canvas — this only engages for a plain, unmodified left mousedown on a tag.
+  const draggingTagRef = useRef<string | null>(null);
+  const tagInteractedRef = useRef(false);
+  const dragMovedRef = useRef(false);
+
   function handleMouseDown(e: ReactMouseEvent) {
-    if (!spacePressed && e.button !== 1) return;
-    draggingRef.current = { x: e.clientX - tx, y: e.clientY - ty };
+    if (spacePressed || e.button === 1) {
+      draggingRef.current = { x: e.clientX - tx, y: e.clientY - ty };
+      return;
+    }
+    if (e.button !== 0 || bulkAdjustMode || e.shiftKey) return;
+    const nearest = findNearestTagWithinThreshold(e.clientX, e.clientY);
+    if (nearest) {
+      draggingTagRef.current = nearest.id;
+      tagInteractedRef.current = true;
+      dragMovedRef.current = false;
+    }
   }
   function handleMouseMove(e: ReactMouseEvent) {
-    if (!draggingRef.current) return;
-    draggedRef.current = true;
-    setTx(e.clientX - draggingRef.current.x);
-    setTy(e.clientY - draggingRef.current.y);
+    if (draggingRef.current) {
+      draggedRef.current = true;
+      setTx(e.clientX - draggingRef.current.x);
+      setTy(e.clientY - draggingRef.current.y);
+      return;
+    }
+    if (draggingTagRef.current) {
+      const canvas = displayCanvasRef.current;
+      if (!canvas) return;
+      dragMovedRef.current = true;
+      const { x, y } = clientPointToFullRes(e.clientX, e.clientY, canvas, imageWidth, imageHeight);
+      setDragPreview({ id: draggingTagRef.current, x, y });
+    }
   }
   function handleMouseUp() {
     draggingRef.current = null;
+    const tagId = draggingTagRef.current;
+    if (!tagId) return;
+    draggingTagRef.current = null;
+    if (!dragMovedRef.current) {
+      setSelectedTagId(tagId);
+      dragMovedRef.current = false;
+      return;
+    }
+    dragMovedRef.current = false;
+    setDragPreview((preview) => {
+      if (preview && preview.id === tagId) {
+        const { x, y } = preview;
+        const original = tags.find((t) => t.id === tagId);
+        setTags((prev) => prev.map((t) => (t.id === tagId ? { ...t, x, y } : t)));
+        moveGroupPhotoTag(universityId, groupPhotoId, tagId, x, y).catch((err) => {
+          window.alert(`ย้ายตำแหน่งไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`);
+          if (original) setTags((prev) => prev.map((t) => (t.id === tagId ? original : t)));
+        });
+      }
+      return null;
+    });
+    setSelectedTagId(tagId);
   }
 
   return (
@@ -548,6 +622,11 @@ export function TagCanvas({
         <span className="text-gray-600">แท็กแล้ว {tags.length} คน</span>
         {problems.length > 0 && (
           <span className="rounded bg-red-50 px-2 py-0.5 font-medium text-red-700">{problems.length} ปัญหา</span>
+        )}
+        {reportedCount > 0 && (
+          <span className="rounded bg-orange-50 px-2 py-0.5 font-medium text-orange-700">
+            {reportedCount} คนแจ้งปัญหา
+          </span>
         )}
 
         <div className="mx-1 h-5 w-px bg-gray-200" />
@@ -650,7 +729,7 @@ export function TagCanvas({
         </button>
 
         <span className="ml-auto hidden text-gray-400 lg:inline">
-          Space+ลาก = เลื่อน, Ctrl +/- = ซูม, Shift+คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
+          คลิก = เลือกจุด, ลาก = ย้ายตำแหน่ง, Space+ลาก = เลื่อนภาพ, Ctrl +/- = ซูม, Shift+คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
         </span>
       </div>
 
@@ -680,37 +759,41 @@ export function TagCanvas({
                     x2={seg.x2}
                     y2={seg.y2}
                     stroke={seg.color}
-                    strokeWidth={0.45}
+                    strokeWidth={0.3}
                     strokeLinecap="round"
                   />
                 ))}
               </svg>
             )}
             {tags.map((t) => {
-              const p = previewPoint(t);
+              const overridden = dragPreview && dragPreview.id === t.id ? { ...t, x: dragPreview.x, y: dragPreview.y } : t;
+              const p = previewPoint(overridden);
               const { xFrac, yFrac } = fullResToFraction(p.x, p.y, imageWidth, imageHeight);
               const isProblem = problemIds.has(t.id);
               const isHighlighted = t.id === highlightedTagId;
+              const isSelected = t.id === selectedTagId;
               const color = colorForRow(t.row);
               return (
                 <div
                   key={t.id}
-                  className="absolute -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%`, zIndex: isHighlighted ? 10 : undefined }}
+                  className="absolute"
+                  style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%`, zIndex: isHighlighted || isSelected ? 10 : undefined }}
                 >
-                  <div
-                    className="rounded-full border-2 border-white"
-                    style={{
-                      width: isHighlighted ? 18 : 12,
-                      height: isHighlighted ? 18 : 12,
-                      backgroundColor: color,
-                      boxShadow: isHighlighted
+                  <TagMarker
+                    color={color}
+                    size={isHighlighted ? 20 : isSelected ? 18 : 14}
+                    ring={
+                      isHighlighted
                         ? "0 0 0 4px #6366f1"
-                        : isProblem
-                          ? "0 0 0 2px #ef4444"
-                          : undefined,
-                    }}
-                    title={`${t.code} — ${t.name}`}
+                        : isSelected
+                          ? "0 0 0 3px #facc15"
+                          : t.reportedProblem
+                            ? "0 0 0 2px #f97316"
+                            : isProblem
+                              ? "0 0 0 2px #ef4444"
+                              : undefined
+                    }
+                    title={t.reportedProblem ? `${t.code} — ${t.name} (บัณฑิตแจ้งปัญหา)` : `${t.code} — ${t.name}`}
                   />
                   <TagLabel order={t.order} code={t.code} name={t.name} color={color} fields={displayFields} angle={labelAngle} />
                 </div>
@@ -857,6 +940,7 @@ export function TagCanvas({
         open={!!dialogInitial}
         initial={dialogInitial}
         ocrLoading={ocrLoading}
+        universityId={universityId}
         registrantByCode={registrantByCode}
         referenceByCode={referenceByCode}
         onSave={handleSave}

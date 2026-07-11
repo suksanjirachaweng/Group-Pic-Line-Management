@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { TagMatchSource, LegacyReferenceSource } from "@/generated/prisma/enums";
+import { getGroupPhotoTagHistory, type TagHistoryEntry } from "@/lib/actions/groupPhotos";
 
 export type RegistrantLookup = { id: string; name: string; normalizedCode: string; hasLine: boolean };
 export type ReferenceLookup = { name: string; normalizedCode: string; source: LegacyReferenceSource };
@@ -27,10 +28,17 @@ export type SavePayload = {
   matchSource: TagMatchSource;
 };
 
+const HISTORY_SOURCE_LABEL: Record<TagHistoryEntry["source"], string> = {
+  ADMIN: "แก้ไขโดยแอดมิน",
+  AUTO_SYNC: "อัปเดตอัตโนมัติ",
+  PUBLIC_LINK: "แก้ไขผ่านลิงก์แชร์",
+};
+
 export function TagEditDialog({
   open,
   initial,
   ocrLoading,
+  universityId,
   registrantByCode,
   referenceByCode,
   onSave,
@@ -40,6 +48,7 @@ export function TagEditDialog({
   open: boolean;
   initial: DialogInitial | null;
   ocrLoading: boolean;
+  universityId: string;
   registrantByCode: Map<string, RegistrantLookup>;
   referenceByCode: Map<string, ReferenceLookup>;
   onSave: (input: SavePayload) => void;
@@ -53,6 +62,8 @@ export function TagEditDialog({
   const [registrantId, setRegistrantId] = useState<string | null>(null);
   const [matchSource, setMatchSource] = useState<TagMatchSource>(TagMatchSource.MANUAL);
   const [referenceSource, setReferenceSource] = useState<LegacyReferenceSource | null>(null);
+  const [history, setHistory] = useState<TagHistoryEntry[] | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   // Reset form fields whenever a different `initial` object is passed in (a new tag opened, a
   // different tag selected, or OCR filling in the code on the currently-open dialog) — derived
@@ -65,6 +76,8 @@ export function TagEditDialog({
   const [syncedInitial, setSyncedInitial] = useState(initial);
   if (initial !== syncedInitial) {
     setSyncedInitial(initial);
+    setHistory(null);
+    setHistoryOpen(false);
     if (initial) {
       setCode(initial.code);
       setRow(initial.row);
@@ -90,6 +103,21 @@ export function TagEditDialog({
       }
     }
   }
+
+  // Fetch this tag's revision history fresh every time a different (existing) tag is opened —
+  // not preloaded with the rest of the canvas's data since most edit sessions never open it.
+  // The reset-to-null on tag switch happens above (render-time, alongside the other form-field
+  // resets), so this effect only ever needs to kick off the async fetch itself.
+  useEffect(() => {
+    if (!initial?.id) return;
+    let cancelled = false;
+    getGroupPhotoTagHistory(universityId, initial.id).then((rows) => {
+      if (!cancelled) setHistory(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initial?.id, universityId]);
 
   function handleCodeChange(value: string) {
     setCode(value);
@@ -185,6 +213,36 @@ export function TagEditDialog({
           </div>
         </div>
         <p className="mt-1.5 text-xs text-gray-400">ถ้าลำดับซ้ำกับคนอื่นในแถวเดียวกัน คนที่เหลือจะขยับ +1 ให้อัตโนมัติ</p>
+
+        {initial.id && (
+          <div className="mt-3 border-t border-gray-100 pt-2">
+            <button
+              type="button"
+              onClick={() => setHistoryOpen((v) => !v)}
+              className="flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
+            >
+              <span>ประวัติการแก้ไข{history ? ` (${history.length})` : ""}</span>
+              <span>{historyOpen ? "▲" : "▼"}</span>
+            </button>
+            {historyOpen && (
+              <div className="mt-2 max-h-32 space-y-1.5 overflow-y-auto">
+                {history === null && <p className="text-xs text-gray-400">กำลังโหลด...</p>}
+                {history?.length === 0 && <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>}
+                {history?.map((h) => (
+                  <div key={h.id} className="rounded-md bg-gray-50 px-2 py-1.5 text-xs">
+                    <div className="flex items-center justify-between gap-2 text-gray-400">
+                      <span>{new Date(h.createdAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}</span>
+                      <span>{HISTORY_SOURCE_LABEL[h.source]}</span>
+                    </div>
+                    <p className="mt-0.5 text-gray-700">
+                      <span className="font-mono">{h.code}</span> — {h.name || "(ยังไม่มีชื่อ)"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-4 flex justify-between gap-2">
           {onDelete ? (

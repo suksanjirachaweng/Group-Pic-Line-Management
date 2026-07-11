@@ -5,7 +5,7 @@ import { validateTags } from "@/lib/groupPhoto/validateTags";
 import { ReviewCanvas, type ReviewTag } from "@/lib/groupPhoto/ReviewCanvas";
 import { TagDisplayFieldPicker, type TagDisplayField } from "@/lib/groupPhoto/TagLabel";
 import { colorForRow } from "@/lib/groupPhoto/rowColor";
-import { updateGroupPhotoTagViaValidatePage } from "@/lib/actions/publicGroupPhoto";
+import { updateGroupPhotoTagViaValidatePage, updateGroupPhotoTitlePublic } from "@/lib/actions/publicGroupPhoto";
 import { TagMatchSource } from "@/generated/prisma/enums";
 
 export type PublicValidateTagRecord = {
@@ -98,6 +98,7 @@ function TagRow({
 export function PublicValidateView({
   photoId,
   photoName,
+  photoTitle,
   imageUrl,
   imageWidth,
   imageHeight,
@@ -105,6 +106,7 @@ export function PublicValidateView({
 }: {
   photoId: string;
   photoName: string;
+  photoTitle: string | null;
   imageUrl: string;
   imageWidth: number;
   imageHeight: number;
@@ -122,6 +124,24 @@ export function PublicValidateView({
   const [editName, setEditName] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+
+  const [currentTitle, setCurrentTitle] = useState(photoTitle);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleValue, setTitleValue] = useState(photoTitle ?? "");
+  const [titleSaving, setTitleSaving] = useState(false);
+  const displayTitle = currentTitle?.trim() || photoName;
+
+  async function saveTitle() {
+    const next = titleValue.trim() || null;
+    setTitleSaving(true);
+    try {
+      await updateGroupPhotoTitlePublic(photoId, next);
+      setCurrentTitle(next);
+      setEditingTitle(false);
+    } finally {
+      setTitleSaving(false);
+    }
+  }
 
   const problems = useMemo(() => validateTags(tags), [tags]);
   const duplicateGroups = problems.filter((p) => p.type === "DUPLICATE_CODE");
@@ -188,7 +208,58 @@ export function PublicValidateView({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-gray-200 bg-white px-3 py-2 sm:px-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto" />
-        <h1 className="text-sm font-semibold text-gray-900">{photoName} — ตรวจสอบความถูกต้อง</h1>
+        {editingTitle ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              autoFocus
+              value={titleValue}
+              onChange={(e) => setTitleValue(e.target.value)}
+              placeholder={photoName}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void saveTitle();
+                } else if (e.key === "Escape") {
+                  setEditingTitle(false);
+                }
+              }}
+              className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+            />
+            <button
+              type="button"
+              disabled={titleSaving}
+              onClick={saveTitle}
+              className="rounded-md bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {titleSaving ? "..." : "บันทึก"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditingTitle(false)}
+              className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+            >
+              ยกเลิก
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-sm font-semibold text-gray-900">{displayTitle} — ตรวจสอบความถูกต้อง</h1>
+            {currentTitle?.trim() && currentTitle.trim() !== photoName && (
+              <span className="text-xs text-gray-400">(คณะ: {photoName})</span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setTitleValue(currentTitle ?? "");
+                setEditingTitle(true);
+              }}
+              title="แก้ไขหัวข้อรูป"
+              className="text-gray-400 hover:text-gray-600"
+            >
+              ✎
+            </button>
+          </div>
+        )}
         <span className="text-sm text-gray-600">แท็กแล้ว {tags.length} คน</span>
         <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
           <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />

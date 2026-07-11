@@ -363,15 +363,17 @@ model SheetExportConfig {
 /// One faculty/group's graduation photo for a university. A university typically has 10-24 of
 /// these (one per faculty/group), each tagged independently.
 model GroupPhoto {
-  id           String   @id @default(cuid())
+  id           String           @id @default(cuid())
   universityId String
   name         String // also used verbatim as the export's "คณะ" column
+  title        String? // display heading shown on the tagging/validate/photo-view pages; may differ from `name` — falls back to `name` when unset
   imageUrl     String // plain string, storage-agnostic — swapping backends later is a data change, not a schema change
   imageWidth   Int
   imageHeight  Int
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  sortOrder    Int              @default(0)
+  status       GroupPhotoStatus @default(NOT_STARTED) // admin-set; DONE freezes auto-sync (see autoSyncGroupPhotoTags)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   university University         @relation(fields: [universityId], references: [id], onDelete: Cascade)
   tags       GroupPhotoTag[]
@@ -381,10 +383,22 @@ model GroupPhoto {
   @@map("group_photos")
 }
 
+enum GroupPhotoStatus {
+  NOT_STARTED
+  NEEDS_EDIT
+  DONE
+}
+
 enum TagMatchSource {
   REGISTRANT
   LEGACY_REFERENCE
   MANUAL
+}
+
+enum TagHistorySource {
+  ADMIN
+  AUTO_SYNC
+  PUBLIC_LINK
 }
 
 /// One tagged person within a GroupPhoto — mirrors the legacy desktop tool's data model
@@ -403,17 +417,39 @@ model GroupPhotoTag {
   matchSource    TagMatchSource @default(MANUAL)
   editedViaPublicLink Boolean   @default(false)
   publicLinkEditedAt  DateTime?
+  reportedProblem Boolean       @default(false) // graduate flagged this from their own /photo-view link (wrong photo/code, can't self-fix)
+  reportedAt      DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  groupPhoto GroupPhoto  @relation(fields: [groupPhotoId], references: [id], onDelete: Cascade)
-  registrant Registrant? @relation(fields: [registrantId], references: [id], onDelete: SetNull)
+  groupPhoto GroupPhoto             @relation(fields: [groupPhotoId], references: [id], onDelete: Cascade)
+  registrant Registrant?            @relation(fields: [registrantId], references: [id], onDelete: SetNull)
+  history    GroupPhotoTagHistory[]
 
   // Deliberately no @@unique on (groupPhotoId, normalizedCode) — duplicates are a valid,
   // expected transient state that the validator must be able to detect and flag.
   @@index([groupPhotoId, normalizedCode])
   @@index([groupPhotoId, row, order])
   @@map("group_photo_tags")
+}
+
+/// One snapshot per save of a GroupPhotoTag's name/code/position — lets an admin see what a mark
+/// point used to say before an edit (manual, auto-synced from a registrant/reference update, or
+/// via the public share-link) without needing full field-by-field diffing.
+model GroupPhotoTagHistory {
+  id        String            @id @default(cuid())
+  tagId     String
+  code      String
+  name      String
+  row       Int
+  order     Int
+  source    TagHistorySource
+  createdAt DateTime          @default(now())
+
+  tag GroupPhotoTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@index([tagId, createdAt])
+  @@map("group_photo_tag_history")
 }
 
 /// Per-university reference data imported once from a legacy Google Form export, used ONLY for

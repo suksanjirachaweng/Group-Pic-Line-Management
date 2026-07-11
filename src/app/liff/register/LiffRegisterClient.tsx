@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { reportNotTagged } from "@/lib/actions/publicRegistrant";
 
 type FieldDef = {
   key: string;
@@ -323,7 +324,7 @@ export default function LiffRegisterClient() {
                       </div>
                     ))}
                   </dl>
-                  <TaggedPhotoLinks photos={reg.taggedPhotos} />
+                  <TaggedPhotoLinks photos={reg.taggedPhotos} registrantId={reg.id} lineUserId={profile?.userId ?? ""} />
                 </li>
               );
             })}
@@ -403,7 +404,7 @@ export default function LiffRegisterClient() {
                     ) : (
                       <p className="text-sm text-gray-400">(ไม่มีข้อมูลสรุป / No summary available)</p>
                     )}
-                    <TaggedPhotoLinks photos={reg.taggedPhotos} />
+                    <TaggedPhotoLinks photos={reg.taggedPhotos} registrantId={reg.id} lineUserId={profile?.userId ?? ""} />
                   </li>
                 ))}
               </ul>
@@ -516,21 +517,59 @@ export default function LiffRegisterClient() {
   );
 }
 
-function TaggedPhotoLinks({ photos }: { photos: TaggedPhoto[] }) {
-  if (photos.length === 0) return null;
+function TaggedPhotoLinks({
+  photos,
+  registrantId,
+  lineUserId,
+}: {
+  photos: TaggedPhoto[];
+  registrantId: string;
+  lineUserId: string;
+}) {
+  const [reported, setReported] = useState(false);
+  const [reporting, setReporting] = useState(false);
+
+  if (photos.length > 0) {
+    return (
+      <div className="mt-2.5 flex flex-wrap gap-2">
+        {photos.map((p) => (
+          <a
+            key={p.tagId}
+            href={`/photo-view/${p.groupPhotoId}?tag=${p.tagId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="brand-border brand-text inline-flex items-center gap-1 rounded-lg border bg-white px-2.5 py-1 text-xs font-semibold"
+          >
+            ดูรูปหมู่: {p.photoName} →
+          </a>
+        ))}
+      </div>
+    );
+  }
+
+  // Not matched to any group-photo tag yet — most of the time this just means tagging hasn't
+  // happened for this faculty yet, but it's also how "the OCR never picked up my code at all"
+  // surfaces, so offer a way to flag it rather than leaving the graduate with no next step.
   return (
-    <div className="mt-2.5 flex flex-wrap gap-2">
-      {photos.map((p) => (
-        <a
-          key={p.tagId}
-          href={`/photo-view/${p.groupPhotoId}?tag=${p.tagId}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="brand-border brand-text inline-flex items-center gap-1 rounded-lg border bg-white px-2.5 py-1 text-xs font-semibold"
-        >
-          ดูรูปหมู่: {p.photoName} →
-        </a>
-      ))}
+    <div className="mt-2.5">
+      <button
+        type="button"
+        disabled={reported || reporting}
+        onClick={async () => {
+          setReporting(true);
+          try {
+            await reportNotTagged(registrantId, lineUserId);
+            setReported(true);
+          } catch {
+            window.alert("แจ้งปัญหาไม่สำเร็จ ลองใหม่อีกครั้ง");
+          } finally {
+            setReporting(false);
+          }
+        }}
+        className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+      >
+        {reported ? "แจ้งแล้ว จะรีบตรวจสอบให้ ✓" : reporting ? "กำลังแจ้ง..." : "ยังไม่พบรูปของฉัน — แจ้งปัญหา"}
+      </button>
     </div>
   );
 }

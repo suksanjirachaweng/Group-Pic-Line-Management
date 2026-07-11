@@ -8,7 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type TouchEvent as ReactTouchEvent,
 } from "react";
-import { TagLabel, type TagDisplayField } from "./TagLabel";
+import { TagLabel, TagMarker, type TagDisplayField } from "./TagLabel";
 import { colorForRow } from "./rowColor";
 
 const DISPLAY_MAX_WIDTH = 3500;
@@ -59,6 +59,9 @@ export function ReviewCanvas({
   onDoubleClickTag,
   displayFields = DEFAULT_DISPLAY_FIELDS,
   readOnly = false,
+  soloLabelTagId,
+  placementTagId,
+  onPlaceTag,
 }: {
   imageUrl: string;
   imageWidth: number;
@@ -83,6 +86,16 @@ export function ReviewCanvas({
    * full dialog (e.g. the public /validate page) rather than the small inline popup below, even
    * when single-click editing is otherwise disabled. Selects + centers the tag first. */
   onDoubleClickTag?: (tag: ReviewTag) => void;
+  /** When set, only this one tag gets a text label — every other tag renders as a bare unlabeled
+   * pin. For a graduate's personal /photo-view link, where everyone else's name/code isn't this
+   * viewer's to see, just their own. */
+  soloLabelTagId?: string | null;
+  /** When set, tapping/clicking anywhere on the photo reports that point as this tag's new
+   * position via `onPlaceTag` instead of the normal deselect-on-click behavior — a graduate
+   * fixing their own mis-placed mark by tapping where they actually are, rather than a drag
+   * gesture (which would fight the existing single-finger-pan/pinch-zoom touch handling below). */
+  placementTagId?: string | null;
+  onPlaceTag?: (tagId: string, x: number, y: number) => void;
 }) {
   const [loaded, setLoaded] = useState(false);
   const [scale, setScale] = useState(0.25);
@@ -309,9 +322,18 @@ export function ReviewCanvas({
     }
   }
 
-  function handleCanvasClick() {
+  function handleCanvasClick(e: ReactMouseEvent<HTMLCanvasElement>) {
     if (draggedRef.current || spacePressed) {
       draggedRef.current = false;
+      return;
+    }
+    if (placementTagId && onPlaceTag) {
+      const canvas = displayCanvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * imageWidth;
+      const y = ((e.clientY - rect.top) / rect.height) * imageHeight;
+      onPlaceTag(placementTagId, x, y);
       return;
     }
     onSelectTag(null);
@@ -451,7 +473,7 @@ export function ReviewCanvas({
                     x2={seg.x2}
                     y2={seg.y2}
                     stroke={seg.color}
-                    strokeWidth={0.45}
+                    strokeWidth={0.3}
                     strokeLinecap="round"
                   />
                 ))}
@@ -465,10 +487,12 @@ export function ReviewCanvas({
               const isSelected = t.id === selectedTagId;
               const isDimmed = selectedTagId !== null && !isSelected;
               const interactive = editable || !!onDoubleClickTag;
+              const isSolo = soloLabelTagId != null && t.id === soloLabelTagId;
+              const hideLabel = soloLabelTagId != null && !isSolo;
               return (
                 <div
                   key={t.id}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 transition-opacity duration-150 ${interactive ? "pointer-events-auto cursor-pointer" : ""} ${isDimmed ? "opacity-25" : "opacity-100"}`}
+                  className={`absolute transition-opacity duration-150 ${interactive ? "pointer-events-auto cursor-pointer" : ""} ${isDimmed ? "opacity-60" : "opacity-100"}`}
                   style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%` }}
                   onClick={
                     interactive
@@ -488,21 +512,16 @@ export function ReviewCanvas({
                       : undefined
                   }
                 >
-                  <div
-                    className={`rounded-full border-2 border-white ${isSelected ? "animate-pulse" : ""}`}
-                    style={{
-                      width: isSelected ? 18 : 12,
-                      height: isSelected ? 18 : 12,
-                      backgroundColor: color,
-                      boxShadow: isSelected
-                        ? "0 0 0 3px #facc15"
-                        : t.isProblem
-                          ? "0 0 0 2px #ef4444"
-                          : undefined,
-                    }}
-                    title={`${t.code} — ${t.name}`}
+                  <TagMarker
+                    color={isSolo ? color : hideLabel ? "#9ca3af" : color}
+                    size={isSolo ? 22 : isSelected ? 20 : 14}
+                    pulse={isSelected || isSolo}
+                    ring={isSolo ? "0 0 0 3px #facc15" : isSelected ? "0 0 0 3px #facc15" : t.isProblem ? "0 0 0 2px #ef4444" : undefined}
+                    title={hideLabel ? undefined : `${t.code} — ${t.name}`}
                   />
-                  <TagLabel order={t.order} code={t.code} name={t.name} color={color} fields={displayFields} angle={-30} />
+                  {!hideLabel && (
+                    <TagLabel order={t.order} code={t.code} name={t.name} color={color} fields={displayFields} angle={-30} />
+                  )}
                 </div>
               );
             })}

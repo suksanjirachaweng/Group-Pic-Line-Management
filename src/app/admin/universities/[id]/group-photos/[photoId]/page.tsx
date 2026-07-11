@@ -7,7 +7,10 @@ import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { TagCanvas } from "./TagCanvas";
 import { UpdatePhotoImageButton } from "./UpdatePhotoImageButton";
 import { ImportMarkFileButton } from "./ImportMarkFileButton";
+import { PhotoStatusSelector } from "./PhotoStatusSelector";
+import { PhotoTitleEditor } from "./PhotoTitleEditor";
 import type { RegistrantLookup, ReferenceLookup } from "./TagEditDialog";
+import { autoSyncGroupPhotoTags } from "@/lib/actions/groupPhotos";
 
 export default async function GroupPhotoTaggingPage({
   params,
@@ -19,6 +22,11 @@ export default async function GroupPhotoTaggingPage({
   const session = await getServerSession(authOptions);
   const user = session!.user;
   if (!canAccessUniversity(user, universityId)) notFound();
+
+  // Pick up any registrant/reference data that changed since this photo was last tagged (e.g.
+  // someone fixed their group_photo_index in LINE) before rendering, as long as the photo isn't
+  // marked done yet — see the function's own comment for why DONE freezes this.
+  await autoSyncGroupPhotoTags(universityId, photoId);
 
   const photo = await prisma.groupPhoto.findUnique({
     where: { id: photoId, universityId },
@@ -61,7 +69,8 @@ export default async function GroupPhotoTaggingPage({
         <Link href={`/admin/universities/${universityId}/group-photos`} className="text-sm text-gray-500 hover:text-gray-700">
           ← กลับ
         </Link>
-        <h1 className="text-sm font-semibold text-gray-900">{photo.name}</h1>
+        <PhotoTitleEditor universityId={universityId} groupPhotoId={photo.id} name={photo.name} title={photo.title} />
+        <PhotoStatusSelector universityId={universityId} groupPhotoId={photo.id} status={photo.status} />
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <UpdatePhotoImageButton universityId={universityId} groupPhotoId={photo.id} />
           <ImportMarkFileButton universityId={universityId} groupPhotoId={photo.id} />
