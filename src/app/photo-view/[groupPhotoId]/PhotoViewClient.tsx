@@ -126,45 +126,6 @@ export function PhotoViewClient({
           )}
         </div>
 
-        {ownTag && !placing && !confirmed && (
-          <div className="space-y-1.5">
-            <button
-              type="button"
-              onClick={handleConfirmCorrect}
-              disabled={confirming}
-              className="w-full rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
-            >
-              {confirming ? "กำลังยืนยัน..." : "✓ ข้อมูลถูกต้อง"}
-            </button>
-            <div className="grid grid-cols-2 gap-1.5">
-              {editLiffUrl && (
-                <a
-                  href={editLiffUrl}
-                  className="rounded-md border border-gray-300 px-2 py-1.5 text-center text-xs font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  ✎ ชื่อ/รหัสผิด
-                </a>
-              )}
-              <button
-                type="button"
-                onClick={startPlacing}
-                className={`rounded-md border border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 ${editLiffUrl ? "" : "col-span-2"}`}
-              >
-                ⌖ ตำแหน่งผิด
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowReportConfirm(true)}
-              disabled={reported || reporting}
-              className="w-full rounded-md border border-red-300 px-2 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-            >
-              {reported ? "แจ้งปัญหาแล้ว ✓" : reporting ? "กำลังแจ้ง..." : "⚠ ไม่ใช่รูปของฉัน"}
-            </button>
-            {reportError && <p className="text-xs text-red-600">{reportError}</p>}
-          </div>
-        )}
-
         {confirmed && (
           <div className="rounded-md bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
             ✓ ยืนยันข้อมูลถูกต้องแล้ว ขอบคุณครับ — ปิดหน้าต่างนี้ได้เลย
@@ -209,8 +170,48 @@ export function PhotoViewClient({
           placementTagId={placing ? initialTagId : null}
           onPlaceTag={(_id, x, y) => setPendingPosition({ x, y })}
           readOnly
+          hideToolbar
         />
       </div>
+
+      {ownTag && !placing && !confirmed && (
+        <div className="border-t border-gray-200 bg-white px-4 py-3">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handleConfirmCorrect}
+              disabled={confirming}
+              className={`rounded-md bg-green-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 ${editLiffUrl ? "" : "col-span-2"}`}
+            >
+              {confirming ? "กำลังยืนยัน..." : "✓ ข้อมูลถูกต้อง"}
+            </button>
+            {editLiffUrl && (
+              <a
+                href={editLiffUrl}
+                className="rounded-md border border-gray-300 px-3 py-2.5 text-center text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                ✎ ชื่อ/รหัสผิด
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={startPlacing}
+              className="rounded-md border border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              ⌖ ตำแหน่งผิด
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowReportConfirm(true)}
+              disabled={reported || reporting}
+              className="rounded-md border border-red-300 px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              {reported ? "แจ้งปัญหาแล้ว ✓" : reporting ? "กำลังแจ้ง..." : "⚠ ไม่ใช่รูปของฉัน"}
+            </button>
+          </div>
+          {reportError && <p className="mt-2 text-xs text-red-600">{reportError}</p>}
+        </div>
+      )}
 
       {showReportConfirm && (
         <div

@@ -65,6 +65,7 @@ export function ReviewCanvas({
   placementTagId,
   onPlaceTag,
   grayUnselected = false,
+  hideToolbar = false,
 }: {
   imageUrl: string;
   imageWidth: number;
@@ -104,6 +105,10 @@ export function ReviewCanvas({
    * text still needs to stay legible. Off by default so photo-view/photo-review keep their
    * per-row coloring. */
   grayUnselected?: boolean;
+  /** Hides the top zoom-button/hint-text bar entirely — for the graduate's personal /photo-view
+   * link, which is only ever opened from a LINE mobile link where pinch-zoom/drag-to-pan are
+   * already the natural gestures; the row was pure clutter with nothing left to explain. */
+  hideToolbar?: boolean;
 }) {
   const [loaded, setLoaded] = useState(false);
   const [scale, setScale] = useState(0.25);
@@ -414,35 +419,37 @@ export function ReviewCanvas({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-3 py-2 text-xs">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => zoomBy(1 / ZOOM_STEP)}
-            title="Zoom out (Ctrl -)"
-            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
-          >
-            −
-          </button>
-          <button
-            type="button"
-            onClick={() => zoomBy(ZOOM_STEP)}
-            title="Zoom in (Ctrl +)"
-            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
-          >
-            +
-          </button>
+      {!hideToolbar && (
+        <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-3 py-2 text-xs">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => zoomBy(1 / ZOOM_STEP)}
+              title="Zoom out (Ctrl -)"
+              className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
+            >
+              −
+            </button>
+            <button
+              type="button"
+              onClick={() => zoomBy(ZOOM_STEP)}
+              title="Zoom in (Ctrl +)"
+              className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
+            >
+              +
+            </button>
+          </div>
+          <span className="hidden text-gray-400 sm:inline">
+            Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ
+            {!readOnly && ", คลิกจุด = แก้ไข"}
+            {onDoubleClickTag && ", ดับเบิลคลิกจุด = แก้ไข"}
+          </span>
+          <span className="text-gray-400 sm:hidden">
+            ลากด้วยนิ้ว = เลื่อนภาพ, สองนิ้วบีบ/ขยาย = ซูม
+            {onDoubleClickTag && ", แตะจุด 2 ครั้ง = แก้ไข"}
+          </span>
         </div>
-        <span className="hidden text-gray-400 sm:inline">
-          Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ
-          {!readOnly && ", คลิกจุด = แก้ไข"}
-          {onDoubleClickTag && ", ดับเบิลคลิกจุด = แก้ไข"}
-        </span>
-        <span className="text-gray-400 sm:hidden">
-          ลากด้วยนิ้ว = เลื่อนภาพ, สองนิ้วบีบ/ขยาย = ซูม
-          {onDoubleClickTag && ", แตะจุด 2 ครั้ง = แก้ไข"}
-        </span>
-      </div>
+      )}
 
       <div
         ref={containerRef}
