@@ -984,7 +984,7 @@ export function TagCanvas({
           />
         </label>
 
-        <span className="hidden text-gray-400 lg:inline">
+        <span className="hidden w-full text-left text-gray-400 lg:inline">
           คลิก = เลือกจุด, ลาก = ย้ายตำแหน่ง, Space+ลาก = เลื่อนภาพ, Ctrl +/- = ซูม, Ctrl+0 = พอดีจอ, Shift+คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
         </span>
 
