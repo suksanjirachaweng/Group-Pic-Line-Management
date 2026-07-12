@@ -42,6 +42,14 @@ const COMBINED_ROW_SOURCE_CLASS: Record<CombinedRowSource, string> = {
   LINE: "bg-green-100 text-green-700",
 };
 
+type SortKey = "name" | "code" | "phone" | "source";
+const SORT_COLUMNS: { key: SortKey; label: string }[] = [
+  { key: "name", label: "ชื่อ" },
+  { key: "code", label: "CODE" },
+  { key: "phone", label: "เบอร์โทร" },
+  { key: "source", label: "แหล่งข้อมูล" },
+];
+
 const ACTIVE_DATA_TAB_CLASS = "border-b-2 border-rose-500 px-1 py-3 text-sm font-medium text-rose-600";
 const INACTIVE_DATA_TAB_CLASS =
   "border-b-2 border-transparent px-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700";
@@ -54,11 +62,13 @@ export default async function GroupPhotosPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ q?: string; page?: string; tab?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; tab?: string; sort?: string; dir?: string }>;
 }) {
   const { id: universityId } = await params;
-  const { q, page: pageParam, tab: tabParam } = await searchParams;
-  const tab: "data" | "photos" = tabParam === "photos" ? "photos" : "data";
+  const { q, page: pageParam, tab: tabParam, sort: sortParam, dir: dirParam } = await searchParams;
+  const tab: "data" | "photos" = tabParam === "data" ? "data" : "photos";
+  const sort = SORT_COLUMNS.some((c) => c.key === sortParam) ? (sortParam as SortKey) : undefined;
+  const dir: "asc" | "desc" = dirParam === "desc" ? "desc" : "asc";
 
   const session = await getServerSession(authOptions);
   const user = session!.user;
@@ -93,21 +103,21 @@ export default async function GroupPhotosPage({
 
       <div className="mb-6 border-b border-gray-200">
         <nav className="-mb-px flex gap-6">
+          <Link href={tabHref("photos")} className={tab === "photos" ? ACTIVE_PHOTOS_TAB_CLASS : INACTIVE_PHOTOS_TAB_CLASS}>
+            <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-emerald-500" />
+            ภาพหมู่
+            <span className="ml-1.5 text-xs font-normal text-gray-400">{photoCount}</span>
+          </Link>
           <Link href={tabHref("data")} className={tab === "data" ? ACTIVE_DATA_TAB_CLASS : INACTIVE_DATA_TAB_CLASS}>
             <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-rose-500" />
             ข้อมูล
             <span className="ml-1.5 text-xs font-normal text-gray-400">{dataCount}</span>
           </Link>
-          <Link href={tabHref("photos")} className={tab === "photos" ? ACTIVE_PHOTOS_TAB_CLASS : INACTIVE_PHOTOS_TAB_CLASS}>
-            <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-emerald-500" />
-            ภาพ
-            <span className="ml-1.5 text-xs font-normal text-gray-400">{photoCount}</span>
-          </Link>
         </nav>
       </div>
 
       {tab === "data" ? (
-        <DataTab universityId={universityId} q={q} pageParam={pageParam} />
+        <DataTab universityId={universityId} q={q} pageParam={pageParam} sort={sort} dir={dir} />
       ) : (
         <PhotosTab universityId={universityId} />
       )}
@@ -119,10 +129,14 @@ async function DataTab({
   universityId,
   q,
   pageParam,
+  sort,
+  dir,
 }: {
   universityId: string;
   q: string | undefined;
   pageParam: string | undefined;
+  sort: SortKey | undefined;
+  dir: "asc" | "desc";
 }) {
   const formFields = await prisma.formFieldDefinition.findMany({ where: { universityId } });
   const phoneFieldKey = formFields.find((f) => f.fieldType === "PHONE")?.key;
@@ -169,15 +183,35 @@ async function DataTab({
       )
     : combined;
 
+  const sorted = sort
+    ? [...filtered].sort((a, b) => {
+        const cmp = a[sort].localeCompare(b[sort], "th", { numeric: true, sensitivity: "base" });
+        return dir === "desc" ? -cmp : cmp;
+      })
+    : filtered;
+
   const page = Math.max(1, Number(pageParam) || 1);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const pageRows = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   function pageHref(nextPage: number) {
     const sp = new URLSearchParams();
     sp.set("tab", "data");
     if (q) sp.set("q", q);
+    if (sort) {
+      sp.set("sort", sort);
+      sp.set("dir", dir);
+    }
     sp.set("page", String(nextPage));
+    return `?${sp.toString()}`;
+  }
+
+  function sortHref(key: SortKey) {
+    const sp = new URLSearchParams();
+    sp.set("tab", "data");
+    if (q) sp.set("q", q);
+    sp.set("sort", key);
+    sp.set("dir", sort === key && dir === "asc" ? "desc" : "asc");
     return `?${sp.toString()}`;
   }
 
@@ -193,6 +227,8 @@ async function DataTab({
           </h3>
           <form method="get" className="flex gap-2">
             <input type="hidden" name="tab" value="data" />
+            {sort && <input type="hidden" name="sort" value={sort} />}
+            {sort && <input type="hidden" name="dir" value={dir} />}
             <input
               type="text"
               name="q"
@@ -213,10 +249,14 @@ async function DataTab({
           <table className="w-full text-xs">
             <thead className="bg-gray-50 text-left text-gray-500">
               <tr>
-                <th className="whitespace-nowrap px-3 py-2">ชื่อ</th>
-                <th className="whitespace-nowrap px-3 py-2">CODE</th>
-                <th className="whitespace-nowrap px-3 py-2">เบอร์โทร</th>
-                <th className="whitespace-nowrap px-3 py-2">แหล่งข้อมูล</th>
+                {SORT_COLUMNS.map(({ key, label }) => (
+                  <th key={key} className="whitespace-nowrap px-3 py-2">
+                    <Link href={sortHref(key)} className="flex items-center gap-1 hover:text-gray-900">
+                      {label}
+                      <span className="w-3 text-gray-400">{sort === key ? (dir === "asc" ? "▲" : "▼") : ""}</span>
+                    </Link>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
