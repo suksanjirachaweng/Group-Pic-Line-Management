@@ -132,10 +132,16 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
   const [editName, setEditName] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [canvasSize, setCanvasSize] = useState<{
-    width: number;
-    height: number;
-  } | null>(null);
+  // Computed synchronously from the known full-res dimensions (the same capping formula the
+  // load effect below uses once it has the real decoded bitmap) so the overlay — and every tag
+  // marker inside it — is correctly sized and positioned from the very first render, instead of
+  // sitting collapsed in a tiny top-left corner until the (often multi-second, on a big photo
+  // over mobile data) image fetch/decode finishes.
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>(() => {
+    const targetW = Math.min(DISPLAY_MAX_WIDTH, imageWidth);
+    const targetH = Math.round(imageHeight * (targetW / imageWidth));
+    return { width: targetW, height: targetH };
+  });
   const [containerSize, setContainerSize] = useState<{
     width: number;
     height: number;
@@ -219,6 +225,13 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
     setTy((rect.height - canvas.height * next) / 2);
   }
 
+  // Open already fit to the viewport instead of the fixed 0.25 default — safe to run on mount
+  // now that the canvas is sized synchronously from imageWidth/imageHeight (see canvasSize
+  // above), so both it and the container already have real dimensions before this fires.
+  useEffect(() => {
+    zoomToFit();
+  }, []);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -231,7 +244,6 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
   // Reads `canvasSize` state (not the canvas ref) so this is safe to call during render, e.g. to
   // position the edit popup.
   function toScreenPx(x: number, y: number): { left: number; top: number } {
-    if (!canvasSize) return { left: 0, top: 0 };
     const displayX = (x / imageWidth) * canvasSize.width;
     const displayY = (y / imageHeight) * canvasSize.height;
     return { left: tx + displayX * scale, top: ty + displayY * scale };
@@ -239,7 +251,7 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
 
   function centerOn(x: number, y: number) {
     const container = containerRef.current;
-    if (!canvasSize || !container) return;
+    if (!container) return;
     const targetScale = Math.max(scale, REVIEW_ZOOM);
     const displayX = (x / imageWidth) * canvasSize.width;
     const displayY = (y / imageHeight) * canvasSize.height;
@@ -503,11 +515,18 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
         >
           <canvas
             ref={displayCanvasRef}
+            width={canvasSize.width}
+            height={canvasSize.height}
             onClick={handleCanvasClick}
             onContextMenu={(e) => e.preventDefault()}
             onDragStart={(e) => e.preventDefault()}
-            className={`block select-none ${spacePressed ? "cursor-grab" : "cursor-default"}`}
+            className={`block select-none bg-gray-800 ${spacePressed ? "cursor-grab" : "cursor-default"}`}
           />
+          {!loaded && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-gray-500">
+              <span className="text-xs">กำลังโหลดรูป...</span>
+            </div>
+          )}
           <div className="pointer-events-none absolute inset-0">
             {displayFields.has("line") && (
               <svg

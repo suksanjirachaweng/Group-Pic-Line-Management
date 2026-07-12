@@ -132,6 +132,15 @@ export function TagCanvas({
 }) {
   const [tags, setTags] = useState<TagRecord[]>(initialTags);
   const [loaded, setLoaded] = useState(false);
+  // Computed synchronously from the known full-res dimensions (the same capping formula the load
+  // effect below uses once it has the real decoded bitmap) so the canvas — and every tag marker
+  // positioned over it — is correctly sized from the very first render, instead of sitting
+  // collapsed in a tiny top-left corner until the image fetch/decode finishes.
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>(() => {
+    const targetW = Math.min(DISPLAY_MAX_WIDTH, imageWidth);
+    const targetH = Math.round(imageHeight * (targetW / imageWidth));
+    return { width: targetW, height: targetH };
+  });
   const [scale, setScale] = useState(0.25);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
@@ -286,6 +295,7 @@ export function TagCanvas({
         const ctx = canvas.getContext("2d");
         ctx?.drawImage(full, 0, 0, targetW, targetH);
       }
+      setCanvasSize({ width: targetW, height: targetH });
       setLoaded(true);
     })();
     return () => {
@@ -526,6 +536,13 @@ export function TagCanvas({
     setTy((rect.height - canvas.height * next) / 2);
   }
 
+  // Open already fit to the viewport instead of the fixed 0.25 default — safe to run on mount
+  // now that the canvas is sized synchronously from imageWidth/imageHeight (see canvasSize
+  // above), so both it and the container already have real dimensions before this fires.
+  useEffect(() => {
+    zoomToFit();
+  }, []);
+
   function resetBulkAdjust() {
     setBulkAdjustMode(false);
     setBulkDx(0);
@@ -688,10 +705,17 @@ export function TagCanvas({
         <div className="absolute left-0 top-0 origin-top-left" style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}>
           <canvas
             ref={displayCanvasRef}
+            width={canvasSize.width}
+            height={canvasSize.height}
             onClick={handleCanvasClick}
             onDoubleClick={handleCanvasDoubleClick}
-            className={`block ${spacePressed ? "cursor-grab" : "cursor-crosshair"}`}
+            className={`block bg-gray-800 ${spacePressed ? "cursor-grab" : "cursor-crosshair"}`}
           />
+          {!loaded && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-gray-500">
+              <span className="text-xs">กำลังโหลดรูป...</span>
+            </div>
+          )}
           <div className="pointer-events-none absolute inset-0">
             {displayFields.has("line") && (
               <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
