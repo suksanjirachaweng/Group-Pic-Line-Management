@@ -891,6 +891,10 @@ export function TagCanvas({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-gray-200 bg-white px-3 py-2 text-xs">
+        <ZoomButtons onZoomOut={() => zoomBy(1 / ZOOM_STEP)} onZoomIn={() => zoomBy(ZOOM_STEP)} />
+
+        <div className="mx-1 h-5 w-px bg-gray-200" />
+
         {reportedCount > 0 && (
           <>
             <div className="flex items-center gap-2">
@@ -934,25 +938,6 @@ export function TagCanvas({
 
         <div className="mx-1 h-5 w-px bg-gray-200" />
 
-        <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
-
-        <label className="flex items-center gap-1 text-gray-600">
-          มุมป้าย
-          <input
-            type="number"
-            value={labelAngle}
-            onChange={(e) => setLabelAngle(Number(e.target.value))}
-            step={5}
-            className="w-14 rounded-md border border-gray-300 px-1.5 py-1"
-          />
-        </label>
-
-        <div className="mx-1 h-5 w-px bg-gray-200" />
-
-        <ZoomButtons onZoomOut={() => zoomBy(1 / ZOOM_STEP)} onZoomIn={() => zoomBy(ZOOM_STEP)} />
-
-        <div className="mx-1 h-5 w-px bg-gray-200" />
-
         <div className="flex items-center gap-2">
           <label
             className="flex items-center gap-1.5 text-gray-600"
@@ -986,9 +971,26 @@ export function TagCanvas({
           </button>
         </div>
 
-        <span className="ml-auto hidden text-gray-400 lg:inline">
+        <div className="mx-1 h-5 w-px bg-gray-200" />
+
+        <label className="flex items-center gap-1 text-gray-600">
+          มุมป้าย
+          <input
+            type="number"
+            value={labelAngle}
+            onChange={(e) => setLabelAngle(Number(e.target.value))}
+            step={5}
+            className="w-14 rounded-md border border-gray-300 px-1.5 py-1"
+          />
+        </label>
+
+        <span className="hidden text-gray-400 lg:inline">
           คลิก = เลือกจุด, ลาก = ย้ายตำแหน่ง, Space+ลาก = เลื่อนภาพ, Ctrl +/- = ซูม, Ctrl+0 = พอดีจอ, Shift+คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
         </span>
+
+        <div className="ml-auto">
+          <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
+        </div>
       </div>
 
       <TagEditDialog
