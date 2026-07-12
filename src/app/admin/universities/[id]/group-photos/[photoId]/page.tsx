@@ -64,26 +64,26 @@ export default async function GroupPhotoTaggingPage({
   const legacyReferences: ReferenceLookup[] = referenceRows;
 
   return (
-    // Cancels the admin layout's <main className="p-6"> padding and its 54px <header> so this
-    // full-bleed tagging canvas actually fills the viewport instead of overflowing it by exactly
-    // that much (header + top/bottom padding) — a pre-existing gap that only became visible once
-    // the toolbar moved to the bottom edge, where the overflow silently clipped it.
-    <div className="-m-6 flex h-[calc(100dvh-54px)] flex-col">
+    // AdminChrome hides the shared header/padding for this route (see FULLSCREEN_PATTERN), so
+    // this can just claim the full viewport directly instead of subtracting that chrome's size.
+    <div className="flex h-dvh flex-col">
       <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-2.5">
-        <Link
-          href={`/admin/universities/${universityId}/group-photos`}
-          className="shrink-0 text-sm text-gray-500 hover:text-gray-700"
-        >
-          ← กลับ
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href={`/admin/universities/${universityId}/group-photos`}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
+            ← กลับ
+          </Link>
+          <div className="h-5 w-px bg-gray-200" />
+          <UpdatePhotoImageButton universityId={universityId} groupPhotoId={photo.id} />
+          <ImportMarkFileButton universityId={universityId} groupPhotoId={photo.id} />
+        </div>
         <div className="flex min-w-0 flex-1 justify-center">
           <PhotoTitleEditor universityId={universityId} groupPhotoId={photo.id} name={photo.name} title={photo.title} />
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <PhotoStatusSelector universityId={universityId} groupPhotoId={photo.id} status={photo.status} />
-          <div className="h-5 w-px bg-gray-200" />
-          <UpdatePhotoImageButton universityId={universityId} groupPhotoId={photo.id} />
-          <ImportMarkFileButton universityId={universityId} groupPhotoId={photo.id} />
           <div className="h-5 w-px bg-gray-200" />
           <a
             href={`/api/group-photos/${photo.id}/export/excel`}

@@ -2,9 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { validateTags } from "@/lib/groupPhoto/validateTags";
-import { ReviewCanvas, type ReviewCanvasHandle, type ReviewTag } from "@/lib/groupPhoto/ReviewCanvas";
-import { TagDisplayFieldPicker, type TagDisplayField } from "@/lib/groupPhoto/TagLabel";
-import { colorForRow } from "@/lib/groupPhoto/rowColor";
+import {
+  ReviewCanvas,
+  type ReviewCanvasHandle,
+  type ReviewTag,
+} from "@/lib/groupPhoto/ReviewCanvas";
+import {
+  TagDisplayFieldPicker,
+  type TagDisplayField,
+} from "@/lib/groupPhoto/TagLabel";
+import { TagListSidebar } from "@/lib/groupPhoto/TagListSidebar";
 import { ZoomButtons } from "@/lib/groupPhoto/ZoomButtons";
 import {
   updateGroupPhotoTagViaValidatePage,
@@ -33,91 +40,6 @@ export type PublicValidateTagRecord = {
   editedViaPublicLink: boolean;
   confirmedViaPublicLink: boolean;
 };
-
-/**
- * One row in any of the sidebar lists (duplicate-code groups, unmatched-code list, or the "all"
- * tab) — shared so every list looks and behaves the same: light row-color tint by default, a
- * clear indigo ring/bold text when selected. Which of order/code/name actually render follows
- * `displayFields` — the same checkboxes that control the photo's marker labels — so the list and
- * the photo never disagree about what's shown. `groupedByRow` drops the per-item row dot/left
- * border for lists that are already grouped under a row header (the "all" tab); duplicate/
- * unmatched lists mix rows together, so they keep it.
- */
-function TagRow({
-  tag,
-  isSelected,
-  isProblem,
-  onSelect,
-  onDoubleClick,
-  displayFields,
-  groupedByRow = false,
-}: {
-  tag: PublicValidateTagRecord;
-  isSelected: boolean;
-  isProblem: boolean;
-  onSelect: () => void;
-  onDoubleClick: () => void;
-  displayFields: Set<TagDisplayField>;
-  groupedByRow?: boolean;
-}) {
-  const rowColor = colorForRow(tag.row);
-  return (
-    <li
-      className={isSelected ? "relative z-10 rounded-md ring-2 ring-inset ring-indigo-600 bg-indigo-100" : undefined}
-      style={
-        isSelected
-          ? undefined
-          : { backgroundColor: `${rowColor}1A`, borderLeft: groupedByRow ? undefined : `4px solid ${rowColor}` }
-      }
-    >
-      <button
-        type="button"
-        onClick={onSelect}
-        onDoubleClick={onDoubleClick}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:brightness-95"
-      >
-        {isSelected ? (
-          <span className="shrink-0 text-indigo-600" aria-hidden>
-            ●
-          </span>
-        ) : (
-          !groupedByRow && (
-            <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: rowColor }} />
-          )
-        )}
-        {displayFields.has("order") && (
-          <span className={`shrink-0 font-mono ${isSelected ? "font-bold text-gray-900" : "text-gray-400"}`}>
-            {tag.order}
-          </span>
-        )}
-        {displayFields.has("code") && (
-          <span className={`font-mono ${isSelected ? "font-bold" : isProblem ? "text-red-600" : "text-gray-700"}`}>
-            {tag.code || "—"}
-          </span>
-        )}
-        {displayFields.has("name") && (
-          <span className={`truncate text-gray-600 ${isSelected ? "font-semibold" : ""}`}>
-            {tag.name.trim() || "(ยังไม่มีชื่อ)"}
-          </span>
-        )}
-        {(tag.editedViaPublicLink || tag.confirmedViaPublicLink || isProblem) && (
-          <span className="ml-auto flex shrink-0 items-center gap-1">
-            {tag.editedViaPublicLink ? (
-              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">แก้ไข</span>
-            ) : (
-              tag.confirmedViaPublicLink && (
-                <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">ยืนยัน</span>
-              )
-            )}
-            {isProblem && (
-              <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700">ปัญหา</span>
-            )}
-          </span>
-        )}
-      </button>
-    </li>
-  );
-}
 
 /**
  * Public version of the tagging validate report — no login, no messaging, and no links back into
@@ -157,7 +79,9 @@ export function PublicValidateView({
   const [editOriginalName, setEditOriginalName] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
-  const [editHistory, setEditHistory] = useState<TagHistoryEntry[] | null>(null);
+  const [editHistory, setEditHistory] = useState<TagHistoryEntry[] | null>(
+    null,
+  );
   const [editHistoryOpen, setEditHistoryOpen] = useState(false);
 
   // Fetch fresh every time a different tag's dialog opens — most edit sessions never open this
@@ -192,28 +116,12 @@ export function PublicValidateView({
   }
 
   const problems = useMemo(() => validateTags(tags), [tags]);
-  const duplicateGroups = problems.filter((p) => p.type === "DUPLICATE_CODE");
-  const unmatchedIds = new Set(problems.filter((p) => p.type === "UNMATCHED_CODE").map((p) => p.tagId));
-  const unmatchedTags = tags.filter((t) => unmatchedIds.has(t.id));
-  // Split the unmatched-code bucket by whether it's actually actionable: a tag with no name yet
-  // is still unidentified and needs someone to look at it, while one an admin already typed a
-  // name into (just not found in the registration/reference data) is effectively resolved —
-  // mixing the two made the "needs attention" list look far bigger than it really was.
-  const unmatchedNoName = unmatchedTags.filter((t) => !t.name.trim());
-  const unmatchedWithName = unmatchedTags.filter((t) => t.name.trim());
   const tagsById = new Map(tags.map((t) => [t.id, t]));
-  const problemTagIdSet = new Set(problems.flatMap((p) => (p.type === "DUPLICATE_CODE" ? p.tagIds : [p.tagId])));
-
-  const tagsByRow = useMemo(() => {
-    const byRow = new Map<number, PublicValidateTagRecord[]>();
-    for (const t of tags) {
-      const arr = byRow.get(t.row) ?? [];
-      arr.push(t);
-      byRow.set(t.row, arr);
-    }
-    for (const arr of byRow.values()) arr.sort((a, b) => a.order - b.order);
-    return [...byRow.entries()].sort((a, b) => a[0] - b[0]);
-  }, [tags]);
+  const problemTagIdSet = new Set(
+    problems.flatMap((p) =>
+      p.type === "DUPLICATE_CODE" ? p.tagIds : [p.tagId],
+    ),
+  );
 
   const reviewTags: ReviewTag[] = tags.map((t) => ({
     id: t.id,
@@ -229,7 +137,10 @@ export function PublicValidateView({
   // what the sidebar lists, so a first-time visitor sees "here are the N spots to check" instead
   // of hunting for a handful of red rings among hundreds of unrelated pins. Switching to "all"
   // shows everyone, for browsing the whole photo.
-  const visibleReviewTags = listMode === "problems" ? reviewTags.filter((t) => t.isProblem) : reviewTags;
+  const visibleReviewTags =
+    listMode === "problems"
+      ? reviewTags.filter((t) => t.isProblem)
+      : reviewTags;
 
   function switchListMode(mode: "problems" | "all") {
     setListMode(mode);
@@ -255,7 +166,12 @@ export function PublicValidateView({
     const fd = new FormData();
     fd.set("code", editCode);
     fd.set("name", editName);
-    const result = await updateGroupPhotoTagViaValidatePage(photoId, editingTagId, null, fd);
+    const result = await updateGroupPhotoTagViaValidatePage(
+      photoId,
+      editingTagId,
+      null,
+      fd,
+    );
     setEditSaving(false);
     if (result && "error" in result) {
       setEditError(result.error);
@@ -288,7 +204,9 @@ export function PublicValidateView({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto" />
           {currentTitle?.trim() && currentTitle.trim() !== photoName && (
-            <span className="text-[11px] leading-tight text-gray-400">(คณะ: {photoName})</span>
+            <span className="text-[11px] leading-tight text-gray-400">
+              (คณะ: {photoName})
+            </span>
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -326,7 +244,9 @@ export function PublicValidateView({
                 >
                   ยกเลิก
                 </button>
-                <span className="text-xs text-gray-400">Ctrl/Cmd+Enter = บันทึก</span>
+                <span className="text-xs text-gray-400">
+                  Ctrl/Cmd+Enter = บันทึก
+                </span>
               </div>
             </div>
           ) : (
@@ -350,159 +270,29 @@ export function PublicValidateView({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
-        {sidebarOpen && (
-          <div className="max-h-[45vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white p-4 md:h-auto md:max-h-none md:w-96 md:border-b-0 md:border-r">
-          <div className="mb-3 flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
-            <button
-              type="button"
-              onClick={() => switchListMode("problems")}
-              className={`flex-1 rounded px-2 py-1 font-medium ${listMode === "problems" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
-            >
-              เฉพาะที่มีปัญหา ({problems.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => switchListMode("all")}
-              className={`flex-1 rounded px-2 py-1 font-medium ${listMode === "all" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
-            >
-              ทั้งหมด ({tags.length})
-            </button>
-          </div>
-
-          {listMode === "problems" ? (
-            <>
-              {problems.length === 0 && (
-                <p className="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">ไม่พบปัญหา — ข้อมูลพร้อม export</p>
-              )}
-
-              {duplicateGroups.length > 0 && (
-                <div className="mb-4">
-                  <h2 className="mb-2 text-sm font-semibold text-gray-900">เลขซ้ำในรูปเดียวกัน ({duplicateGroups.length})</h2>
-                  <div className="space-y-3">
-                    {duplicateGroups.map((g) =>
-                      g.type === "DUPLICATE_CODE" ? (
-                        <div key={g.normalizedCode}>
-                          <p className="mb-1 px-0.5 text-xs font-semibold text-red-600">รหัสซ้ำ: {g.normalizedCode}</p>
-                          <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
-                            {g.tagIds
-                              .map((id) => tagsById.get(id))
-                              .filter((t): t is PublicValidateTagRecord => !!t)
-                              .map((t) => (
-                                <TagRow
-                                  key={t.id}
-                                  tag={t}
-                                  isSelected={t.id === selectedTagId}
-                                  isProblem
-                                  onSelect={() => setSelectedTagId(t.id)}
-                                  onDoubleClick={() => openEditDialog(t)}
-                                  displayFields={displayFields}
-                                />
-                              ))}
-                          </ul>
-                        </div>
-                      ) : null,
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {unmatchedNoName.length > 0 && (
-                <div className="mb-6">
-                  <h2 className="mb-2 text-sm font-semibold text-gray-900">มีรหัสแต่ไม่มีชื่อ ({unmatchedNoName.length})</h2>
-                  <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
-                    {unmatchedNoName.map((t) => (
-                      <TagRow
-                        key={t.id}
-                        tag={t}
-                        isSelected={t.id === selectedTagId}
-                        isProblem
-                        onSelect={() => setSelectedTagId(t.id)}
-                        onDoubleClick={() => openEditDialog(t)}
-                        displayFields={displayFields}
-                      />
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {unmatchedWithName.length > 0 && (
-                <div className="mb-6">
-                  <h2 className="mb-2 text-sm font-semibold text-gray-900">
-                    รหัสไม่พบในระบบ แต่แอดมินกรอกข้อมูลแล้ว ({unmatchedWithName.length})
-                  </h2>
-                  <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
-                    {unmatchedWithName.map((t) => (
-                      <TagRow
-                        key={t.id}
-                        tag={t}
-                        isSelected={t.id === selectedTagId}
-                        isProblem
-                        onSelect={() => setSelectedTagId(t.id)}
-                        onDoubleClick={() => openEditDialog(t)}
-                        displayFields={displayFields}
-                      />
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="space-y-4">
-                {tagsByRow.map(([row, rowTags]) => {
-                  const rowColor = colorForRow(row);
-                  return (
-                  <div key={row}>
-                    <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900">
-                      <span className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: rowColor }} />
-                      แถว {row} ({rowTags.length})
-                    </h2>
-                    <ul
-                      className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-l-4 border-gray-200"
-                      style={{ borderLeftColor: rowColor }}
-                    >
-                      {rowTags.map((t) => (
-                        <TagRow
-                          key={t.id}
-                          tag={t}
-                          isSelected={t.id === selectedTagId}
-                          isProblem={problemTagIdSet.has(t.id)}
-                          onSelect={() => setSelectedTagId(t.id)}
-                          onDoubleClick={() => openEditDialog(t)}
-                          displayFields={displayFields}
-                          groupedByRow
-                        />
-                      ))}
-                    </ul>
-                  </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => setSidebarOpen((v) => !v)}
-          title={sidebarOpen ? "ซ่อนรายชื่อ" : "แสดงรายชื่อ"}
-          className="hidden shrink-0 flex-col items-center justify-center gap-2 border-r border-gray-200 bg-gray-50 px-1.5 py-3 text-gray-500 hover:bg-gray-100 hover:text-gray-700 md:flex"
-        >
-          <span aria-hidden className="text-base leading-none">
-            {sidebarOpen ? "‹" : "›"}
-          </span>
-          <span className="text-[11px] font-medium tracking-wide [writing-mode:vertical-rl]">
-            {sidebarOpen ? "ซ่อนรายชื่อ" : "แสดงรายชื่อ"}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setSidebarOpen((v) => !v)}
-          className="flex shrink-0 items-center justify-center gap-1 border-b border-gray-200 bg-gray-50 py-2 text-xs font-medium text-gray-600 active:bg-gray-100 md:hidden"
-        >
-          {sidebarOpen ? "ซ่อนรายชื่อ ▲" : "แสดงรายชื่อ ▼"}
-        </button>
+        <TagListSidebar
+          tags={tags}
+          selectedTagId={selectedTagId}
+          onSelectTag={(t) => setSelectedTagId(t ? t.id : null)}
+          onEditTag={openEditDialog}
+          displayFields={displayFields}
+          open={sidebarOpen}
+          onToggleOpen={() => setSidebarOpen((v) => !v)}
+          listMode={listMode}
+          onListModeChange={switchListMode}
+          emptyMessage="ไม่พบปัญหา — ข้อมูลพร้อม export"
+          renderBadges={(t) =>
+            t.editedViaPublicLink ? (
+              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                แก้ไข
+              </span>
+            ) : t.confirmedViaPublicLink ? (
+              <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
+                ยืนยัน
+              </span>
+            ) : null
+          }
+        />
 
         <div className="min-h-0 flex-1">
           <ReviewCanvas
@@ -526,15 +316,23 @@ export function PublicValidateView({
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 bg-white px-3 py-2 text-xs">
-        <ZoomButtons onZoomOut={() => canvasRef.current?.zoomOut()} onZoomIn={() => canvasRef.current?.zoomIn()} />
+        <ZoomButtons
+          onZoomOut={() => canvasRef.current?.zoomOut()}
+          onZoomIn={() => canvasRef.current?.zoomIn()}
+        />
         <span className="hidden text-gray-400 sm:inline">
-          Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ, ดับเบิลคลิกจุดในรูปหรือ item = แก้ไขชื่อ (เผื่อสะกดผิด)
+          Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ,
+          ดับเบิลคลิกจุดในรูปหรือรายชื่อ = แก้ไขชื่อ
         </span>
         <span className="text-gray-400 sm:hidden">
-          ลากด้วยนิ้ว = เลื่อนภาพ, สองนิ้วบีบ/ขยาย = ซูม, แตะจุดในรูปหรือ item 2 ครั้ง = แก้ไขชื่อ (เผื่อสะกดผิด)
+          ลากด้วยนิ้ว = เลื่อนภาพ, สองนิ้วบีบ/ขยาย = ซูม, แตะจุดในรูปหรือรายชื่อ
+          2 ครั้ง = แก้ไขชื่อ
         </span>
         <div className="ml-auto">
-          <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
+          <TagDisplayFieldPicker
+            value={displayFields}
+            onChange={setDisplayFields}
+          />
         </div>
       </div>
 
@@ -543,10 +341,17 @@ export function PublicValidateView({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onClick={() => !editSaving && setEditingTagId(null)}
         >
-          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-gray-900">แก้ไขชื่อ-นามสกุล</h3>
+          <div
+            className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-gray-900">
+              แก้ไขชื่อ-นามสกุล
+            </h3>
             <p className="mb-3 text-xs text-gray-400">รหัส {editCode}</p>
-            <label className="block text-xs font-medium text-gray-700">ชื่อ-นามสกุล</label>
+            <label className="block text-xs font-medium text-gray-700">
+              ชื่อ-นามสกุล
+            </label>
             <input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
@@ -554,7 +359,9 @@ export function PublicValidateView({
               className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
               autoFocus
             />
-            {editError && <p className="mt-2 text-xs text-red-600">{editError}</p>}
+            {editError && (
+              <p className="mt-2 text-xs text-red-600">{editError}</p>
+            )}
 
             <div className="mt-3 border-t border-gray-100 pt-2">
               <button
@@ -562,21 +369,36 @@ export function PublicValidateView({
                 onClick={() => setEditHistoryOpen((v) => !v)}
                 className="flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
               >
-                <span>ประวัติการแก้ไข{editHistory ? ` (${editHistory.length})` : ""}</span>
+                <span>
+                  ประวัติการแก้ไข{editHistory ? ` (${editHistory.length})` : ""}
+                </span>
                 <span>{editHistoryOpen ? "▲" : "▼"}</span>
               </button>
               {editHistoryOpen && (
                 <div className="mt-2 max-h-32 space-y-1.5 overflow-y-auto">
-                  {editHistory === null && <p className="text-xs text-gray-400">กำลังโหลด...</p>}
-                  {editHistory?.length === 0 && <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>}
+                  {editHistory === null && (
+                    <p className="text-xs text-gray-400">กำลังโหลด...</p>
+                  )}
+                  {editHistory?.length === 0 && (
+                    <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>
+                  )}
                   {editHistory?.map((h) => (
-                    <div key={h.id} className="rounded-md bg-gray-50 px-2 py-1.5 text-xs">
+                    <div
+                      key={h.id}
+                      className="rounded-md bg-gray-50 px-2 py-1.5 text-xs"
+                    >
                       <div className="flex items-center justify-between gap-2 text-gray-400">
-                        <span>{new Date(h.createdAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}</span>
+                        <span>
+                          {new Date(h.createdAt).toLocaleString("th-TH", {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          })}
+                        </span>
                         <span>{HISTORY_SOURCE_LABEL[h.source]}</span>
                       </div>
                       <p className="mt-0.5 text-gray-700">
-                        <span className="font-mono">{h.code}</span> — {h.name || "(ยังไม่มีชื่อ)"}
+                        <span className="font-mono">{h.code}</span> —{" "}
+                        {h.name || "(ยังไม่มีชื่อ)"}
                       </p>
                     </div>
                   ))}
@@ -598,10 +420,16 @@ export function PublicValidateView({
                 onClick={handleSaveEdit}
                 disabled={editSaving}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${
-                  editNameChanged ? "bg-indigo-600 hover:bg-indigo-700" : "bg-green-600 hover:bg-green-700"
+                  editNameChanged
+                    ? "bg-indigo-600 hover:bg-indigo-700"
+                    : "bg-green-600 hover:bg-green-700"
                 }`}
               >
-                {editSaving ? "กำลังบันทึก..." : editNameChanged ? "บันทึก" : "ยืนยัน"}
+                {editSaving
+                  ? "กำลังบันทึก..."
+                  : editNameChanged
+                    ? "บันทึก"
+                    : "ยืนยัน"}
               </button>
             </div>
           </div>

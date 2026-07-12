@@ -10,6 +10,7 @@ import { TagEditDialog, type DialogInitial, type RegistrantLookup, type Referenc
 import { validateTags, problemTagIds } from "@/lib/groupPhoto/validateTags";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { TagLabel, TagMarker, TagDisplayFieldPicker, type TagDisplayField } from "@/lib/groupPhoto/TagLabel";
+import { TagListSidebar } from "@/lib/groupPhoto/TagListSidebar";
 import { colorForRow } from "@/lib/groupPhoto/rowColor";
 import { ZoomButtons } from "@/lib/groupPhoto/ZoomButtons";
 
@@ -153,6 +154,8 @@ export function TagCanvas({
   const [searchIndex, setSearchIndex] = useState(-1);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const [dragPreview, setDragPreview] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [listMode, setListMode] = useState<"problems" | "all">("problems");
 
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const fullBitmapRef = useRef<ImageBitmap | null>(null);
@@ -633,14 +636,39 @@ export function TagCanvas({
 
   return (
     <div className="flex h-full flex-col">
-      <div
-        ref={containerRef}
-        className="relative flex-1 overflow-hidden bg-gray-800"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-      >
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <TagListSidebar
+          tags={tags}
+          selectedTagId={selectedTagId}
+          onSelectTag={(t) => {
+            if (t) {
+              setSelectedTagId(t.id);
+              centerOn(t.x, t.y);
+            } else {
+              setSelectedTagId(null);
+            }
+          }}
+          onEditTag={(t) => {
+            setSelectedTagId(null);
+            setDialogInitial(t);
+          }}
+          displayFields={displayFields}
+          open={sidebarOpen}
+          onToggleOpen={() => setSidebarOpen((v) => !v)}
+          listMode={listMode}
+          onListModeChange={(mode) => {
+            setListMode(mode);
+            setSelectedTagId(null);
+          }}
+        />
+        <div
+          ref={containerRef}
+          className="relative flex-1 overflow-hidden bg-gray-800"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+        >
         <div className="absolute left-0 top-0 origin-top-left" style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}>
           <canvas
             ref={displayCanvasRef}
@@ -834,6 +862,7 @@ export function TagCanvas({
             </div>
           </div>
         )}
+      </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-gray-200 bg-white px-3 py-2 text-xs">

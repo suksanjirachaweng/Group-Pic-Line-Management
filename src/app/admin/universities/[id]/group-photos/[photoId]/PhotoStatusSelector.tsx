@@ -5,11 +5,29 @@ import { useRouter } from "next/navigation";
 import { updateGroupPhotoStatus } from "@/lib/actions/groupPhotos";
 import type { GroupPhotoStatus } from "@/generated/prisma/enums";
 
-const OPTIONS: { value: GroupPhotoStatus; label: string; activeClass: string }[] = [
-  { value: "NOT_STARTED", label: "เริ่มดำเนินการ", activeClass: "bg-gray-600 text-white" },
-  { value: "NEEDS_EDIT", label: "เปิดให้แก้ไข", activeClass: "bg-amber-500 text-white" },
-  { value: "DONE", label: "แก้ไขเสร็จแล้ว", activeClass: "bg-green-600 text-white" },
+const OPTIONS: { value: GroupPhotoStatus; label: string; title: string }[] = [
+  {
+    value: "NOT_STARTED",
+    label: "เริ่มดำเนินการ",
+    title: "ยังเปิดรับข้อมูลอัปเดตอัตโนมัติจากรายชื่อ/LINE อยู่",
+  },
+  {
+    value: "NEEDS_EDIT",
+    label: "เปิดให้แก้ไข",
+    title: "ยังเปิดรับข้อมูลอัปเดตอัตโนมัติจากรายชื่อ/LINE อยู่",
+  },
+  {
+    value: "DONE",
+    label: "แก้ไขเสร็จแล้ว",
+    title: "ทำเครื่องหมายว่าตรวจสอบเสร็จแล้ว — จะหยุดอัปเดตข้อมูลอัตโนมัติจากรายชื่อ/LINE ให้",
+  },
 ];
+
+const STATUS_CLASS: Record<GroupPhotoStatus, string> = {
+  NOT_STARTED: "border-gray-300 bg-gray-50 text-gray-700",
+  NEEDS_EDIT: "border-amber-300 bg-amber-50 text-amber-700",
+  DONE: "border-green-300 bg-green-50 text-green-700",
+};
 
 export function PhotoStatusSelector({
   universityId,
@@ -24,31 +42,25 @@ export function PhotoStatusSelector({
   const router = useRouter();
 
   return (
-    <div className="flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
+    <select
+      value={status}
+      disabled={isPending}
+      title={OPTIONS.find((o) => o.value === status)?.title}
+      onChange={(e) => {
+        const next = e.target.value as GroupPhotoStatus;
+        if (next === status) return;
+        startTransition(async () => {
+          await updateGroupPhotoStatus(universityId, groupPhotoId, next);
+          router.refresh();
+        });
+      }}
+      className={`rounded-md border px-2.5 py-1.5 text-xs font-medium disabled:opacity-50 ${STATUS_CLASS[status]}`}
+    >
       {OPTIONS.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          disabled={isPending}
-          title={
-            o.value === "DONE"
-              ? "ทำเครื่องหมายว่าตรวจสอบเสร็จแล้ว — จะหยุดอัปเดตข้อมูลอัตโนมัติจากรายชื่อ/LINE ให้"
-              : "ยังเปิดรับข้อมูลอัปเดตอัตโนมัติจากรายชื่อ/LINE อยู่"
-          }
-          onClick={() => {
-            if (o.value === status) return;
-            startTransition(async () => {
-              await updateGroupPhotoStatus(universityId, groupPhotoId, o.value);
-              router.refresh();
-            });
-          }}
-          className={`rounded px-2.5 py-1 font-medium transition disabled:opacity-50 ${
-            status === o.value ? o.activeClass : "text-gray-500 hover:bg-gray-100"
-          }`}
-        >
+        <option key={o.value} value={o.value} title={o.title}>
           {o.label}
-        </button>
+        </option>
       ))}
-    </div>
+    </select>
   );
 }
