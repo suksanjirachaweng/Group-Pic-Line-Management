@@ -37,6 +37,7 @@ export default async function PublicValidateGroupPhotoPage({
     y: t.y,
     matchSource: t.matchSource,
     editedViaPublicLink: t.editedViaPublicLink,
+    confirmedViaPublicLink: t.confirmedViaPublicLink,
   }));
 
   return (

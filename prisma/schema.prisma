@@ -417,6 +417,8 @@ model GroupPhotoTag {
   matchSource    TagMatchSource @default(MANUAL)
   editedViaPublicLink Boolean   @default(false)
   publicLinkEditedAt  DateTime?
+  confirmedViaPublicLink Boolean @default(false) // reviewer opened the /validate name-edit dialog and confirmed the name as-is (no change) — distinct from editedViaPublicLink so the sidebar badge can tell "confirmed correct" apart from "actually changed"
+  confirmedAt            DateTime?
   reportedProblem Boolean       @default(false) // graduate flagged this from their own /photo-view link (wrong photo/code, can't self-fix)
   reportedAt      DateTime?
   createdAt      DateTime       @default(now())

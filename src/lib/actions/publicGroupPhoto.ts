@@ -72,6 +72,11 @@ export async function updateGroupPhotoTagViaValidatePage(
   const code = String(formData.get("code") ?? "").trim();
   if (!code) return { error: "กรุณากรอกหมายเลข" };
 
+  // A save where the name is unchanged from what's already on file is a confirmation, not an
+  // edit — recorded on a separate flag so the sidebar badge can say "ยืนยัน" instead of "แก้ไข",
+  // and skipped from history (nothing actually changed to show a before/after for).
+  const nameChanged = name !== tag.name.trim();
+
   await prisma.$transaction([
     prisma.groupPhotoTag.update({
       where: { id: tagId },
@@ -79,13 +84,18 @@ export async function updateGroupPhotoTagViaValidatePage(
         name,
         code,
         normalizedCode: normalizeCode(code),
-        editedViaPublicLink: true,
-        publicLinkEditedAt: new Date(),
+        ...(nameChanged
+          ? { editedViaPublicLink: true, publicLinkEditedAt: new Date() }
+          : { confirmedViaPublicLink: true, confirmedAt: new Date() }),
       },
     }),
-    prisma.groupPhotoTagHistory.create({
-      data: { tagId, code, name, row: tag.row, order: tag.order, source: "PUBLIC_LINK" },
-    }),
+    ...(nameChanged
+      ? [
+          prisma.groupPhotoTagHistory.create({
+            data: { tagId, code, name, row: tag.row, order: tag.order, source: "PUBLIC_LINK" as const },
+          }),
+        ]
+      : []),
   ]);
 
   revalidatePath(`/group-photos/${photoId}/validate`);

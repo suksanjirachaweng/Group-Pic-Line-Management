@@ -5,6 +5,7 @@ import { validateTags } from "@/lib/groupPhoto/validateTags";
 import { ReviewCanvas, type ReviewCanvasHandle, type ReviewTag } from "@/lib/groupPhoto/ReviewCanvas";
 import { TagDisplayFieldPicker, type TagDisplayField } from "@/lib/groupPhoto/TagLabel";
 import { colorForRow } from "@/lib/groupPhoto/rowColor";
+import { ZoomButtons } from "@/lib/groupPhoto/ZoomButtons";
 import {
   updateGroupPhotoTagViaValidatePage,
   updateGroupPhotoTitlePublic,
@@ -30,6 +31,7 @@ export type PublicValidateTagRecord = {
   y: number;
   matchSource: TagMatchSource;
   editedViaPublicLink: boolean;
+  confirmedViaPublicLink: boolean;
 };
 
 /**
@@ -98,10 +100,14 @@ function TagRow({
             {tag.name.trim() || "(ยังไม่มีชื่อ)"}
           </span>
         )}
-        {(tag.editedViaPublicLink || isProblem) && (
+        {(tag.editedViaPublicLink || tag.confirmedViaPublicLink || isProblem) && (
           <span className="ml-auto flex shrink-0 items-center gap-1">
-            {tag.editedViaPublicLink && (
-              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">แก้ไขแล้ว</span>
+            {tag.editedViaPublicLink ? (
+              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">แก้ไข</span>
+            ) : (
+              tag.confirmedViaPublicLink && (
+                <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">ยืนยัน</span>
+              )
             )}
             {isProblem && (
               <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700">ปัญหา</span>
@@ -148,6 +154,7 @@ export function PublicValidateView({
   const [editingTagId, setEditingTagId] = useState<string | null>(null);
   const [editCode, setEditCode] = useState("");
   const [editName, setEditName] = useState("");
+  const [editOriginalName, setEditOriginalName] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [editHistory, setEditHistory] = useState<TagHistoryEntry[] | null>(null);
@@ -233,10 +240,13 @@ export function PublicValidateView({
     setEditingTagId(tag.id);
     setEditCode(tag.code);
     setEditName(tag.name);
+    setEditOriginalName(tag.name);
     setEditError(null);
     setEditHistory(null);
     setEditHistoryOpen(false);
   }
+
+  const editNameChanged = editName.trim() !== editOriginalName.trim();
 
   async function handleSaveEdit() {
     if (!editingTagId) return;
@@ -252,10 +262,19 @@ export function PublicValidateView({
       return;
     }
     const normalizedCode = editCode.trim().replace(/\D+/g, "");
+    const nameChanged = editNameChanged;
     setTags((prev) =>
       prev.map((t) =>
         t.id === editingTagId
-          ? { ...t, code: editCode.trim(), name: editName.trim(), normalizedCode, editedViaPublicLink: true }
+          ? {
+              ...t,
+              code: editCode.trim(),
+              name: editName.trim(),
+              normalizedCode,
+              ...(nameChanged
+                ? { editedViaPublicLink: true }
+                : { confirmedViaPublicLink: true }),
+            }
           : t,
       ),
     );
@@ -268,12 +287,9 @@ export function PublicValidateView({
         <div className="flex shrink-0 flex-col items-center gap-1">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto" />
-          <div className="flex flex-col items-center gap-0.5 text-center">
-            {currentTitle?.trim() && currentTitle.trim() !== photoName && (
-              <span className="text-[11px] leading-tight text-gray-400">(คณะ: {photoName})</span>
-            )}
-            <span className="text-[11px] leading-tight text-gray-500">ตรวจสอบความถูกต้อง — แท็กแล้ว {tags.length} คน</span>
-          </div>
+          {currentTitle?.trim() && currentTitle.trim() !== photoName && (
+            <span className="text-[11px] leading-tight text-gray-400">(คณะ: {photoName})</span>
+          )}
         </div>
         <div className="min-w-0 flex-1">
           {editingTitle ? (
@@ -510,24 +526,7 @@ export function PublicValidateView({
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 bg-white px-3 py-2 text-xs">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => canvasRef.current?.zoomOut()}
-            title="Zoom out (Ctrl -)"
-            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
-          >
-            −
-          </button>
-          <button
-            type="button"
-            onClick={() => canvasRef.current?.zoomIn()}
-            title="Zoom in (Ctrl +)"
-            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
-          >
-            +
-          </button>
-        </div>
+        <ZoomButtons onZoomOut={() => canvasRef.current?.zoomOut()} onZoomIn={() => canvasRef.current?.zoomIn()} />
         <span className="hidden text-gray-400 sm:inline">
           Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ, ดับเบิลคลิกจุดในรูปหรือ item = แก้ไขชื่อ (เผื่อสะกดผิด)
         </span>
@@ -598,9 +597,11 @@ export function PublicValidateView({
                 type="button"
                 onClick={handleSaveEdit}
                 disabled={editSaving}
-                className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                className={`rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${
+                  editNameChanged ? "bg-indigo-600 hover:bg-indigo-700" : "bg-green-600 hover:bg-green-700"
+                }`}
               >
-                {editSaving ? "กำลังบันทึก..." : "บันทึก"}
+                {editSaving ? "กำลังบันทึก..." : editNameChanged ? "บันทึก" : "ยืนยัน"}
               </button>
             </div>
           </div>

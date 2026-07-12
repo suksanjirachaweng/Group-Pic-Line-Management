@@ -64,7 +64,11 @@ export default async function GroupPhotoTaggingPage({
   const legacyReferences: ReferenceLookup[] = referenceRows;
 
   return (
-    <div className="flex h-screen flex-col">
+    // Cancels the admin layout's <main className="p-6"> padding and its 54px <header> so this
+    // full-bleed tagging canvas actually fills the viewport instead of overflowing it by exactly
+    // that much (header + top/bottom padding) — a pre-existing gap that only became visible once
+    // the toolbar moved to the bottom edge, where the overflow silently clipped it.
+    <div className="-m-6 flex h-[calc(100dvh-54px)] flex-col">
       <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-2.5">
         <Link
           href={`/admin/universities/${universityId}/group-photos`}

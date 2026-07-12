@@ -12,6 +12,7 @@ import {
 } from "react";
 import { TagLabel, TagMarker, type TagDisplayField } from "./TagLabel";
 import { colorForRow } from "./rowColor";
+import { ZoomButtons } from "./ZoomButtons";
 
 const DISPLAY_MAX_WIDTH = 3500;
 const MIN_SCALE = 0.05;
@@ -457,24 +458,7 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
     <div className="flex h-full flex-col">
       {!hideToolbar && (
         <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-3 py-2 text-xs">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => zoomBy(1 / ZOOM_STEP)}
-              title="Zoom out (Ctrl -)"
-              className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
-            >
-              −
-            </button>
-            <button
-              type="button"
-              onClick={() => zoomBy(ZOOM_STEP)}
-              title="Zoom in (Ctrl +)"
-              className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
-            >
-              +
-            </button>
-          </div>
+          <ZoomButtons onZoomOut={() => zoomBy(1 / ZOOM_STEP)} onZoomIn={() => zoomBy(ZOOM_STEP)} />
           <span className="hidden text-gray-400 sm:inline">
             Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ
             {!readOnly && ", คลิกจุด = แก้ไข"}

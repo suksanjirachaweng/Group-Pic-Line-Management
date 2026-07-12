@@ -11,6 +11,7 @@ import { validateTags, problemTagIds } from "@/lib/groupPhoto/validateTags";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { TagLabel, TagMarker, TagDisplayFieldPicker, type TagDisplayField } from "@/lib/groupPhoto/TagLabel";
 import { colorForRow } from "@/lib/groupPhoto/rowColor";
+import { ZoomButtons } from "@/lib/groupPhoto/ZoomButtons";
 
 const DISPLAY_MAX_WIDTH = 3500;
 const OCR_CROP_SIZE = 360;
@@ -133,7 +134,7 @@ export function TagCanvas({
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [dialogInitial, setDialogInitial] = useState<DialogInitial | null>(null);
-  const [ocrEnabled, setOcrEnabled] = useState(true);
+  const [ocrEnabled, setOcrEnabled] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [candidateCodes, setCandidateCodes] = useState<Record<string, string | null>>({});
   const [candidateOcrPending, setCandidateOcrPending] = useState<Set<string>>(new Set());
@@ -632,121 +633,6 @@ export function TagCanvas({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-white px-3 py-2 text-xs">
-        <span className="text-gray-600">แท็กแล้ว {tags.length} คน</span>
-        {problems.length > 0 && (
-          <span className="rounded bg-red-50 px-2 py-0.5 font-medium text-red-700">{problems.length} ปัญหา</span>
-        )}
-        {reportedCount > 0 && (
-          <span className="rounded bg-orange-50 px-2 py-0.5 font-medium text-orange-700">
-            {reportedCount} คนแจ้งปัญหา
-          </span>
-        )}
-
-        <div className="mx-1 h-5 w-px bg-gray-200" />
-
-        <div className="flex items-center gap-1">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleSearchNext();
-              }
-            }}
-            placeholder="ค้นหาชื่อ/นามสกุล/รหัส"
-            className="w-40 rounded-md border border-gray-300 px-2 py-1.5"
-          />
-          <button
-            type="button"
-            onClick={handleSearchNext}
-            disabled={searchMatches.length === 0}
-            title="ไปยังคนที่พบ (Enter = ถัดไป)"
-            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            ค้นหา
-          </button>
-          {searchQuery.trim() && (
-            <span className="whitespace-nowrap text-gray-400">
-              {searchMatches.length > 0 ? `${searchIndex >= 0 ? searchIndex + 1 : 0}/${searchMatches.length}` : "ไม่พบ"}
-            </span>
-          )}
-        </div>
-
-        <div className="mx-1 h-5 w-px bg-gray-200" />
-
-        <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
-
-        <label className="flex items-center gap-1 text-gray-600">
-          มุมป้าย
-          <input
-            type="number"
-            value={labelAngle}
-            onChange={(e) => setLabelAngle(Number(e.target.value))}
-            step={5}
-            className="w-14 rounded-md border border-gray-300 px-1.5 py-1"
-          />
-        </label>
-
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => zoomBy(1 / ZOOM_STEP)}
-            title="Zoom out (Ctrl -)"
-            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
-          >
-            −
-          </button>
-          <button
-            type="button"
-            onClick={() => zoomBy(ZOOM_STEP)}
-            title="Zoom in (Ctrl +)"
-            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
-          >
-            +
-          </button>
-        </div>
-
-        <div className="mx-1 h-5 w-px bg-gray-200" />
-
-        <label
-          className="flex items-center gap-1.5 text-gray-600"
-          title="อ่านตัวเลขจากป้ายอัตโนมัติตอนเพิ่มคนใหม่/ตรวจจับใบหน้า — ปิดถ้าไม่อยากเสียเวลา/ค่าใช้จ่าย OCR"
-        >
-          <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} />
-          OCR
-        </label>
-
-        <button
-          type="button"
-          disabled={!loaded || isDetecting || hasDetected}
-          onClick={() => {
-            if (!fullBitmapRef.current) return;
-            setHasDetected(true);
-            runFaceDetection(fullBitmapRef.current);
-          }}
-          title={hasDetected ? "ตรวจจับไปแล้วในรูปนี้ — กดซ้ำจะได้ผลลัพธ์เดิม" : "ช่วยแนะนำตำแหน่งคนที่ยังไม่ได้แท็ก"}
-          className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        >
-          {isDetecting ? "กำลังตรวจจับ..." : hasDetected ? "ตรวจจับแล้ว" : "ตรวจจับใบหน้า"}
-        </button>
-        <button
-          type="button"
-          disabled={tags.length === 0 || bulkAdjustMode}
-          onClick={() => setBulkAdjustMode(true)}
-          title="เลื่อน/ย่อขยายจุดที่แท็กไว้ทั้งหมดพร้อมกัน — ใช้เมื่ออัปเดตรูปแล้วตำแหน่งเพี้ยน"
-          className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        >
-          ปรับตำแหน่ง
-        </button>
-
-        <span className="ml-auto hidden text-gray-400 lg:inline">
-          คลิก = เลือกจุด, ลาก = ย้ายตำแหน่ง, Space+ลาก = เลื่อนภาพ, Ctrl +/- = ซูม, Shift+คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
-        </span>
-      </div>
-
       <div
         ref={containerRef}
         className="relative flex-1 overflow-hidden bg-gray-800"
@@ -948,6 +834,110 @@ export function TagCanvas({
             </div>
           </div>
         )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-gray-200 bg-white px-3 py-2 text-xs">
+        <div className="flex items-center gap-2">
+          <span className="text-gray-600">แท็กแล้ว {tags.length} คน</span>
+          {problems.length > 0 && (
+            <span className="rounded bg-red-50 px-2 py-0.5 font-medium text-red-700">{problems.length} ปัญหา</span>
+          )}
+          {reportedCount > 0 && (
+            <span className="rounded bg-orange-50 px-2 py-0.5 font-medium text-orange-700">
+              {reportedCount} คนแจ้งปัญหา
+            </span>
+          )}
+        </div>
+
+        <div className="mx-1 h-5 w-px bg-gray-200" />
+
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSearchNext();
+              }
+            }}
+            placeholder="ค้นหาชื่อ/นามสกุล/รหัส"
+            className="w-40 rounded-md border border-gray-300 px-2 py-1.5"
+          />
+          <button
+            type="button"
+            onClick={handleSearchNext}
+            disabled={searchMatches.length === 0}
+            title="ไปยังคนที่พบ (Enter = ถัดไป)"
+            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            ค้นหา
+          </button>
+          {searchQuery.trim() && (
+            <span className="whitespace-nowrap text-gray-400">
+              {searchMatches.length > 0 ? `${searchIndex >= 0 ? searchIndex + 1 : 0}/${searchMatches.length}` : "ไม่พบ"}
+            </span>
+          )}
+        </div>
+
+        <div className="mx-1 h-5 w-px bg-gray-200" />
+
+        <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
+
+        <label className="flex items-center gap-1 text-gray-600">
+          มุมป้าย
+          <input
+            type="number"
+            value={labelAngle}
+            onChange={(e) => setLabelAngle(Number(e.target.value))}
+            step={5}
+            className="w-14 rounded-md border border-gray-300 px-1.5 py-1"
+          />
+        </label>
+
+        <div className="mx-1 h-5 w-px bg-gray-200" />
+
+        <ZoomButtons onZoomOut={() => zoomBy(1 / ZOOM_STEP)} onZoomIn={() => zoomBy(ZOOM_STEP)} />
+
+        <div className="mx-1 h-5 w-px bg-gray-200" />
+
+        <div className="flex items-center gap-2">
+          <label
+            className="flex items-center gap-1.5 text-gray-600"
+            title="อ่านตัวเลขจากป้ายอัตโนมัติตอนเพิ่มคนใหม่/ตรวจจับใบหน้า — ปิดถ้าไม่อยากเสียเวลา/ค่าใช้จ่าย OCR"
+          >
+            <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} />
+            OCR
+          </label>
+
+          <button
+            type="button"
+            disabled={!loaded || isDetecting || hasDetected}
+            onClick={() => {
+              if (!fullBitmapRef.current) return;
+              setHasDetected(true);
+              runFaceDetection(fullBitmapRef.current);
+            }}
+            title={hasDetected ? "ตรวจจับไปแล้วในรูปนี้ — กดซ้ำจะได้ผลลัพธ์เดิม" : "ช่วยแนะนำตำแหน่งคนที่ยังไม่ได้แท็ก"}
+            className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {isDetecting ? "กำลังตรวจจับ..." : hasDetected ? "ตรวจจับแล้ว" : "ตรวจจับใบหน้า"}
+          </button>
+          <button
+            type="button"
+            disabled={tags.length === 0 || bulkAdjustMode}
+            onClick={() => setBulkAdjustMode(true)}
+            title="เลื่อน/ย่อขยายจุดที่แท็กไว้ทั้งหมดพร้อมกัน — ใช้เมื่ออัปเดตรูปแล้วตำแหน่งเพี้ยน"
+            className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            ปรับตำแหน่ง
+          </button>
+        </div>
+
+        <span className="ml-auto hidden text-gray-400 lg:inline">
+          คลิก = เลือกจุด, ลาก = ย้ายตำแหน่ง, Space+ลาก = เลื่อนภาพ, Ctrl +/- = ซูม, Shift+คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
+        </span>
       </div>
 
       <TagEditDialog
