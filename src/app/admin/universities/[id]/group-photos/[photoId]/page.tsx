@@ -67,44 +67,54 @@ export default async function GroupPhotoTaggingPage({
     // AdminChrome hides the shared header/padding for this route (see FULLSCREEN_PATTERN), so
     // this can just claim the full viewport directly instead of subtracting that chrome's size.
     <div className="flex h-dvh flex-col">
-      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-2.5">
-        <div className="flex shrink-0 items-center gap-2">
-          <Link
-            href={`/admin/universities/${universityId}/group-photos`}
-            className="text-sm text-gray-500 hover:text-gray-700"
-          >
-            ← กลับ
-          </Link>
-          <div className="h-5 w-px bg-gray-200" />
-          <UpdatePhotoImageButton universityId={universityId} groupPhotoId={photo.id} />
-          <ImportMarkFileButton universityId={universityId} groupPhotoId={photo.id} />
+      <div className="border-b border-gray-200 bg-white px-4 py-2.5">
+        <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href={`/admin/universities/${universityId}/group-photos`}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              ← กลับ
+            </Link>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/nsl-logo.png" alt="Newsalon" className="h-6 w-auto" />
+          </div>
+          <div className="flex min-w-0 flex-1 justify-center">
+            <PhotoTitleEditor universityId={universityId} groupPhotoId={photo.id} name={photo.name} title={photo.title} />
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <a
+              href={`/api/group-photos/${photo.id}/export/excel`}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Export Excel
+            </a>
+            <Link
+              href={`/group-photos/${photo.id}/validate`}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+            >
+              Share
+            </Link>
+          </div>
         </div>
-        <div className="flex min-w-0 flex-1 justify-center">
-          <PhotoTitleEditor universityId={universityId} groupPhotoId={photo.id} name={photo.name} title={photo.title} />
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <PhotoStatusSelector universityId={universityId} groupPhotoId={photo.id} status={photo.status} />
-          <div className="h-5 w-px bg-gray-200" />
-          <a
-            href={`/api/group-photos/${photo.id}/export/excel`}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Export Excel
-          </a>
-          <a
-            href={`/api/group-photos/${photo.id}/export/text`}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Export ข้อความ
-          </a>
-          <Link
-            href={`/group-photos/${photo.id}/validate`}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
-          >
-            Share
-          </Link>
+        <div className="mt-1.5 flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2">
+            <UpdatePhotoImageButton universityId={universityId} groupPhotoId={photo.id} />
+            <ImportMarkFileButton universityId={universityId} groupPhotoId={photo.id} />
+          </div>
+          <div className="flex min-w-0 flex-1 justify-center">
+            <PhotoStatusSelector universityId={universityId} groupPhotoId={photo.id} status={photo.status} />
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <a
+              href={`/api/group-photos/${photo.id}/export/text`}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Export ข้อความ
+            </a>
+          </div>
         </div>
       </div>
       <div className="min-h-0 flex-1">
