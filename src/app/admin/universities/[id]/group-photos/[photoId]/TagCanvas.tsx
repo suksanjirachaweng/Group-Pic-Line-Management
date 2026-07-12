@@ -711,11 +711,6 @@ export function TagCanvas({
             onDoubleClick={handleCanvasDoubleClick}
             className={`block bg-gray-800 ${spacePressed ? "cursor-grab" : "cursor-crosshair"}`}
           />
-          {!loaded && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-gray-500">
-              <span className="text-xs">กำลังโหลดรูป...</span>
-            </div>
-          )}
           <div className="pointer-events-none absolute inset-0">
             {displayFields.has("line") && (
               <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -808,6 +803,15 @@ export function TagCanvas({
             })}
           </div>
         </div>
+
+        {!loaded && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="flex items-center gap-3 rounded-lg bg-white px-5 py-4 shadow-xl">
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
+              <span className="text-sm font-medium text-gray-700">กำลังโหลดรูป...</span>
+            </div>
+          </div>
+        )}
 
         {bulkAdjustMode && (
           <div className="absolute right-3 top-3 z-20 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-xl">
