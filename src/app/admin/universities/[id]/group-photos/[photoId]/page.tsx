@@ -68,52 +68,61 @@ export default async function GroupPhotoTaggingPage({
     // this can just claim the full viewport directly instead of subtracting that chrome's size.
     <div className="flex h-dvh flex-col">
       <div className="border-b border-gray-200 bg-white px-4 py-2.5">
-        <div className="flex items-center gap-3">
-          <div className="flex shrink-0 items-center gap-2">
-            <Link
-              href={`/admin/universities/${universityId}/group-photos`}
-              className="text-sm text-gray-500 hover:text-gray-700"
-            >
-              ← กลับ
-            </Link>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/nsl-logo.png" alt="Newsalon" className="h-6 w-auto" />
+        <div className="flex items-stretch gap-3">
+          {/* Left column: back+logo above the import buttons, both flush against the same
+              left edge — kept as one flex-col instead of two independently-flexed rows so
+              the two rows can't drift apart (each row used to right/center-align its own
+              group independently, which left everything a few px off between rows). */}
+          <div className="flex shrink-0 flex-col justify-center gap-1.5">
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/admin/universities/${universityId}/group-photos`}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                ← กลับ
+              </Link>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/nsl-logo.png" alt="Newsalon" className="h-6 w-auto" />
+            </div>
+            <div className="flex items-center gap-2">
+              <UpdatePhotoImageButton universityId={universityId} groupPhotoId={photo.id} />
+              <ImportMarkFileButton universityId={universityId} groupPhotoId={photo.id} />
+            </div>
           </div>
-          <div className="flex min-w-0 flex-1 justify-center">
+
+          {/* Center column: title block (with its own edit button + subtitle) and the status
+              selector stacked in the same centered column, so they share one center line
+              instead of two separately-computed ones. */}
+          <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-1.5">
             <PhotoTitleEditor universityId={universityId} groupPhotoId={photo.id} name={photo.name} title={photo.title} />
+            <PhotoStatusSelector universityId={universityId} groupPhotoId={photo.id} status={photo.status} />
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <a
-              href={`/api/group-photos/${photo.id}/export/excel`}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Export Excel
-            </a>
+
+          {/* Right column: Export Excel/text stacked flush-left against each other, Share
+              stretched to the full header height beside them. */}
+          <div className="flex shrink-0 items-stretch gap-2">
+            <div className="flex flex-col justify-center gap-1.5">
+              <a
+                href={`/api/group-photos/${photo.id}/export/excel`}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Export Excel
+              </a>
+              <a
+                href={`/api/group-photos/${photo.id}/export/text`}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Export ข้อความ
+              </a>
+            </div>
             <Link
               href={`/group-photos/${photo.id}/validate`}
               target="_blank"
               rel="noreferrer"
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+              className="flex items-center rounded-md bg-indigo-600 px-3 text-xs font-medium text-white hover:bg-indigo-700"
             >
               Share
             </Link>
-          </div>
-        </div>
-        <div className="mt-1.5 flex items-center gap-3">
-          <div className="flex shrink-0 items-center gap-2">
-            <UpdatePhotoImageButton universityId={universityId} groupPhotoId={photo.id} />
-            <ImportMarkFileButton universityId={universityId} groupPhotoId={photo.id} />
-          </div>
-          <div className="flex min-w-0 flex-1 justify-center">
-            <PhotoStatusSelector universityId={universityId} groupPhotoId={photo.id} status={photo.status} />
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <a
-              href={`/api/group-photos/${photo.id}/export/text`}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Export ข้อความ
-            </a>
           </div>
         </div>
       </div>
