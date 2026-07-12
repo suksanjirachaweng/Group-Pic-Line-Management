@@ -90,17 +90,18 @@ export default async function GroupPhotoTaggingPage({
             </div>
           </div>
 
-          {/* Center column: title block (with its own edit button + subtitle) and the status
-              selector stacked in the same centered column, so they share one center line
-              instead of two separately-computed ones. */}
+          {/* Center column: just the title block (with its own edit button + subtitle) — the
+              status selector now lives in the right cluster instead, next to Export/Share. */}
           <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-1.5">
             <PhotoTitleEditor universityId={universityId} groupPhotoId={photo.id} name={photo.name} title={photo.title} />
-            <PhotoStatusSelector universityId={universityId} groupPhotoId={photo.id} status={photo.status} />
           </div>
 
-          {/* Right column: Export Excel/text stacked flush-left against each other, Share
-              stretched to the full header height beside them. */}
+          {/* Right column: status selector, then Export Excel/text stacked flush-left against
+              each other, Share stretched to the full header height beside them. */}
           <div className="flex shrink-0 items-stretch gap-2">
+            <div className="flex flex-col justify-center">
+              <PhotoStatusSelector universityId={universityId} groupPhotoId={photo.id} status={photo.status} />
+            </div>
             <div className="flex flex-col justify-center gap-1.5">
               <a
                 href={`/api/group-photos/${photo.id}/export/excel`}

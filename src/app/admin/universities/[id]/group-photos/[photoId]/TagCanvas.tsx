@@ -890,106 +890,112 @@ export function TagCanvas({
       </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-gray-200 bg-white px-3 py-2 text-xs">
-        <ZoomButtons onZoomOut={() => zoomBy(1 / ZOOM_STEP)} onZoomIn={() => zoomBy(ZOOM_STEP)} />
+      <div className="flex flex-col gap-2 border-t border-gray-200 bg-white px-3 py-2 text-xs">
+        {/* Row 1: the photo/detection controls. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <ZoomButtons onZoomOut={() => zoomBy(1 / ZOOM_STEP)} onZoomIn={() => zoomBy(ZOOM_STEP)} />
 
-        <div className="mx-1 h-5 w-px bg-gray-200" />
+          <div className="mx-1 h-5 w-px bg-gray-200" />
 
-        {reportedCount > 0 && (
-          <>
-            <div className="flex items-center gap-2">
-              <span className="rounded bg-orange-50 px-2 py-0.5 font-medium text-orange-700">
-                {reportedCount} คนแจ้งปัญหา
-              </span>
-            </div>
-            <div className="mx-1 h-5 w-px bg-gray-200" />
-          </>
-        )}
-
-        <div className="flex items-center gap-1">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleSearchNext();
-              }
-            }}
-            placeholder="ค้นหาชื่อ/นามสกุล/รหัส"
-            className="w-40 rounded-md border border-gray-300 px-2 py-1.5"
-          />
-          <button
-            type="button"
-            onClick={handleSearchNext}
-            disabled={searchMatches.length === 0}
-            title="ไปยังคนที่พบ (Enter = ถัดไป)"
-            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            ค้นหา
-          </button>
-          {searchQuery.trim() && (
-            <span className="whitespace-nowrap text-gray-400">
-              {searchMatches.length > 0 ? `${searchIndex >= 0 ? searchIndex + 1 : 0}/${searchMatches.length}` : "ไม่พบ"}
-            </span>
+          {reportedCount > 0 && (
+            <>
+              <div className="flex items-center gap-2">
+                <span className="rounded bg-orange-50 px-2 py-0.5 font-medium text-orange-700">
+                  {reportedCount} คนแจ้งปัญหา
+                </span>
+              </div>
+              <div className="mx-1 h-5 w-px bg-gray-200" />
+            </>
           )}
+
+          <div className="flex items-center gap-2">
+            <label
+              className="flex items-center gap-1.5 text-gray-600"
+              title="อ่านตัวเลขจากป้ายอัตโนมัติตอนเพิ่มคนใหม่/ตรวจจับใบหน้า — ปิดถ้าไม่อยากเสียเวลา/ค่าใช้จ่าย OCR"
+            >
+              <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} />
+              OCR
+            </label>
+
+            <button
+              type="button"
+              disabled={!loaded || isDetecting || hasDetected}
+              onClick={() => {
+                if (!fullBitmapRef.current) return;
+                setHasDetected(true);
+                runFaceDetection(fullBitmapRef.current);
+              }}
+              title={hasDetected ? "ตรวจจับไปแล้วในรูปนี้ — กดซ้ำจะได้ผลลัพธ์เดิม" : "ช่วยแนะนำตำแหน่งคนที่ยังไม่ได้แท็ก"}
+              className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {isDetecting ? "กำลังตรวจจับ..." : hasDetected ? "ตรวจจับแล้ว" : "ตรวจจับใบหน้า"}
+            </button>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              disabled={tags.length === 0 || bulkAdjustMode}
+              onClick={() => setBulkAdjustMode(true)}
+              title="เลื่อน/ย่อขยายจุดที่แท็กไว้ทั้งหมดพร้อมกัน — ใช้เมื่ออัปเดตรูปแล้วตำแหน่งเพี้ยน"
+              className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              ปรับตำแหน่ง
+            </button>
+            <label className="flex items-center gap-1 text-gray-600">
+              มุมป้าย
+              <input
+                type="number"
+                value={labelAngle}
+                onChange={(e) => setLabelAngle(Number(e.target.value))}
+                step={5}
+                className="w-14 rounded-md border border-gray-300 px-1.5 py-1"
+              />
+            </label>
+          </div>
         </div>
 
-        <div className="mx-1 h-5 w-px bg-gray-200" />
+        {/* Row 2: shortcut hint (left, under the zoom buttons above) + search + display-field
+            checkboxes (right) — its own row always, regardless of window width, so it doesn't
+            collapse onto row 1 on wide screens. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="hidden text-gray-400 lg:inline">
+            คลิก = เลือกจุด, ลาก = ย้ายตำแหน่ง, Space+ลาก = เลื่อนภาพ, Ctrl +/- = ซูม, Ctrl+0 = พอดีจอ, Shift+คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
+          </span>
 
-        <div className="flex items-center gap-2">
-          <label
-            className="flex items-center gap-1.5 text-gray-600"
-            title="อ่านตัวเลขจากป้ายอัตโนมัติตอนเพิ่มคนใหม่/ตรวจจับใบหน้า — ปิดถ้าไม่อยากเสียเวลา/ค่าใช้จ่าย OCR"
-          >
-            <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} />
-            OCR
-          </label>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleSearchNext();
+                  }
+                }}
+                placeholder="ค้นหาชื่อ/นามสกุล/รหัส"
+                className="w-40 rounded-md border border-gray-300 px-2 py-1.5"
+              />
+              <button
+                type="button"
+                onClick={handleSearchNext}
+                disabled={searchMatches.length === 0}
+                title="ไปยังคนที่พบ (Enter = ถัดไป)"
+                className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                ค้นหา
+              </button>
+              {searchQuery.trim() && (
+                <span className="whitespace-nowrap text-gray-400">
+                  {searchMatches.length > 0 ? `${searchIndex >= 0 ? searchIndex + 1 : 0}/${searchMatches.length}` : "ไม่พบ"}
+                </span>
+              )}
+            </div>
 
-          <button
-            type="button"
-            disabled={!loaded || isDetecting || hasDetected}
-            onClick={() => {
-              if (!fullBitmapRef.current) return;
-              setHasDetected(true);
-              runFaceDetection(fullBitmapRef.current);
-            }}
-            title={hasDetected ? "ตรวจจับไปแล้วในรูปนี้ — กดซ้ำจะได้ผลลัพธ์เดิม" : "ช่วยแนะนำตำแหน่งคนที่ยังไม่ได้แท็ก"}
-            className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            {isDetecting ? "กำลังตรวจจับ..." : hasDetected ? "ตรวจจับแล้ว" : "ตรวจจับใบหน้า"}
-          </button>
-          <button
-            type="button"
-            disabled={tags.length === 0 || bulkAdjustMode}
-            onClick={() => setBulkAdjustMode(true)}
-            title="เลื่อน/ย่อขยายจุดที่แท็กไว้ทั้งหมดพร้อมกัน — ใช้เมื่ออัปเดตรูปแล้วตำแหน่งเพี้ยน"
-            className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            ปรับตำแหน่ง
-          </button>
-        </div>
-
-        <div className="mx-1 h-5 w-px bg-gray-200" />
-
-        <label className="flex items-center gap-1 text-gray-600">
-          มุมป้าย
-          <input
-            type="number"
-            value={labelAngle}
-            onChange={(e) => setLabelAngle(Number(e.target.value))}
-            step={5}
-            className="w-14 rounded-md border border-gray-300 px-1.5 py-1"
-          />
-        </label>
-
-        <span className="hidden w-full text-left text-gray-400 lg:inline">
-          คลิก = เลือกจุด, ลาก = ย้ายตำแหน่ง, Space+ลาก = เลื่อนภาพ, Ctrl +/- = ซูม, Ctrl+0 = พอดีจอ, Shift+คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
-        </span>
-
-        <div className="ml-auto">
-          <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
+            <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
+          </div>
         </div>
       </div>
 
