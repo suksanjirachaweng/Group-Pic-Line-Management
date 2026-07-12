@@ -207,6 +207,18 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
     });
   }
 
+  // Scales/centers so the whole image just fits the viewport — the same "reset zoom" gesture as
+  // Ctrl+0 in browsers/design tools, useful after zooming/panning deep into a huge photo.
+  function zoomToFit() {
+    const canvas = displayCanvasRef.current;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!canvas || !rect || !canvas.width || !canvas.height || !rect.width || !rect.height) return;
+    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(rect.width / canvas.width, rect.height / canvas.height)));
+    setScale(next);
+    setTx((rect.width - canvas.width * next) / 2);
+    setTy((rect.height - canvas.height * next) / 2);
+  }
+
   useImperativeHandle(
     ref,
     () => ({
@@ -275,6 +287,9 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
         } else if (e.key === "-" || e.key === "_") {
           e.preventDefault();
           zoomBy(1 / ZOOM_STEP);
+        } else if (e.key === "0") {
+          e.preventDefault();
+          zoomToFit();
         }
       }
     }
@@ -460,7 +475,7 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
         <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-3 py-2 text-xs">
           <ZoomButtons onZoomOut={() => zoomBy(1 / ZOOM_STEP)} onZoomIn={() => zoomBy(ZOOM_STEP)} />
           <span className="hidden text-gray-400 sm:inline">
-            Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ
+            Ctrl +/- = ซูม, Ctrl+0 = พอดีจอ, Spacebar+ลาก = เลื่อนภาพ
             {!readOnly && ", คลิกจุด = แก้ไข"}
             {onDoubleClickTag && ", ดับเบิลคลิกจุด = แก้ไข"}
           </span>

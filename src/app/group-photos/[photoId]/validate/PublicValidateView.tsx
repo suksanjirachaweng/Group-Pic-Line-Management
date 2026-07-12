@@ -321,7 +321,7 @@ export function PublicValidateView({
           onZoomIn={() => canvasRef.current?.zoomIn()}
         />
         <span className="hidden text-gray-400 sm:inline">
-          Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ,
+          Ctrl +/- = ซูม, Ctrl+0 = พอดีจอ, Spacebar+ลาก = เลื่อนภาพ,
           ดับเบิลคลิกจุดในรูปหรือรายชื่อ = แก้ไขชื่อ
         </span>
         <span className="text-gray-400 sm:hidden">
