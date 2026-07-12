@@ -1,12 +1,23 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { validateTags } from "@/lib/groupPhoto/validateTags";
 import { ReviewCanvas, type ReviewCanvasHandle, type ReviewTag } from "@/lib/groupPhoto/ReviewCanvas";
 import { TagDisplayFieldPicker, type TagDisplayField } from "@/lib/groupPhoto/TagLabel";
 import { colorForRow } from "@/lib/groupPhoto/rowColor";
-import { updateGroupPhotoTagViaValidatePage, updateGroupPhotoTitlePublic } from "@/lib/actions/publicGroupPhoto";
+import {
+  updateGroupPhotoTagViaValidatePage,
+  updateGroupPhotoTitlePublic,
+  getGroupPhotoTagHistoryPublic,
+} from "@/lib/actions/publicGroupPhoto";
+import type { TagHistoryEntry } from "@/lib/actions/groupPhotos";
 import { TagMatchSource } from "@/generated/prisma/enums";
+
+const HISTORY_SOURCE_LABEL: Record<TagHistoryEntry["source"], string> = {
+  ADMIN: "แก้ไขโดยแอดมิน",
+  AUTO_SYNC: "อัปเดตอัตโนมัติ",
+  PUBLIC_LINK: "แก้ไขผ่านลิงก์แชร์",
+};
 
 export type PublicValidateTagRecord = {
   id: string;
@@ -18,6 +29,7 @@ export type PublicValidateTagRecord = {
   x: number;
   y: number;
   matchSource: TagMatchSource;
+  editedViaPublicLink: boolean;
 };
 
 /**
@@ -86,9 +98,14 @@ function TagRow({
             {tag.name.trim() || "(ยังไม่มีชื่อ)"}
           </span>
         )}
-        {isProblem && (
-          <span className="ml-auto shrink-0 rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
-            ปัญหา
+        {(tag.editedViaPublicLink || isProblem) && (
+          <span className="ml-auto flex shrink-0 items-center gap-1">
+            {tag.editedViaPublicLink && (
+              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">แก้ไขแล้ว</span>
+            )}
+            {isProblem && (
+              <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700">ปัญหา</span>
+            )}
           </span>
         )}
       </button>
@@ -133,6 +150,21 @@ export function PublicValidateView({
   const [editName, setEditName] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [editHistory, setEditHistory] = useState<TagHistoryEntry[] | null>(null);
+  const [editHistoryOpen, setEditHistoryOpen] = useState(false);
+
+  // Fetch fresh every time a different tag's dialog opens — most edit sessions never open this
+  // section, so it's not worth preloading alongside the rest of the tag list.
+  useEffect(() => {
+    if (!editingTagId) return;
+    let cancelled = false;
+    getGroupPhotoTagHistoryPublic(photoId, editingTagId).then((rows) => {
+      if (!cancelled) setEditHistory(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [editingTagId, photoId]);
 
   const [currentTitle, setCurrentTitle] = useState(photoTitle);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -156,6 +188,12 @@ export function PublicValidateView({
   const duplicateGroups = problems.filter((p) => p.type === "DUPLICATE_CODE");
   const unmatchedIds = new Set(problems.filter((p) => p.type === "UNMATCHED_CODE").map((p) => p.tagId));
   const unmatchedTags = tags.filter((t) => unmatchedIds.has(t.id));
+  // Split the unmatched-code bucket by whether it's actually actionable: a tag with no name yet
+  // is still unidentified and needs someone to look at it, while one an admin already typed a
+  // name into (just not found in the registration/reference data) is effectively resolved —
+  // mixing the two made the "needs attention" list look far bigger than it really was.
+  const unmatchedNoName = unmatchedTags.filter((t) => !t.name.trim());
+  const unmatchedWithName = unmatchedTags.filter((t) => t.name.trim());
   const tagsById = new Map(tags.map((t) => [t.id, t]));
   const problemTagIdSet = new Set(problems.flatMap((p) => (p.type === "DUPLICATE_CODE" ? p.tagIds : [p.tagId])));
 
@@ -196,6 +234,8 @@ export function PublicValidateView({
     setEditCode(tag.code);
     setEditName(tag.name);
     setEditError(null);
+    setEditHistory(null);
+    setEditHistoryOpen(false);
   }
 
   async function handleSaveEdit() {
@@ -213,7 +253,11 @@ export function PublicValidateView({
     }
     const normalizedCode = editCode.trim().replace(/\D+/g, "");
     setTags((prev) =>
-      prev.map((t) => (t.id === editingTagId ? { ...t, code: editCode.trim(), name: editName.trim(), normalizedCode } : t)),
+      prev.map((t) =>
+        t.id === editingTagId
+          ? { ...t, code: editCode.trim(), name: editName.trim(), normalizedCode, editedViaPublicLink: true }
+          : t,
+      ),
     );
     setEditingTagId(null);
   }
@@ -289,7 +333,7 @@ export function PublicValidateView({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         {sidebarOpen && (
           <div className="max-h-[45vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white p-4 md:h-auto md:max-h-none md:w-96 md:border-b-0 md:border-r">
-          <p className="mb-3 text-xs text-gray-500">แตะรายชื่อด้านล่าง เพื่อดูตำแหน่งในรูป</p>
+          <p className="mb-3 text-xs text-gray-500">ดับเบิลคลิกที่จุดในรูป หรือ item เพื่อแก้ไขชื่อ (เผื่อสะกดผิด)</p>
 
           <div className="mb-3 flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
             <button
@@ -310,12 +354,8 @@ export function PublicValidateView({
 
           {listMode === "problems" ? (
             <>
-              {problems.length === 0 ? (
-                <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">ไม่พบปัญหา — ข้อมูลพร้อม export</p>
-              ) : (
-                <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  พบ {problems.length} รายการที่อาจต้องตรวจสอบก่อน export (ยัง export ได้ตามปกติ) — รูปด้านขวาแสดงเฉพาะจุดเหล่านี้
-                </p>
+              {problems.length === 0 && (
+                <p className="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">ไม่พบปัญหา — ข้อมูลพร้อม export</p>
               )}
 
               {duplicateGroups.length > 0 && (
@@ -349,13 +389,32 @@ export function PublicValidateView({
                 </div>
               )}
 
-              {unmatchedTags.length > 0 && (
+              {unmatchedNoName.length > 0 && (
+                <div className="mb-6">
+                  <h2 className="mb-2 text-sm font-semibold text-gray-900">มีรหัสแต่ไม่มีชื่อ ({unmatchedNoName.length})</h2>
+                  <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
+                    {unmatchedNoName.map((t) => (
+                      <TagRow
+                        key={t.id}
+                        tag={t}
+                        isSelected={t.id === selectedTagId}
+                        isProblem
+                        onSelect={() => setSelectedTagId(t.id)}
+                        onDoubleClick={() => openEditDialog(t)}
+                        displayFields={displayFields}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {unmatchedWithName.length > 0 && (
                 <div className="mb-6">
                   <h2 className="mb-2 text-sm font-semibold text-gray-900">
-                    ไม่พบในระบบลงทะเบียน/ไฟล์อ้างอิง ({unmatchedTags.length})
+                    รหัสไม่พบในระบบ แต่แอดมินกรอกข้อมูลแล้ว ({unmatchedWithName.length})
                   </h2>
                   <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
-                    {unmatchedTags.map((t) => (
+                    {unmatchedWithName.map((t) => (
                       <TagRow
                         key={t.id}
                         tag={t}
@@ -372,9 +431,6 @@ export function PublicValidateView({
             </>
           ) : (
             <>
-              <p className="mb-4 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                รายชื่อทั้งหมด {tags.length} คน — ดับเบิลคลิกที่จุดในรูปเพื่อแก้ไขรหัส/ชื่อ (เผื่อสะกดผิด)
-              </p>
               <div className="space-y-4">
                 {tagsByRow.map(([row, rowTags]) => {
                   const rowColor = colorForRow(row);
@@ -497,6 +553,35 @@ export function PublicValidateView({
               autoFocus
             />
             {editError && <p className="mt-2 text-xs text-red-600">{editError}</p>}
+
+            <div className="mt-3 border-t border-gray-100 pt-2">
+              <button
+                type="button"
+                onClick={() => setEditHistoryOpen((v) => !v)}
+                className="flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
+              >
+                <span>ประวัติการแก้ไข{editHistory ? ` (${editHistory.length})` : ""}</span>
+                <span>{editHistoryOpen ? "▲" : "▼"}</span>
+              </button>
+              {editHistoryOpen && (
+                <div className="mt-2 max-h-32 space-y-1.5 overflow-y-auto">
+                  {editHistory === null && <p className="text-xs text-gray-400">กำลังโหลด...</p>}
+                  {editHistory?.length === 0 && <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>}
+                  {editHistory?.map((h) => (
+                    <div key={h.id} className="rounded-md bg-gray-50 px-2 py-1.5 text-xs">
+                      <div className="flex items-center justify-between gap-2 text-gray-400">
+                        <span>{new Date(h.createdAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}</span>
+                        <span>{HISTORY_SOURCE_LABEL[h.source]}</span>
+                      </div>
+                      <p className="mt-0.5 text-gray-700">
+                        <span className="font-mono">{h.code}</span> — {h.name || "(ยังไม่มีชื่อ)"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"

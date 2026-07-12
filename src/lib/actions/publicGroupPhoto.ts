@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { RegistrantStatus } from "@/generated/prisma/enums";
+import type { TagHistoryEntry } from "@/lib/actions/groupPhotos";
 
 export type PublicUpdateState = { error: string } | { success: true } | null;
 
@@ -29,16 +30,21 @@ export async function updateTagViaPublicLink(
   const code = String(formData.get("code") ?? "").trim();
   if (!code) return { error: "กรุณากรอกหมายเลข" };
 
-  await prisma.groupPhotoTag.update({
-    where: { id: tagId },
-    data: {
-      name,
-      code,
-      normalizedCode: normalizeCode(code),
-      editedViaPublicLink: true,
-      publicLinkEditedAt: new Date(),
-    },
-  });
+  await prisma.$transaction([
+    prisma.groupPhotoTag.update({
+      where: { id: tagId },
+      data: {
+        name,
+        code,
+        normalizedCode: normalizeCode(code),
+        editedViaPublicLink: true,
+        publicLinkEditedAt: new Date(),
+      },
+    }),
+    prisma.groupPhotoTagHistory.create({
+      data: { tagId, code, name, row: tag.row, order: tag.order, source: "PUBLIC_LINK" },
+    }),
+  ]);
 
   revalidatePath(`/photo-review/${token}`);
   return { success: true };
@@ -66,19 +72,37 @@ export async function updateGroupPhotoTagViaValidatePage(
   const code = String(formData.get("code") ?? "").trim();
   if (!code) return { error: "กรุณากรอกหมายเลข" };
 
-  await prisma.groupPhotoTag.update({
-    where: { id: tagId },
-    data: {
-      name,
-      code,
-      normalizedCode: normalizeCode(code),
-      editedViaPublicLink: true,
-      publicLinkEditedAt: new Date(),
-    },
-  });
+  await prisma.$transaction([
+    prisma.groupPhotoTag.update({
+      where: { id: tagId },
+      data: {
+        name,
+        code,
+        normalizedCode: normalizeCode(code),
+        editedViaPublicLink: true,
+        publicLinkEditedAt: new Date(),
+      },
+    }),
+    prisma.groupPhotoTagHistory.create({
+      data: { tagId, code, name, row: tag.row, order: tag.order, source: "PUBLIC_LINK" },
+    }),
+  ]);
 
   revalidatePath(`/group-photos/${photoId}/validate`);
   return { success: true };
+}
+
+/**
+ * Read-only counterpart to getGroupPhotoTagHistory (admin) — same no-session model as the rest of
+ * this file, scoped by photoId so a validate-page visitor can only read history for tags in the
+ * photo their link already grants them full edit access to anyway.
+ */
+export async function getGroupPhotoTagHistoryPublic(photoId: string, tagId: string): Promise<TagHistoryEntry[]> {
+  const tag = await prisma.groupPhotoTag.findUnique({ where: { id: tagId }, select: { groupPhotoId: true } });
+  if (!tag || tag.groupPhotoId !== photoId) return [];
+
+  const rows = await prisma.groupPhotoTagHistory.findMany({ where: { tagId }, orderBy: { createdAt: "desc" } });
+  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
 }
 
 /**
