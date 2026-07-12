@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { validateTags } from "@/lib/groupPhoto/validateTags";
-import { ReviewCanvas, type ReviewTag } from "@/lib/groupPhoto/ReviewCanvas";
+import { ReviewCanvas, type ReviewCanvasHandle, type ReviewTag } from "@/lib/groupPhoto/ReviewCanvas";
 import { TagDisplayFieldPicker, type TagDisplayField } from "@/lib/groupPhoto/TagLabel";
 import { colorForRow } from "@/lib/groupPhoto/rowColor";
 import { updateGroupPhotoTagViaValidatePage, updateGroupPhotoTitlePublic } from "@/lib/actions/publicGroupPhoto";
@@ -23,9 +23,11 @@ export type PublicValidateTagRecord = {
 /**
  * One row in any of the sidebar lists (duplicate-code groups, unmatched-code list, or the "all"
  * tab) — shared so every list looks and behaves the same: light row-color tint by default, a
- * clear indigo ring/bold text when selected. `groupedByRow` drops the per-item row dot/left
- * border and the "(แถว X ลำดับ Y)" suffix for lists that are already grouped under a row header
- * (the "all" tab); duplicate/unmatched lists mix rows together, so they keep both.
+ * clear indigo ring/bold text when selected. Which of order/code/name actually render follows
+ * `displayFields` — the same checkboxes that control the photo's marker labels — so the list and
+ * the photo never disagree about what's shown. `groupedByRow` drops the per-item row dot/left
+ * border for lists that are already grouped under a row header (the "all" tab); duplicate/
+ * unmatched lists mix rows together, so they keep it.
  */
 function TagRow({
   tag,
@@ -33,6 +35,7 @@ function TagRow({
   isProblem,
   onSelect,
   onDoubleClick,
+  displayFields,
   groupedByRow = false,
 }: {
   tag: PublicValidateTagRecord;
@@ -40,6 +43,7 @@ function TagRow({
   isProblem: boolean;
   onSelect: () => void;
   onDoubleClick: () => void;
+  displayFields: Set<TagDisplayField>;
   groupedByRow?: boolean;
 }) {
   const rowColor = colorForRow(tag.row);
@@ -67,15 +71,19 @@ function TagRow({
             <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: rowColor }} />
           )
         )}
-        <span className={`font-mono ${isSelected ? "font-bold" : isProblem ? "text-red-600" : "text-gray-700"}`}>
-          {tag.code || "—"}
-        </span>
-        <span className={`truncate text-gray-600 ${isSelected ? "font-semibold" : ""}`}>
-          {tag.name.trim() || "(ยังไม่มีชื่อ)"}
-        </span>
-        {!groupedByRow && (
-          <span className="shrink-0 text-xs text-gray-400">
-            แถว {tag.row} ลำดับ {tag.order}
+        {displayFields.has("order") && (
+          <span className={`shrink-0 font-mono ${isSelected ? "font-bold text-gray-900" : "text-gray-400"}`}>
+            {tag.order}
+          </span>
+        )}
+        {displayFields.has("code") && (
+          <span className={`font-mono ${isSelected ? "font-bold" : isProblem ? "text-red-600" : "text-gray-700"}`}>
+            {tag.code || "—"}
+          </span>
+        )}
+        {displayFields.has("name") && (
+          <span className={`truncate text-gray-600 ${isSelected ? "font-semibold" : ""}`}>
+            {tag.name.trim() || "(ยังไม่มีชื่อ)"}
           </span>
         )}
         {isProblem && (
@@ -112,6 +120,7 @@ export function PublicValidateView({
   imageHeight: number;
   initialTags: PublicValidateTagRecord[];
 }) {
+  const canvasRef = useRef<ReviewCanvasHandle>(null);
   const [tags, setTags] = useState<PublicValidateTagRecord[]>(initialTags);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const [listMode, setListMode] = useState<"problems" | "all">("problems");
@@ -191,10 +200,6 @@ export function PublicValidateView({
 
   async function handleSaveEdit() {
     if (!editingTagId) return;
-    if (!editCode.trim()) {
-      setEditError("กรุณากรอกหมายเลข");
-      return;
-    }
     setEditSaving(true);
     setEditError(null);
     const fd = new FormData();
@@ -218,9 +223,9 @@ export function PublicValidateView({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-gray-200 bg-white px-3 py-2 sm:px-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto shrink-0" />
-        <div className="flex min-w-0 flex-1 justify-center">
+        <div className="min-w-0 flex-1">
           {editingTitle ? (
-            <div className="flex w-full max-w-xl flex-col items-center gap-1.5">
+            <div className="flex w-full max-w-xl flex-col items-start gap-1.5">
               <textarea
                 autoFocus
                 rows={3}
@@ -235,7 +240,7 @@ export function PublicValidateView({
                     setEditingTitle(false);
                   }
                 }}
-                className="w-full resize-none rounded-md border border-gray-300 px-2.5 py-1.5 text-center text-sm leading-snug"
+                className="w-full resize-none rounded-md border border-gray-300 px-2.5 py-1.5 text-left text-sm leading-snug"
               />
               <div className="flex items-center gap-1.5">
                 <button
@@ -257,7 +262,7 @@ export function PublicValidateView({
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-0.5 text-center">
+            <div className="flex flex-col items-start gap-0.5 text-left">
               <div className="flex items-center gap-1.5">
                 <h1 className="whitespace-pre-wrap text-sm font-semibold leading-snug text-gray-900">{displayTitle}</h1>
                 <button
@@ -278,9 +283,6 @@ export function PublicValidateView({
               <span className="text-xs text-gray-500">ตรวจสอบความถูกต้อง — แท็กแล้ว {tags.length} คน</span>
             </div>
           )}
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
         </div>
       </div>
 
@@ -336,6 +338,7 @@ export function PublicValidateView({
                                   isProblem
                                   onSelect={() => setSelectedTagId(t.id)}
                                   onDoubleClick={() => openEditDialog(t)}
+                                  displayFields={displayFields}
                                 />
                               ))}
                           </ul>
@@ -360,6 +363,7 @@ export function PublicValidateView({
                         isProblem
                         onSelect={() => setSelectedTagId(t.id)}
                         onDoubleClick={() => openEditDialog(t)}
+                        displayFields={displayFields}
                       />
                     ))}
                   </ul>
@@ -392,6 +396,7 @@ export function PublicValidateView({
                           isProblem={problemTagIdSet.has(t.id)}
                           onSelect={() => setSelectedTagId(t.id)}
                           onDoubleClick={() => openEditDialog(t)}
+                          displayFields={displayFields}
                           groupedByRow
                         />
                       ))}
@@ -428,6 +433,7 @@ export function PublicValidateView({
 
         <div className="min-h-0 flex-1">
           <ReviewCanvas
+            ref={canvasRef}
             imageUrl={imageUrl}
             imageWidth={imageWidth}
             imageHeight={imageHeight}
@@ -441,7 +447,36 @@ export function PublicValidateView({
             }}
             readOnly
             grayUnselected
+            hideToolbar
           />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 bg-white px-3 py-2 text-xs">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => canvasRef.current?.zoomOut()}
+            title="Zoom out (Ctrl -)"
+            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onClick={() => canvasRef.current?.zoomIn()}
+            title="Zoom in (Ctrl +)"
+            className="rounded-md border border-gray-300 px-2.5 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
+          >
+            +
+          </button>
+        </div>
+        <span className="hidden text-gray-400 sm:inline">
+          Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ, ดับเบิลคลิกจุด = แก้ไข
+        </span>
+        <span className="text-gray-400 sm:hidden">ลากด้วยนิ้ว = เลื่อนภาพ, สองนิ้วบีบ/ขยาย = ซูม, แตะจุด 2 ครั้ง = แก้ไข</span>
+        <div className="ml-auto">
+          <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
         </div>
       </div>
 
@@ -451,20 +486,15 @@ export function PublicValidateView({
           onClick={() => !editSaving && setEditingTagId(null)}
         >
           <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 text-sm font-semibold text-gray-900">แก้ไขข้อมูล</h3>
-            <label className="block text-xs font-medium text-gray-700">รหัส</label>
-            <input
-              value={editCode}
-              onChange={(e) => setEditCode(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
-              autoFocus
-            />
-            <label className="mt-3 block text-xs font-medium text-gray-700">ชื่อ-นามสกุล</label>
+            <h3 className="text-sm font-semibold text-gray-900">แก้ไขชื่อ-นามสกุล</h3>
+            <p className="mb-3 text-xs text-gray-400">รหัส {editCode}</p>
+            <label className="block text-xs font-medium text-gray-700">ชื่อ-นามสกุล</label>
             <input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               placeholder="เว้นว่างไว้ก่อนได้"
               className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
+              autoFocus
             />
             {editError && <p className="mt-2 text-xs text-red-600">{editError}</p>}
             <div className="mt-4 flex justify-end gap-2">
@@ -479,7 +509,7 @@ export function PublicValidateView({
               <button
                 type="button"
                 onClick={handleSaveEdit}
-                disabled={editSaving || !editCode.trim()}
+                disabled={editSaving}
                 className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
               >
                 {editSaving ? "กำลังบันทึก..." : "บันทึก"}

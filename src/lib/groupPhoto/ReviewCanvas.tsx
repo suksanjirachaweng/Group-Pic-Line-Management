@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  forwardRef,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -41,6 +43,13 @@ export type ReviewTag = {
   isProblem: boolean;
 };
 
+/** Imperative zoom controls for callers that render their own zoom buttons outside this
+ * component (e.g. a consolidated toolbar) instead of using the built-in one. */
+export type ReviewCanvasHandle = {
+  zoomIn: () => void;
+  zoomOut: () => void;
+};
+
 /**
  * Read-mostly view of a tagged group photo — pan/zoom + marks/labels like the main tagging
  * canvas, but no face-detection and no click-to-add-new-person (reviewing an existing tag isn't
@@ -49,24 +58,7 @@ export type ReviewTag = {
  * public /photo-review/[token] page — the caller supplies `onSave` so this component never needs
  * to know which server action (session vs. token authenticated) actually persists the edit.
  */
-export function ReviewCanvas({
-  imageUrl,
-  imageWidth,
-  imageHeight,
-  tags,
-  editableTagIds,
-  selectedTagId,
-  onSelectTag,
-  onSave,
-  onDoubleClickTag,
-  displayFields = DEFAULT_DISPLAY_FIELDS,
-  readOnly = false,
-  soloLabelTagId,
-  placementTagId,
-  onPlaceTag,
-  grayUnselected = false,
-  hideToolbar = false,
-}: {
+export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
   imageUrl: string;
   imageWidth: number;
   imageHeight: number;
@@ -109,7 +101,27 @@ export function ReviewCanvas({
    * link, which is only ever opened from a LINE mobile link where pinch-zoom/drag-to-pan are
    * already the natural gestures; the row was pure clutter with nothing left to explain. */
   hideToolbar?: boolean;
-}) {
+}>(function ReviewCanvas(
+  {
+    imageUrl,
+    imageWidth,
+    imageHeight,
+    tags,
+    editableTagIds,
+    selectedTagId,
+    onSelectTag,
+    onSave,
+    onDoubleClickTag,
+    displayFields = DEFAULT_DISPLAY_FIELDS,
+    readOnly = false,
+    soloLabelTagId,
+    placementTagId,
+    onPlaceTag,
+    grayUnselected = false,
+    hideToolbar = false,
+  },
+  ref,
+) {
   const [loaded, setLoaded] = useState(false);
   const [scale, setScale] = useState(0.25);
   const [tx, setTx] = useState(0);
@@ -178,6 +190,15 @@ export function ReviewCanvas({
   function zoomBy(factor: number) {
     setScale((s) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * factor)));
   }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      zoomIn: () => zoomBy(ZOOM_STEP),
+      zoomOut: () => zoomBy(1 / ZOOM_STEP),
+    }),
+    [],
+  );
 
   // Reads `canvasSize` state (not the canvas ref) so this is safe to call during render, e.g. to
   // position the edit popup.
@@ -593,4 +614,4 @@ export function ReviewCanvas({
       </div>
     </div>
   );
-}
+});
