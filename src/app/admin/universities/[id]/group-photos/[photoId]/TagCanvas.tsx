@@ -23,6 +23,7 @@ const ZOOM_STEP = 1.25;
 const BULK_NUDGE_STEP = 20;
 const SEARCH_ZOOM = 1.2;
 const DOUBLE_CLICK_MAX_SCREEN_PX = 30;
+const GRAY_MARKER_COLOR = "#9ca3af";
 
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -650,7 +651,7 @@ export function TagCanvas({
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <TagListSidebar
           tags={tags}
@@ -715,12 +716,21 @@ export function TagCanvas({
               const isProblem = problemIds.has(t.id);
               const isHighlighted = t.id === highlightedTagId;
               const isSelected = t.id === selectedTagId;
-              const color = colorForRow(t.row);
+              // Same "gray out everyone else" principle as the validate page — but only while
+              // browsing via the list (sidebarOpen), so normal click-to-select/drag during regular
+              // tagging work doesn't gray out the whole photo on every click.
+              const grayed = sidebarOpen && selectedTagId !== null && !isSelected && !isHighlighted;
+              const color = grayed ? GRAY_MARKER_COLOR : colorForRow(t.row);
               return (
                 <div
                   key={t.id}
-                  className="absolute"
-                  style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%`, zIndex: isHighlighted || isSelected ? 10 : undefined }}
+                  className="absolute transition-opacity duration-150"
+                  style={{
+                    left: `${xFrac * 100}%`,
+                    top: `${yFrac * 100}%`,
+                    zIndex: isHighlighted || isSelected ? 10 : undefined,
+                    opacity: grayed ? 0.6 : 1,
+                  }}
                 >
                   <TagMarker
                     color={color}
@@ -881,19 +891,16 @@ export function TagCanvas({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-gray-200 bg-white px-3 py-2 text-xs">
-        <div className="flex items-center gap-2">
-          <span className="text-gray-600">แท็กแล้ว {tags.length} คน</span>
-          {problems.length > 0 && (
-            <span className="rounded bg-red-50 px-2 py-0.5 font-medium text-red-700">{problems.length} ปัญหา</span>
-          )}
-          {reportedCount > 0 && (
-            <span className="rounded bg-orange-50 px-2 py-0.5 font-medium text-orange-700">
-              {reportedCount} คนแจ้งปัญหา
-            </span>
-          )}
-        </div>
-
-        <div className="mx-1 h-5 w-px bg-gray-200" />
+        {reportedCount > 0 && (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="rounded bg-orange-50 px-2 py-0.5 font-medium text-orange-700">
+                {reportedCount} คนแจ้งปัญหา
+              </span>
+            </div>
+            <div className="mx-1 h-5 w-px bg-gray-200" />
+          </>
+        )}
 
         <div className="flex items-center gap-1">
           <input

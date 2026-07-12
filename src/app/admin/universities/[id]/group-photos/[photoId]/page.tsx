@@ -107,7 +107,7 @@ export default async function GroupPhotoTaggingPage({
           </Link>
         </div>
       </div>
-      <div className="flex-1">
+      <div className="min-h-0 flex-1">
         <TagCanvas
           universityId={universityId}
           groupPhotoId={photo.id}
