@@ -187,8 +187,23 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
     };
   }, [imageUrl]);
 
+  // Anchors the zoom at the viewport's current center (in screen space) instead of the content's
+  // top-left transform-origin, so the point you were looking at stays put instead of the view
+  // drifting toward the corner on every zoom step — same anchor math as the pinch-zoom handler
+  // below, just centered on the container instead of the pinch midpoint.
   function zoomBy(factor: number) {
-    setScale((s) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * factor)));
+    const rect = containerRef.current?.getBoundingClientRect();
+    setScale((s) => {
+      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * factor));
+      if (rect && next !== s) {
+        const ratio = next / s;
+        const cx = rect.width / 2;
+        const cy = rect.height / 2;
+        setTx((t) => cx - (cx - t) * ratio);
+        setTy((t) => cy - (cy - t) * ratio);
+      }
+      return next;
+    });
   }
 
   useImperativeHandle(

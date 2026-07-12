@@ -143,7 +143,7 @@ export function PublicValidateView({
   const [listMode, setListMode] = useState<"problems" | "all">("problems");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [displayFields, setDisplayFields] = useState<Set<TagDisplayField>>(
-    () => new Set<TagDisplayField>(["name"]),
+    () => new Set<TagDisplayField>(["order", "name"]),
   );
   const [editingTagId, setEditingTagId] = useState<string | null>(null);
   const [editCode, setEditCode] = useState("");
@@ -264,12 +264,20 @@ export function PublicValidateView({
 
   return (
     <div className="flex h-dvh flex-col">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-gray-200 bg-white px-3 py-2 sm:px-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto shrink-0" />
+      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-3 py-2 sm:px-4">
+        <div className="flex shrink-0 flex-col items-center gap-1">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto" />
+          <div className="flex flex-col items-center gap-0.5 text-center">
+            {currentTitle?.trim() && currentTitle.trim() !== photoName && (
+              <span className="text-[11px] leading-tight text-gray-400">(คณะ: {photoName})</span>
+            )}
+            <span className="text-[11px] leading-tight text-gray-500">ตรวจสอบความถูกต้อง — แท็กแล้ว {tags.length} คน</span>
+          </div>
+        </div>
         <div className="min-w-0 flex-1">
           {editingTitle ? (
-            <div className="flex w-full max-w-xl flex-col items-start gap-1.5">
+            <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-1.5">
               <textarea
                 autoFocus
                 rows={3}
@@ -306,25 +314,20 @@ export function PublicValidateView({
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-start gap-0.5 text-left">
-              <div className="flex items-center gap-1.5">
-                <h1 className="whitespace-pre-wrap text-sm font-semibold leading-snug text-gray-900">{displayTitle}</h1>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTitleValue(currentTitle ?? "");
-                    setEditingTitle(true);
-                  }}
-                  title="แก้ไขหัวข้อรูป"
-                  className="shrink-0 text-gray-400 hover:text-gray-600"
-                >
-                  ✎
-                </button>
-              </div>
-              {currentTitle?.trim() && currentTitle.trim() !== photoName && (
-                <span className="text-xs text-gray-400">(คณะ: {photoName})</span>
-              )}
-              <span className="text-xs text-gray-500">ตรวจสอบความถูกต้อง — แท็กแล้ว {tags.length} คน</span>
+            <div className="flex items-center justify-center gap-2">
+              <h1 className="whitespace-pre-wrap text-center text-sm font-semibold leading-snug text-gray-900">
+                {displayTitle}
+              </h1>
+              <button
+                type="button"
+                onClick={() => {
+                  setTitleValue(currentTitle ?? "");
+                  setEditingTitle(true);
+                }}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600"
+              >
+                <span aria-hidden>✎</span> แก้ไข
+              </button>
             </div>
           )}
         </div>
@@ -333,8 +336,6 @@ export function PublicValidateView({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         {sidebarOpen && (
           <div className="max-h-[45vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white p-4 md:h-auto md:max-h-none md:w-96 md:border-b-0 md:border-r">
-          <p className="mb-3 text-xs text-gray-500">ดับเบิลคลิกที่จุดในรูป หรือ item เพื่อแก้ไขชื่อ (เผื่อสะกดผิด)</p>
-
           <div className="mb-3 flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
             <button
               type="button"
@@ -528,9 +529,11 @@ export function PublicValidateView({
           </button>
         </div>
         <span className="hidden text-gray-400 sm:inline">
-          Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ, ดับเบิลคลิกจุด = แก้ไข
+          Ctrl +/- = ซูม, Spacebar+ลาก = เลื่อนภาพ, ดับเบิลคลิกจุดในรูปหรือ item = แก้ไขชื่อ (เผื่อสะกดผิด)
         </span>
-        <span className="text-gray-400 sm:hidden">ลากด้วยนิ้ว = เลื่อนภาพ, สองนิ้วบีบ/ขยาย = ซูม, แตะจุด 2 ครั้ง = แก้ไข</span>
+        <span className="text-gray-400 sm:hidden">
+          ลากด้วยนิ้ว = เลื่อนภาพ, สองนิ้วบีบ/ขยาย = ซูม, แตะจุดในรูปหรือ item 2 ครั้ง = แก้ไขชื่อ (เผื่อสะกดผิด)
+        </span>
         <div className="ml-auto">
           <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
         </div>
