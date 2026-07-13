@@ -98,6 +98,31 @@ export function PublicValidateView({
     };
   }, [editingTagId, photoId]);
 
+  // iOS Safari quirk: a `position: fixed` element does NOT shrink to the visible area when the
+  // on-screen keyboard opens — it stays sized to the full (un-shrunk) layout viewport, with the
+  // keyboard just visually covering whatever ends up underneath it. `overflow-y-auto` alone isn't
+  // enough to reliably compensate (the browser's own "scroll focused input into view" behavior
+  // fights with it). Tracking `visualViewport` directly and sizing/positioning the dialog to match
+  // it exactly is the standard fix — the dialog then always matches the actual visible rectangle,
+  // keyboard included, on any browser that supports the API (falls back to the plain CSS
+  // fixed/inset-0 sizing everywhere else, including desktop, where this never mattered anyway).
+  const [viewportRect, setViewportRect] = useState<{ height: number; top: number } | null>(null);
+  useEffect(() => {
+    if (!editingTagId) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function update() {
+      setViewportRect({ height: vv!.height, top: vv!.offsetTop });
+    }
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, [editingTagId]);
+
   const [currentTitle, setCurrentTitle] = useState(photoTitle);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(photoTitle ?? "");
@@ -354,9 +379,17 @@ export function PublicValidateView({
         // viewport, so a vertically-centered dialog gets its Save button pushed behind the
         // keyboard with no way to reach it. Starting the dialog near the top keeps the
         // interactive part in the remaining visible strip in most cases, and letting the
-        // backdrop itself scroll is the fallback for whenever it still doesn't fit.
+        // backdrop itself scroll is the fallback for whenever it still doesn't fit. The inline
+        // style (when viewportRect is available) pins this to the real visualViewport rectangle
+        // instead of trusting `inset-0`/`100dvh`, which iOS Safari does not shrink for the
+        // keyboard on a `position: fixed` element — see the effect above for the full story.
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4"
+          style={
+            viewportRect
+              ? { top: viewportRect.top, height: viewportRect.height, bottom: "auto" }
+              : undefined
+          }
           onClick={() => !editSaving && setEditingTagId(null)}
         >
           <div
