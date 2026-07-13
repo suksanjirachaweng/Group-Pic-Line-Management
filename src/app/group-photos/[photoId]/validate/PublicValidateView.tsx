@@ -13,6 +13,7 @@ import {
 } from "@/lib/groupPhoto/TagLabel";
 import { TagListSidebar } from "@/lib/groupPhoto/TagListSidebar";
 import { ZoomButtons } from "@/lib/groupPhoto/ZoomButtons";
+import { WordExportButton } from "@/lib/groupPhoto/ExportButtons";
 import {
   updateGroupPhotoTagViaValidatePage,
   updateGroupPhotoTitlePublic,
@@ -199,6 +200,15 @@ export function PublicValidateView({
 
   return (
     <div className="flex h-dvh flex-col">
+      {/* On a small screen the list + photo genuinely don't fit usefully in portrait — block the
+          page with a rotate prompt instead of rendering a cramped layout. Desktop is unaffected
+          (max-md: only matches small screens regardless of orientation). */}
+      <div className="fixed inset-0 z-50 hidden flex-col items-center justify-center gap-3 bg-white px-6 text-center max-md:portrait:flex">
+        <span className="text-4xl" aria-hidden>
+          📱↻
+        </span>
+        <p className="text-sm font-medium text-gray-700">กรุณาหมุนหน้าจอเป็นแนวนอน เพื่อใช้งานหน้านี้</p>
+      </div>
       <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-3 py-2 sm:px-4">
         <div className="flex shrink-0 flex-col items-center gap-1">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -267,15 +277,12 @@ export function PublicValidateView({
             </div>
           )}
         </div>
-        <a
-          href={`/api/group-photos/${photoId}/export/word`}
-          className="shrink-0 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-        >
-          Export Word
-        </a>
+        <div className="shrink-0">
+          <WordExportButton photoId={photoId} />
+        </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden max-md:landscape:flex-row md:flex-row">
         <TagListSidebar
           tags={tags}
           selectedTagId={selectedTagId}
@@ -321,18 +328,17 @@ export function PublicValidateView({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 bg-white px-3 py-2 text-xs">
+      {/* Hidden entirely on mobile — zoom is pinch/drag there already, and the hint text +
+          display-field checkboxes are just clutter competing with the photo/list for the little
+          screen space a phone (even in landscape) has. Desktop keeps the full toolbar. */}
+      <div className="hidden items-center gap-3 border-t border-gray-200 bg-white px-3 py-2 text-xs md:flex md:flex-wrap">
         <ZoomButtons
           onZoomOut={() => canvasRef.current?.zoomOut()}
           onZoomIn={() => canvasRef.current?.zoomIn()}
         />
-        <span className="hidden text-gray-400 sm:inline">
+        <span className="text-gray-400">
           Ctrl +/- = ซูม, Ctrl+0 = พอดีจอ, Spacebar+ลาก = เลื่อนภาพ,
           ดับเบิลคลิกจุดในรูปหรือรายชื่อ = แก้ไขชื่อ
-        </span>
-        <span className="text-gray-400 sm:hidden">
-          ลากด้วยนิ้ว = เลื่อนภาพ, สองนิ้วบีบ/ขยาย = ซูม, แตะจุดในรูปหรือรายชื่อ
-          2 ครั้ง = แก้ไขชื่อ
         </span>
         <div className="ml-auto">
           <TagDisplayFieldPicker
