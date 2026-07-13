@@ -267,6 +267,12 @@ export function PublicValidateView({
             </div>
           )}
         </div>
+        <a
+          href={`/api/group-photos/${photoId}/export/word`}
+          className="shrink-0 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Export Word
+        </a>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">

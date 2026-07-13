@@ -1,6 +1,6 @@
 const THAI_DIGITS = ["๐", "๑", "๒", "๓", "๔", "๕", "๖", "๗", "๘", "๙"];
 
-function toThaiNumeral(n: number): string {
+export function toThaiNumeral(n: number): string {
   return String(n)
     .split("")
     .map((d) => THAI_DIGITS[Number(d)] ?? d)

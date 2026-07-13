@@ -115,6 +115,12 @@ export default async function GroupPhotoTaggingPage({
               >
                 Export ข้อความ
               </a>
+              <a
+                href={`/api/group-photos/${photo.id}/export/word`}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Export Word
+              </a>
             </div>
             <Link
               href={`/group-photos/${photo.id}/validate`}
