@@ -349,12 +349,18 @@ export function PublicValidateView({
       </div>
 
       {editingTagId && (
+        // items-start + a scrollable backdrop (not just the card) instead of items-center: on a
+        // phone in landscape the on-screen keyboard alone can cover half the already-short
+        // viewport, so a vertically-centered dialog gets its Save button pushed behind the
+        // keyboard with no way to reach it. Starting the dialog near the top keeps the
+        // interactive part in the remaining visible strip in most cases, and letting the
+        // backdrop itself scroll is the fallback for whenever it still doesn't fit.
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4"
           onClick={() => !editSaving && setEditingTagId(null)}
         >
           <div
-            className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"
+            className="my-8 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-sm font-semibold text-gray-900">
