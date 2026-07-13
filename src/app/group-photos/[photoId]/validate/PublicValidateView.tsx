@@ -112,6 +112,10 @@ export function PublicValidateView({
     const vv = window.visualViewport;
     if (!vv) return;
     function update() {
+      // `visualViewport.height` can transiently report 0 (e.g. mid-resize, right as the
+      // keyboard animation starts) — applying that would collapse the dialog to nothing, so
+      // ignore obviously-bogus readings and just wait for the next resize/scroll event.
+      if (vv!.height <= 0) return;
       setViewportRect({ height: vv!.height, top: vv!.offsetTop });
     }
     update();
