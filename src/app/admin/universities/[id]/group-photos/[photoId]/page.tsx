@@ -11,6 +11,7 @@ import { PhotoStatusSelector } from "./PhotoStatusSelector";
 import { PhotoTitleEditor } from "./PhotoTitleEditor";
 import type { RegistrantLookup, ReferenceLookup } from "./TagEditDialog";
 import { autoSyncGroupPhotoTags } from "@/lib/actions/groupPhotos";
+import { ExcelExportButton, TextExportButton, WordExportButton } from "@/lib/groupPhoto/ExportButtons";
 
 export default async function GroupPhotoTaggingPage({
   params,
@@ -96,31 +97,16 @@ export default async function GroupPhotoTaggingPage({
             <PhotoTitleEditor universityId={universityId} groupPhotoId={photo.id} name={photo.name} title={photo.title} />
           </div>
 
-          {/* Right column: status selector, then Export Excel/text stacked flush-left against
-              each other, Share stretched to the full header height beside them. */}
+          {/* Right column: status selector, then the icon export buttons in a row, Share
+              stretched to the full header height beside them. */}
           <div className="flex shrink-0 items-stretch gap-2">
             <div className="flex flex-col justify-center">
               <PhotoStatusSelector universityId={universityId} groupPhotoId={photo.id} status={photo.status} />
             </div>
-            <div className="flex flex-col justify-center gap-1.5">
-              <a
-                href={`/api/group-photos/${photo.id}/export/excel`}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Export Excel
-              </a>
-              <a
-                href={`/api/group-photos/${photo.id}/export/text`}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Export ข้อความ
-              </a>
-              <a
-                href={`/api/group-photos/${photo.id}/export/word`}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Export Word
-              </a>
+            <div className="flex items-center gap-1.5">
+              <ExcelExportButton photoId={photo.id} />
+              <TextExportButton photoId={photo.id} />
+              <WordExportButton photoId={photo.id} />
             </div>
             <Link
               href={`/group-photos/${photo.id}/validate`}
