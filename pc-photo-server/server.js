@@ -33,6 +33,18 @@ fs.mkdirSync(STORAGE_DIR, { recursive: true });
 const app = express();
 app.disable("x-powered-by");
 
+// The main app's browser (running on the Vercel domain) uploads directly to this server, so this
+// is a genuine cross-origin request — without CORS headers the browser blocks it before it ever
+// reaches here (shows up client-side as an opaque "network error", not a 4xx/5xx). Wide open is
+// fine: /upload is already gated by the HMAC token, and /photos is meant to be public anyway.
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
 function verifyToken(token) {
   if (!token) return false;
   const parts = token.split(".");
