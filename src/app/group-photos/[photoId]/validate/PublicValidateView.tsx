@@ -98,33 +98,19 @@ export function PublicValidateView({
     };
   }, [editingTagId, photoId]);
 
-  // iOS Safari quirk: a `position: fixed` element does NOT shrink to the visible area when the
-  // on-screen keyboard opens — it stays sized to the full (un-shrunk) layout viewport, with the
-  // keyboard just visually covering whatever ends up underneath it. `overflow-y-auto` alone isn't
-  // enough to reliably compensate (the browser's own "scroll focused input into view" behavior
-  // fights with it). Tracking `visualViewport` directly and sizing/positioning the dialog to match
-  // it exactly is the standard fix — the dialog then always matches the actual visible rectangle,
-  // keyboard included, on any browser that supports the API (falls back to the plain CSS
-  // fixed/inset-0 sizing everywhere else, including desktop, where this never mattered anyway).
-  const [viewportRect, setViewportRect] = useState<{ height: number; top: number } | null>(null);
+  // Native <dialog> instead of a hand-rolled `position: fixed` overlay — a modal dialog renders
+  // in the browser's own top layer, which the browser keeps correctly positioned against the
+  // *visual* viewport (on-screen keyboard included) on its own. The earlier `position: fixed`
+  // approach fought iOS Safari's keyboard-avoidance behavior directly (a fixed element doesn't
+  // shrink to the visible area when the keyboard opens) and needed a manual `visualViewport`-
+  // tracking workaround; letting the browser manage it natively removes that whole class of bug
+  // instead of chasing it with more viewport math.
+  const editDialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    if (!editingTagId) return;
-    const vv = window.visualViewport;
-    if (!vv) return;
-    function update() {
-      // `visualViewport.height` can transiently report 0 (e.g. mid-resize, right as the
-      // keyboard animation starts) — applying that would collapse the dialog to nothing, so
-      // ignore obviously-bogus readings and just wait for the next resize/scroll event.
-      if (vv!.height <= 0) return;
-      setViewportRect({ height: vv!.height, top: vv!.offsetTop });
-    }
-    update();
-    vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
-    return () => {
-      vv.removeEventListener("resize", update);
-      vv.removeEventListener("scroll", update);
-    };
+    const dialog = editDialogRef.current;
+    if (!dialog) return;
+    if (editingTagId && !dialog.open) dialog.showModal();
+    else if (!editingTagId && dialog.open) dialog.close();
   }, [editingTagId]);
 
   const [currentTitle, setCurrentTitle] = useState(photoTitle);
@@ -377,119 +363,108 @@ export function PublicValidateView({
         </div>
       </div>
 
-      {editingTagId && (
-        // items-start + a scrollable backdrop (not just the card) instead of items-center: on a
-        // phone in landscape the on-screen keyboard alone can cover half the already-short
-        // viewport, so a vertically-centered dialog gets its Save button pushed behind the
-        // keyboard with no way to reach it. Starting the dialog near the top keeps the
-        // interactive part in the remaining visible strip in most cases, and letting the
-        // backdrop itself scroll is the fallback for whenever it still doesn't fit. The inline
-        // style (when viewportRect is available) pins this to the real visualViewport rectangle
-        // instead of trusting `inset-0`/`100dvh`, which iOS Safari does not shrink for the
-        // keyboard on a `position: fixed` element — see the effect above for the full story.
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4"
-          style={
-            viewportRect
-              ? { top: viewportRect.top, height: viewportRect.height, bottom: "auto" }
-              : undefined
+      {/* Always mounted — `showModal()`/`close()` (driven by the effect above) is what actually
+          opens/closes it, not conditional rendering. Clicking the dialog's own backdrop area
+          (e.target is the <dialog> itself, not a descendant) closes it, same as the old
+          click-outside-to-dismiss behavior. */}
+      <dialog
+        ref={editDialogRef}
+        onClose={() => setEditingTagId(null)}
+        onClick={(e) => {
+          if (e.target === editDialogRef.current && !editSaving) {
+            editDialogRef.current?.close();
           }
-          onClick={() => !editSaving && setEditingTagId(null)}
-        >
-          <div
-            className="my-8 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
+        }}
+        className="m-auto w-full max-w-sm rounded-lg border-0 bg-white p-5 shadow-xl backdrop:bg-black/40"
+      >
+        <h3 className="text-sm font-semibold text-gray-900">
+          แก้ไขชื่อ-นามสกุล
+        </h3>
+        <p className="mb-3 text-xs text-gray-400">รหัส {editCode}</p>
+        <label className="block text-xs font-medium text-gray-700">
+          ชื่อ-นามสกุล
+        </label>
+        <input
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          placeholder="เว้นว่างไว้ก่อนได้"
+          className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
+          autoFocus
+        />
+        {editError && (
+          <p className="mt-2 text-xs text-red-600">{editError}</p>
+        )}
+
+        <div className="mt-3 border-t border-gray-100 pt-2">
+          <button
+            type="button"
+            onClick={() => setEditHistoryOpen((v) => !v)}
+            className="flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
           >
-            <h3 className="text-sm font-semibold text-gray-900">
-              แก้ไขชื่อ-นามสกุล
-            </h3>
-            <p className="mb-3 text-xs text-gray-400">รหัส {editCode}</p>
-            <label className="block text-xs font-medium text-gray-700">
-              ชื่อ-นามสกุล
-            </label>
-            <input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              placeholder="เว้นว่างไว้ก่อนได้"
-              className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
-              autoFocus
-            />
-            {editError && (
-              <p className="mt-2 text-xs text-red-600">{editError}</p>
-            )}
-
-            <div className="mt-3 border-t border-gray-100 pt-2">
-              <button
-                type="button"
-                onClick={() => setEditHistoryOpen((v) => !v)}
-                className="flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
-              >
-                <span>
-                  ประวัติการแก้ไข{editHistory ? ` (${editHistory.length})` : ""}
-                </span>
-                <span>{editHistoryOpen ? "▲" : "▼"}</span>
-              </button>
-              {editHistoryOpen && (
-                <div className="mt-2 max-h-32 space-y-1.5 overflow-y-auto">
-                  {editHistory === null && (
-                    <p className="text-xs text-gray-400">กำลังโหลด...</p>
-                  )}
-                  {editHistory?.length === 0 && (
-                    <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>
-                  )}
-                  {editHistory?.map((h) => (
-                    <div
-                      key={h.id}
-                      className="rounded-md bg-gray-50 px-2 py-1.5 text-xs"
-                    >
-                      <div className="flex items-center justify-between gap-2 text-gray-400">
-                        <span>
-                          {new Date(h.createdAt).toLocaleString("th-TH", {
-                            dateStyle: "short",
-                            timeStyle: "short",
-                          })}
-                        </span>
-                        <span>{HISTORY_SOURCE_LABEL[h.source]}</span>
-                      </div>
-                      <p className="mt-0.5 text-gray-700">
-                        <span className="font-mono">{h.code}</span> —{" "}
-                        {h.name || "(ยังไม่มีชื่อ)"}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+            <span>
+              ประวัติการแก้ไข{editHistory ? ` (${editHistory.length})` : ""}
+            </span>
+            <span>{editHistoryOpen ? "▲" : "▼"}</span>
+          </button>
+          {editHistoryOpen && (
+            <div className="mt-2 max-h-32 space-y-1.5 overflow-y-auto">
+              {editHistory === null && (
+                <p className="text-xs text-gray-400">กำลังโหลด...</p>
               )}
+              {editHistory?.length === 0 && (
+                <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>
+              )}
+              {editHistory?.map((h) => (
+                <div
+                  key={h.id}
+                  className="rounded-md bg-gray-50 px-2 py-1.5 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-2 text-gray-400">
+                    <span>
+                      {new Date(h.createdAt).toLocaleString("th-TH", {
+                        dateStyle: "short",
+                        timeStyle: "short",
+                      })}
+                    </span>
+                    <span>{HISTORY_SOURCE_LABEL[h.source]}</span>
+                  </div>
+                  <p className="mt-0.5 text-gray-700">
+                    <span className="font-mono">{h.code}</span> —{" "}
+                    {h.name || "(ยังไม่มีชื่อ)"}
+                  </p>
+                </div>
+              ))}
             </div>
-
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEditingTagId(null)}
-                disabled={editSaving}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveEdit}
-                disabled={editSaving}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${
-                  editNameChanged
-                    ? "bg-indigo-600 hover:bg-indigo-700"
-                    : "bg-green-600 hover:bg-green-700"
-                }`}
-              >
-                {editSaving
-                  ? "กำลังบันทึก..."
-                  : editNameChanged
-                    ? "บันทึก"
-                    : "ยืนยัน"}
-              </button>
-            </div>
-          </div>
+          )}
         </div>
-      )}
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setEditingTagId(null)}
+            disabled={editSaving}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            onClick={handleSaveEdit}
+            disabled={editSaving}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${
+              editNameChanged
+                ? "bg-indigo-600 hover:bg-indigo-700"
+                : "bg-green-600 hover:bg-green-700"
+            }`}
+          >
+            {editSaving
+              ? "กำลังบันทึก..."
+              : editNameChanged
+                ? "บันทึก"
+                : "ยืนยัน"}
+          </button>
+        </div>
+      </dialog>
     </div>
   );
 }
