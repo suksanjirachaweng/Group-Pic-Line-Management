@@ -98,19 +98,40 @@ export function PublicValidateView({
     };
   }, [editingTagId, photoId]);
 
-  // Native <dialog> instead of a hand-rolled `position: fixed` overlay — a modal dialog renders
-  // in the browser's own top layer, which the browser keeps correctly positioned against the
-  // *visual* viewport (on-screen keyboard included) on its own. The earlier `position: fixed`
-  // approach fought iOS Safari's keyboard-avoidance behavior directly (a fixed element doesn't
-  // shrink to the visible area when the keyboard opens) and needed a manual `visualViewport`-
-  // tracking workaround; letting the browser manage it natively removes that whole class of bug
-  // instead of chasing it with more viewport math.
+  // Native <dialog> for real-device benefits (top-layer stacking, native Escape-to-close, focus
+  // trap/return) — but its own UA-default centering turned out to be `position: fixed` against the
+  // *layout* viewport too (confirmed on a real iOS device: the dialog rendered mostly off-screen,
+  // anchored as if the keyboard/Safari chrome weren't there), so it inherits the exact same
+  // keyboard-avoidance quirk a hand-rolled `position: fixed` div has. Still needs the
+  // `visualViewport`-tracking fix below, just applied to the dialog element itself instead of a
+  // plain div.
   const editDialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = editDialogRef.current;
     if (!dialog) return;
     if (editingTagId && !dialog.open) dialog.showModal();
     else if (!editingTagId && dialog.open) dialog.close();
+  }, [editingTagId]);
+
+  const [viewportRect, setViewportRect] = useState<{ height: number; top: number } | null>(null);
+  useEffect(() => {
+    if (!editingTagId) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function update() {
+      // `visualViewport.height` can transiently report 0 (e.g. mid-resize, right as the keyboard
+      // animation starts) — applying that would collapse the dialog to nothing, so ignore
+      // obviously-bogus readings and just wait for the next resize/scroll event.
+      if (vv!.height <= 0) return;
+      setViewportRect({ height: vv!.height, top: vv!.offsetTop });
+    }
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
   }, [editingTagId]);
 
   const [currentTitle, setCurrentTitle] = useState(photoTitle);
@@ -364,9 +385,12 @@ export function PublicValidateView({
       </div>
 
       {/* Always mounted — `showModal()`/`close()` (driven by the effect above) is what actually
-          opens/closes it, not conditional rendering. Clicking the dialog's own backdrop area
-          (e.target is the <dialog> itself, not a descendant) closes it, same as the old
-          click-outside-to-dismiss behavior. */}
+          opens/closes it, not conditional rendering. The dialog element itself is sized/positioned
+          via inline style (which wins over the UA's own `dialog:modal` defaults) to match the
+          tracked visual viewport rect, then acts as its own scrollable backdrop — the inner card is
+          top-anchored (not vertically centered) with margin instead of filling the box, so Save/
+          Cancel stay reachable by scrolling even on a very short keyboard-open viewport. Clicking
+          the dialog's own backdrop area (e.target is the <dialog> itself, not the card) closes it. */}
       <dialog
         ref={editDialogRef}
         onClose={() => setEditingTagId(null)}
@@ -375,94 +399,107 @@ export function PublicValidateView({
             editDialogRef.current?.close();
           }
         }}
-        className="m-auto w-full max-w-sm rounded-lg border-0 bg-white p-5 shadow-xl backdrop:bg-black/40"
+        style={{
+          position: "fixed",
+          top: viewportRect ? viewportRect.top : 0,
+          left: 0,
+          right: 0,
+          margin: 0,
+          width: "100%",
+          maxWidth: "none",
+          height: viewportRect ? viewportRect.height : "100dvh",
+          maxHeight: viewportRect ? viewportRect.height : "100dvh",
+        }}
+        className="hidden items-start justify-center overflow-y-auto border-0 bg-transparent p-4 open:flex backdrop:bg-black/40"
       >
-        <h3 className="text-sm font-semibold text-gray-900">
-          แก้ไขชื่อ-นามสกุล
-        </h3>
-        <p className="mb-3 text-xs text-gray-400">รหัส {editCode}</p>
-        <label className="block text-xs font-medium text-gray-700">
-          ชื่อ-นามสกุล
-        </label>
-        <input
-          value={editName}
-          onChange={(e) => setEditName(e.target.value)}
-          placeholder="เว้นว่างไว้ก่อนได้"
-          className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
-          autoFocus
-        />
-        {editError && (
-          <p className="mt-2 text-xs text-red-600">{editError}</p>
-        )}
-
-        <div className="mt-3 border-t border-gray-100 pt-2">
-          <button
-            type="button"
-            onClick={() => setEditHistoryOpen((v) => !v)}
-            className="flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
-          >
-            <span>
-              ประวัติการแก้ไข{editHistory ? ` (${editHistory.length})` : ""}
-            </span>
-            <span>{editHistoryOpen ? "▲" : "▼"}</span>
-          </button>
-          {editHistoryOpen && (
-            <div className="mt-2 max-h-32 space-y-1.5 overflow-y-auto">
-              {editHistory === null && (
-                <p className="text-xs text-gray-400">กำลังโหลด...</p>
-              )}
-              {editHistory?.length === 0 && (
-                <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>
-              )}
-              {editHistory?.map((h) => (
-                <div
-                  key={h.id}
-                  className="rounded-md bg-gray-50 px-2 py-1.5 text-xs"
-                >
-                  <div className="flex items-center justify-between gap-2 text-gray-400">
-                    <span>
-                      {new Date(h.createdAt).toLocaleString("th-TH", {
-                        dateStyle: "short",
-                        timeStyle: "short",
-                      })}
-                    </span>
-                    <span>{HISTORY_SOURCE_LABEL[h.source]}</span>
-                  </div>
-                  <p className="mt-0.5 text-gray-700">
-                    <span className="font-mono">{h.code}</span> —{" "}
-                    {h.name || "(ยังไม่มีชื่อ)"}
-                  </p>
-                </div>
-              ))}
-            </div>
+        <div className="my-8 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+          <h3 className="text-sm font-semibold text-gray-900">
+            แก้ไขชื่อ-นามสกุล
+          </h3>
+          <p className="mb-3 text-xs text-gray-400">รหัส {editCode}</p>
+          <label className="block text-xs font-medium text-gray-700">
+            ชื่อ-นามสกุล
+          </label>
+          <input
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            placeholder="เว้นว่างไว้ก่อนได้"
+            className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
+            autoFocus
+          />
+          {editError && (
+            <p className="mt-2 text-xs text-red-600">{editError}</p>
           )}
-        </div>
 
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => setEditingTagId(null)}
-            disabled={editSaving}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            ยกเลิก
-          </button>
-          <button
-            type="button"
-            onClick={handleSaveEdit}
-            disabled={editSaving}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${
-              editNameChanged
-                ? "bg-indigo-600 hover:bg-indigo-700"
-                : "bg-green-600 hover:bg-green-700"
-            }`}
-          >
-            {editSaving
-              ? "กำลังบันทึก..."
-              : editNameChanged
-                ? "บันทึก"
-                : "ยืนยัน"}
-          </button>
+          <div className="mt-3 border-t border-gray-100 pt-2">
+            <button
+              type="button"
+              onClick={() => setEditHistoryOpen((v) => !v)}
+              className="flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
+            >
+              <span>
+                ประวัติการแก้ไข{editHistory ? ` (${editHistory.length})` : ""}
+              </span>
+              <span>{editHistoryOpen ? "▲" : "▼"}</span>
+            </button>
+            {editHistoryOpen && (
+              <div className="mt-2 max-h-32 space-y-1.5 overflow-y-auto">
+                {editHistory === null && (
+                  <p className="text-xs text-gray-400">กำลังโหลด...</p>
+                )}
+                {editHistory?.length === 0 && (
+                  <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>
+                )}
+                {editHistory?.map((h) => (
+                  <div
+                    key={h.id}
+                    className="rounded-md bg-gray-50 px-2 py-1.5 text-xs"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-gray-400">
+                      <span>
+                        {new Date(h.createdAt).toLocaleString("th-TH", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        })}
+                      </span>
+                      <span>{HISTORY_SOURCE_LABEL[h.source]}</span>
+                    </div>
+                    <p className="mt-0.5 text-gray-700">
+                      <span className="font-mono">{h.code}</span> —{" "}
+                      {h.name || "(ยังไม่มีชื่อ)"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditingTagId(null)}
+              disabled={editSaving}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveEdit}
+              disabled={editSaving}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${
+                editNameChanged
+                  ? "bg-indigo-600 hover:bg-indigo-700"
+                  : "bg-green-600 hover:bg-green-700"
+              }`}
+            >
+              {editSaving
+                ? "กำลังบันทึก..."
+                : editNameChanged
+                  ? "บันทึก"
+                  : "ยืนยัน"}
+            </button>
+          </div>
         </div>
       </dialog>
     </div>
