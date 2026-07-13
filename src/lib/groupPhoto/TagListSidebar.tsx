@@ -24,7 +24,6 @@ function TagRow<T extends BaseTag>({
   displayFields,
   groupedByRow = false,
   extraBadges,
-  inlineEdit,
 }: {
   tag: T;
   isSelected: boolean;
@@ -34,18 +33,8 @@ function TagRow<T extends BaseTag>({
   displayFields: Set<TagDisplayField>;
   groupedByRow?: boolean;
   extraBadges?: ReactNode;
-  /** Swaps this row's normal button content for an inline edit form — used by the public
-   * validate page instead of a modal dialog (see TagListSidebar's own doc comment for why). */
-  inlineEdit?: ReactNode;
 }) {
   const rowColor = colorForRow(tag.row);
-  if (inlineEdit) {
-    return (
-      <li className="relative z-10 rounded-md ring-2 ring-inset ring-indigo-600 bg-indigo-50">
-        {inlineEdit}
-      </li>
-    );
-  }
   return (
     <li
       className={isSelected ? "relative z-10 rounded-md ring-2 ring-inset ring-indigo-600 bg-indigo-100" : undefined}
@@ -151,8 +140,6 @@ export function TagListSidebar<T extends BaseTag>({
   onListModeChange,
   renderBadges,
   emptyMessage = "ไม่พบปัญหา",
-  editingTagId,
-  renderInlineEdit,
 }: {
   tags: T[];
   selectedTagId: string | null;
@@ -165,12 +152,6 @@ export function TagListSidebar<T extends BaseTag>({
   onListModeChange: (mode: "problems" | "all") => void;
   renderBadges?: (tag: T) => ReactNode;
   emptyMessage?: string;
-  /** When set, the row matching this id renders `renderInlineEdit(tag)` instead of its normal
-   * button — the public validate page's mobile-safe alternative to a modal edit dialog (see
-   * TagRow's `inlineEdit` prop). Admin usage leaves both unset and keeps the modal-dialog flow
-   * via `onEditTag`. */
-  editingTagId?: string | null;
-  renderInlineEdit?: (tag: T) => ReactNode;
 }) {
   function switchListMode(mode: "problems" | "all") {
     onListModeChange(mode);
@@ -228,7 +209,7 @@ export function TagListSidebar<T extends BaseTag>({
         <div className="max-h-[45vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white max-md:landscape:h-auto max-md:landscape:max-h-none max-md:landscape:w-56 max-md:landscape:border-b-0 max-md:landscape:border-r md:h-auto md:max-h-none md:w-96 md:border-b-0 md:border-r">
           {/* Sticky so the problems/all toggle stays reachable while scrolling a long list — its
               own bg-white + border keeps scrolling rows from showing through underneath. */}
-          <div className="sticky top-0 z-10 border-b border-gray-100 bg-white p-4 pb-3 max-md:landscape:p-2 max-md:landscape:pb-2">
+          <div className="sticky top-0 z-10 border-b border-gray-100 bg-white p-4 pb-3 max-md:px-2 max-md:py-1.5">
             <div className="flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
               <button
                 type="button"
@@ -247,7 +228,7 @@ export function TagListSidebar<T extends BaseTag>({
             </div>
           </div>
 
-          <div className="p-4 pt-3 max-md:landscape:p-2 max-md:landscape:pt-2">
+          <div className="p-4 pt-3 max-md:px-2 max-md:pt-1.5">
 
           {listMode === "problems" ? (
             <>
@@ -277,7 +258,6 @@ export function TagListSidebar<T extends BaseTag>({
                                     onDoubleClick={() => onEditTag(t)}
                                     displayFields={displayFields}
                                     extraBadges={renderBadges?.(t)}
-                                    inlineEdit={editingTagId === t.id ? renderInlineEdit?.(t) : undefined}
                                   />
                                 ))}
                             </ul>
@@ -303,7 +283,6 @@ export function TagListSidebar<T extends BaseTag>({
                           onDoubleClick={() => onEditTag(t)}
                           displayFields={displayFields}
                           extraBadges={renderBadges?.(t)}
-                          inlineEdit={editingTagId === t.id ? renderInlineEdit?.(t) : undefined}
                         />
                       ))}
                     </ul>
@@ -325,7 +304,6 @@ export function TagListSidebar<T extends BaseTag>({
                           onDoubleClick={() => onEditTag(t)}
                           displayFields={displayFields}
                           extraBadges={renderBadges?.(t)}
-                          inlineEdit={editingTagId === t.id ? renderInlineEdit?.(t) : undefined}
                         />
                       ))}
                     </ul>
@@ -355,7 +333,6 @@ export function TagListSidebar<T extends BaseTag>({
                             displayFields={displayFields}
                             groupedByRow
                             extraBadges={renderBadges?.(t)}
-                            inlineEdit={editingTagId === t.id ? renderInlineEdit?.(t) : undefined}
                           />
                         ))}
                       </ul>

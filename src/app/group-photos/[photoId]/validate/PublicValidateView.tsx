@@ -148,15 +148,14 @@ export function PublicValidateView({
     setSelectedTagId(null);
   }
 
-  // Opens the inline edit form in place of this tag's list row (see TagListSidebar's
-  // `renderInlineEdit`) rather than a modal — two different modal/overlay approaches (a hand-
-  // rolled `position: fixed` div, then a native `<dialog>`) both turned out to inherit iOS
-  // Safari's on-screen-keyboard-avoidance quirk (confirmed on a real device both times). Normal
-  // in-flow content like a list row doesn't have that problem — the browser already scrolls a
-  // focused input into view correctly on its own. Force the sidebar open so the row is actually
-  // visible, since this can be triggered by double-clicking a marker while the list is collapsed.
+  // Opens the custom edit popup anchored to this tag's marker on the canvas (via ReviewCanvas's
+  // `editingTagId`/`renderEditPopup`) — restores the original "popup right next to the person
+  // you're editing" behavior. Selecting the tag first (which ReviewCanvas already auto-centers/
+  // zooms to on selection change) brings the marker into view before the popup renders next to
+  // it. Force the sidebar open too, so the corresponding list row stays visible for context.
   function openEditDialog(tag: PublicValidateTagRecord) {
     setSidebarOpen(true);
+    setSelectedTagId(tag.id);
     setEditingTagId(tag.id);
     setEditCode(tag.code);
     setEditName(tag.name);
@@ -208,15 +207,6 @@ export function PublicValidateView({
 
   return (
     <div className="flex h-dvh flex-col">
-      {/* On a small screen the list + photo genuinely don't fit usefully in portrait — block the
-          page with a rotate prompt instead of rendering a cramped layout. Desktop is unaffected
-          (max-md: only matches small screens regardless of orientation). */}
-      <div className="fixed inset-0 z-50 hidden flex-col items-center justify-center gap-3 bg-white px-6 text-center max-md:portrait:flex">
-        <span className="text-4xl" aria-hidden>
-          📱↻
-        </span>
-        <p className="text-sm font-medium text-gray-700">กรุณาหมุนหน้าจอเป็นแนวนอน เพื่อใช้งานหน้านี้</p>
-      </div>
       <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-3 py-2 sm:px-4">
         <div className="flex shrink-0 flex-col items-center gap-1">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -285,7 +275,10 @@ export function PublicValidateView({
             </div>
           )}
         </div>
-        <div className="shrink-0">
+        {/* Hidden on mobile — an export button competes with the tag list/photo for very
+            little screen space there, and exporting a Word doc isn't a mobile-first action;
+            desktop keeps it, matching the bottom toolbar's own hidden-on-mobile convention. */}
+        <div className="hidden shrink-0 md:block">
           <WordExportButton photoId={photoId} />
         </div>
       </div>
@@ -313,104 +306,6 @@ export function PublicValidateView({
               </span>
             ) : null
           }
-          editingTagId={editingTagId}
-          renderInlineEdit={(_tag) => (
-            <div className="p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="font-mono text-xs text-gray-500">รหัส {editCode}</span>
-                <button
-                  type="button"
-                  onClick={() => setEditingTagId(null)}
-                  disabled={editSaving}
-                  className="shrink-0 text-gray-400 hover:text-gray-600 disabled:opacity-50"
-                  aria-label="ยกเลิก"
-                >
-                  ✕
-                </button>
-              </div>
-              <label className="block text-xs font-medium text-gray-700">
-                ชื่อ-นามสกุล
-              </label>
-              <input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="เว้นว่างไว้ก่อนได้"
-                className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
-                autoFocus
-              />
-              {editError && (
-                <p className="mt-1 text-xs text-red-600">{editError}</p>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setEditHistoryOpen((v) => !v)}
-                className="mt-2 flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
-              >
-                <span>
-                  ประวัติการแก้ไข{editHistory ? ` (${editHistory.length})` : ""}
-                </span>
-                <span>{editHistoryOpen ? "▲" : "▼"}</span>
-              </button>
-              {editHistoryOpen && (
-                <div className="mt-1 max-h-28 space-y-1 overflow-y-auto">
-                  {editHistory === null && (
-                    <p className="text-xs text-gray-400">กำลังโหลด...</p>
-                  )}
-                  {editHistory?.length === 0 && (
-                    <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>
-                  )}
-                  {editHistory?.map((h) => (
-                    <div
-                      key={h.id}
-                      className="rounded-md bg-gray-50 px-2 py-1 text-xs"
-                    >
-                      <div className="flex items-center justify-between gap-2 text-gray-400">
-                        <span>
-                          {new Date(h.createdAt).toLocaleString("th-TH", {
-                            dateStyle: "short",
-                            timeStyle: "short",
-                          })}
-                        </span>
-                        <span>{HISTORY_SOURCE_LABEL[h.source]}</span>
-                      </div>
-                      <p className="mt-0.5 text-gray-700">
-                        <span className="font-mono">{h.code}</span> —{" "}
-                        {h.name || "(ยังไม่มีชื่อ)"}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingTagId(null)}
-                  disabled={editSaving}
-                  className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveEdit}
-                  disabled={editSaving}
-                  className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium text-white disabled:opacity-50 ${
-                    editNameChanged
-                      ? "bg-indigo-600 hover:bg-indigo-700"
-                      : "bg-green-600 hover:bg-green-700"
-                  }`}
-                >
-                  {editSaving
-                    ? "กำลังบันทึก..."
-                    : editNameChanged
-                      ? "บันทึก"
-                      : "ยืนยัน"}
-                </button>
-              </div>
-            </div>
-          )}
         />
 
         <div className="min-h-0 flex-1">
@@ -430,6 +325,109 @@ export function PublicValidateView({
             readOnly
             grayUnselected
             hideToolbar
+            fitHeightOnMobileOrientation
+            editingTagId={editingTagId}
+            renderEditPopup={() => (
+              <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-xl">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="font-mono text-xs text-gray-500">รหัส {editCode}</span>
+                  <button
+                    type="button"
+                    onClick={() => setEditingTagId(null)}
+                    disabled={editSaving}
+                    className="shrink-0 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                    aria-label="ยกเลิก"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <label className="block text-xs font-medium text-gray-700">
+                  ชื่อ-นามสกุล
+                </label>
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="เว้นว่างไว้ก่อนได้"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
+                  autoFocus
+                />
+                {editError && (
+                  <p className="mt-1 text-xs text-red-600">{editError}</p>
+                )}
+
+                {/* Save/Cancel come right after the input, before the (usually-collapsed)
+                    history section — on a short keyboard-open viewport, the primary actions
+                    being the very next thing after the input means there's nothing to scroll
+                    past to reach them. */}
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingTagId(null)}
+                    disabled={editSaving}
+                    className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveEdit}
+                    disabled={editSaving}
+                    className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium text-white disabled:opacity-50 ${
+                      editNameChanged
+                        ? "bg-indigo-600 hover:bg-indigo-700"
+                        : "bg-green-600 hover:bg-green-700"
+                    }`}
+                  >
+                    {editSaving
+                      ? "กำลังบันทึก..."
+                      : editNameChanged
+                        ? "บันทึก"
+                        : "ยืนยัน"}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setEditHistoryOpen((v) => !v)}
+                  className="mt-3 flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
+                >
+                  <span>
+                    ประวัติการแก้ไข{editHistory ? ` (${editHistory.length})` : ""}
+                  </span>
+                  <span>{editHistoryOpen ? "▲" : "▼"}</span>
+                </button>
+                {editHistoryOpen && (
+                  <div className="mt-1 max-h-28 space-y-1 overflow-y-auto">
+                    {editHistory === null && (
+                      <p className="text-xs text-gray-400">กำลังโหลด...</p>
+                    )}
+                    {editHistory?.length === 0 && (
+                      <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>
+                    )}
+                    {editHistory?.map((h) => (
+                      <div
+                        key={h.id}
+                        className="rounded-md bg-gray-50 px-2 py-1 text-xs"
+                      >
+                        <div className="flex items-center justify-between gap-2 text-gray-400">
+                          <span>
+                            {new Date(h.createdAt).toLocaleString("th-TH", {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })}
+                          </span>
+                          <span>{HISTORY_SOURCE_LABEL[h.source]}</span>
+                        </div>
+                        <p className="mt-0.5 text-gray-700">
+                          <span className="font-mono">{h.code}</span> —{" "}
+                          {h.name || "(ยังไม่มีชื่อ)"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           />
         </div>
       </div>

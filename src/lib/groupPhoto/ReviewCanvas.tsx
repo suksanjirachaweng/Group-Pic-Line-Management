@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   type TouchEvent as ReactTouchEvent,
 } from "react";
 import { TagLabel, TagMarker, type TagDisplayField } from "./TagLabel";
@@ -21,6 +22,10 @@ const ZOOM_STEP = 1.25;
 const REVIEW_ZOOM = 1.2;
 const POPUP_WIDTH = 260;
 const POPUP_HEIGHT = 200;
+// Wider/taller estimate for a caller-supplied `renderEditPopup` — its actual content (e.g. an
+// edit-history viewer) varies, this just keeps the initial clamp roughly on-screen.
+const CUSTOM_POPUP_WIDTH = 320;
+const CUSTOM_POPUP_MIN_HEIGHT = 160;
 const UNSELECTED_MARKER_SIZE = 9;
 const GRAY_MARKER_COLOR = "#9ca3af";
 
@@ -102,6 +107,18 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
    * link, which is only ever opened from a LINE mobile link where pinch-zoom/drag-to-pan are
    * already the natural gestures; the row was pure clutter with nothing left to explain. */
   hideToolbar?: boolean;
+  /** Id of the tag whose custom editor popup (see `renderEditPopup`) should be shown, positioned
+   * next to that tag's marker — an alternative to the built-in `onSave`/`editableTagIds` popup for
+   * callers (the public /validate page) that need their own richer form (edit history, a
+   * confirm-vs-save distinction) but still want it anchored to the marker the same way. */
+  editingTagId?: string | null;
+  renderEditPopup?: (tag: ReviewTag) => ReactNode;
+  /** On a mobile-width viewport, fit the photo to the container's *height* (instead of the
+   * default fit-both-dimensions) whenever the page first opens or the device is rotated — but
+   * only while nothing is selected yet, so it never yanks the view out from under someone
+   * mid-edit. Off by default; opt in per-caller (the public /validate page) rather than changing
+   * every ReviewCanvas consumer's initial zoom behavior. */
+  fitHeightOnMobileOrientation?: boolean;
 }>(function ReviewCanvas(
   {
     imageUrl,
@@ -120,6 +137,9 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
     onPlaceTag,
     grayUnselected = false,
     hideToolbar = false,
+    editingTagId = null,
+    renderEditPopup,
+    fitHeightOnMobileOrientation = false,
   },
   ref,
 ) {
@@ -225,12 +245,77 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
     setTy((rect.height - canvas.height * next) / 2);
   }
 
+  // Like zoomToFit, but scales only against the container's height — for a narrow mobile
+  // viewport showing a wide panorama-style group photo, fitting both dimensions leaves the photo
+  // tiny (bound by the narrow width); fitting height alone zooms in enough to actually read faces
+  // /codes, trading full-width visibility for horizontal pan.
+  function zoomToFitHeight() {
+    const canvas = displayCanvasRef.current;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!canvas || !rect || !canvas.width || !canvas.height || !rect.height) return;
+    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, rect.height / canvas.height));
+    setScale(next);
+    setTx((rect.width - canvas.width * next) / 2);
+    setTy((rect.height - canvas.height * next) / 2);
+  }
+
+  // A phone's shorter side stays roughly constant across rotation (portrait width ≈ landscape
+  // height) while its longer side doesn't — many real phones are 800px+ wide in landscape, well
+  // past the usual 767px "mobile" breakpoint, so checking raw innerWidth would wrongly call a
+  // rotated phone "not mobile". Checking the shorter dimension instead is orientation-agnostic.
+  function isMobileViewport(): boolean {
+    if (typeof window === "undefined") return false;
+    return Math.min(window.innerWidth, window.innerHeight) <= 767;
+  }
+
   // Open already fit to the viewport instead of the fixed 0.25 default — safe to run on mount
   // now that the canvas is sized synchronously from imageWidth/imageHeight (see canvasSize
-  // above), so both it and the container already have real dimensions before this fires.
+  // above), so both it and the container already have real dimensions before this fires. On a
+  // mobile viewport with nothing selected yet, opt-in callers get fit-to-height instead (see
+  // `fitHeightOnMobileOrientation`'s doc comment).
   useEffect(() => {
-    zoomToFit();
+    if (fitHeightOnMobileOrientation && isMobileViewport() && selectedTagId === null) {
+      zoomToFitHeight();
+    } else {
+      zoomToFit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial-mount fit only, not a live sync
   }, []);
+
+  // Re-fit to height on an orientation flip (portrait<->landscape) while nothing is selected —
+  // once something is selected, `centerOn` (below) already owns re-framing on selection change,
+  // and re-fitting here too would fight/undo that. selectedTagId is read via a ref so this
+  // listener doesn't need to be torn down and re-added on every selection change.
+  const selectedTagIdRef = useRef(selectedTagId);
+  useEffect(() => {
+    selectedTagIdRef.current = selectedTagId;
+  }, [selectedTagId]);
+
+  useEffect(() => {
+    if (!fitHeightOnMobileOrientation) return;
+    const mq = window.matchMedia("(orientation: portrait)");
+    function handleOrientationChange() {
+      // Let the viewport/layout finish settling into its new orientation before measuring it.
+      // A plain timeout, not requestAnimationFrame — rAF never fires while the tab/webview isn't
+      // actually visible (browsers pause it for hidden documents), which a rotation can
+      // momentarily trigger; setTimeout still fires regardless of visibility.
+      setTimeout(() => {
+        if (isMobileViewport() && selectedTagIdRef.current === null) {
+          zoomToFitHeight();
+        }
+      }, 50);
+    }
+    // Both listeners target the same event in practice on a real device rotation — kept both
+    // since `orientationchange` is the older, more universally-fired mobile-specific event and
+    // `matchMedia` "change" is the modern spec-correct one; whichever fires first wins, the
+    // handler itself is idempotent so a double-fire is harmless.
+    mq.addEventListener("change", handleOrientationChange);
+    window.addEventListener("orientationchange", handleOrientationChange);
+    return () => {
+      mq.removeEventListener("change", handleOrientationChange);
+      window.removeEventListener("orientationchange", handleOrientationChange);
+    };
+  }, [fitHeightOnMobileOrientation]);
 
   useImperativeHandle(
     ref,
@@ -264,6 +349,11 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
   const selectedTag = useMemo(
     () => tags.find((t) => t.id === selectedTagId) ?? null,
     [tags, selectedTagId],
+  );
+
+  const editingTag = useMemo(
+    () => tags.find((t) => t.id === editingTagId) ?? null,
+    [tags, editingTagId],
   );
 
   // Reset the edit fields whenever the selection changes — derived during render (not an effect)
@@ -481,6 +571,23 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
         }
       : rawPopupPos;
 
+  const rawEditPopupPos = editingTag
+    ? toScreenPx(editingTag.x, editingTag.y)
+    : null;
+  const editPopupPos =
+    rawEditPopupPos && containerSize
+      ? {
+          left: Math.min(
+            Math.max(rawEditPopupPos.left + 16, 8),
+            containerSize.width - CUSTOM_POPUP_WIDTH - 8,
+          ),
+          top: Math.min(
+            Math.max(rawEditPopupPos.top - 16, 8),
+            containerSize.height - CUSTOM_POPUP_MIN_HEIGHT - 8,
+          ),
+        }
+      : rawEditPopupPos;
+
   return (
     <div className="flex h-full flex-col">
       {!hideToolbar && (
@@ -646,6 +753,16 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
                 {saving ? "กำลังบันทึก..." : "บันทึก"}
               </button>
             </div>
+          </div>
+        )}
+
+        {editingTag && renderEditPopup && editPopupPos && (
+          <div
+            className="absolute z-10"
+            style={{ left: editPopupPos.left, top: editPopupPos.top, width: CUSTOM_POPUP_WIDTH }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {renderEditPopup(editingTag)}
           </div>
         )}
       </div>
