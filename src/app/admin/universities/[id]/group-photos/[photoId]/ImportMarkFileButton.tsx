@@ -1,13 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { importGroupPhotoTagsFromMarkFile } from "@/lib/actions/groupPhotos";
 
 export function ImportMarkFileButton({ universityId, groupPhotoId }: { universityId: string; groupPhotoId: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isPending, setIsPending] = useState(false);
-  const router = useRouter();
 
   async function handleFile(file: File) {
     if (
@@ -28,7 +26,12 @@ export function ImportMarkFileButton({ universityId, groupPhotoId }: { universit
         window.alert(`นำเข้าไม่สำเร็จ: ${result.error}`);
       } else if (result) {
         window.alert(`นำเข้าแท็กสำเร็จ ${result.count} รายการ`);
-        router.refresh();
+        // A full reload, not router.refresh() — TagCanvas seeds its tags/candidate state from
+        // initialTags only once on mount, so a refreshed server-component prop alone never reaches
+        // it; the canvas kept showing the pre-import tags (or none) until a manual reload. This
+        // also means the just-added mount-time zoomToFit() fires fresh, so the newly imported
+        // marks are both visible and already framed instead of needing a second manual action.
+        window.location.reload();
       }
     } finally {
       setIsPending(false);
