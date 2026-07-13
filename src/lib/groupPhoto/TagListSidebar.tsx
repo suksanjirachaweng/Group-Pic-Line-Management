@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { validateTags, problemTagIds, type TagForValidation } from "./validateTags";
 import { colorForRow } from "./rowColor";
 import type { TagDisplayField } from "./TagLabel";
@@ -48,7 +48,7 @@ function TagRow<T extends BaseTag>({
         type="button"
         onClick={onSelect}
         onDoubleClick={onDoubleClick}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:brightness-95"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:brightness-95 max-md:landscape:gap-1.5 max-md:landscape:px-2 max-md:landscape:py-1.5 max-md:landscape:text-xs"
       >
         {isSelected ? (
           <span className="shrink-0 text-indigo-600" aria-hidden>
@@ -121,6 +121,27 @@ export function TagListSidebar<T extends BaseTag>({
     onSelectTag(null);
   }
 
+  // Which "no name yet" vs "already filled in" bucket a tag belongs to is frozen per tag id the
+  // first time it's seen, not recomputed live — otherwise typing a name into a "no name" row
+  // mid-review yanks it into the other list the instant it saves, which is disorienting when
+  // working down the list one row at a time. A tag only moves buckets on the next full page
+  // load. Same "adjust state during render when a prop changes" pattern TagEditDialog uses for
+  // syncedInitial — tags not yet seen (e.g. added later via mark-file import) get folded in, and
+  // likewise frozen, the first render they appear on.
+  const [prevTags, setPrevTags] = useState(tags);
+  const [noNameAtFirstSeen, setNoNameAtFirstSeen] = useState<Map<string, boolean>>(
+    () => new Map(tags.map((t) => [t.id, !t.name.trim()])),
+  );
+  if (tags !== prevTags) {
+    setPrevTags(tags);
+    const missing = tags.filter((t) => !noNameAtFirstSeen.has(t.id));
+    if (missing.length > 0) {
+      const next = new Map(noNameAtFirstSeen);
+      for (const t of missing) next.set(t.id, !t.name.trim());
+      setNoNameAtFirstSeen(next);
+    }
+  }
+
   const problems = useMemo(() => validateTags(tags), [tags]);
   const duplicateGroups = problems.filter((p) => p.type === "DUPLICATE_CODE");
   const unmatchedIds = new Set(problems.filter((p) => p.type === "UNMATCHED_CODE").map((p) => p.tagId));
@@ -129,8 +150,8 @@ export function TagListSidebar<T extends BaseTag>({
   // is still unidentified and needs someone to look at it, while one an admin already typed a
   // name into (just not found in the registration/reference data) is effectively resolved —
   // mixing the two made the "needs attention" list look far bigger than it really was.
-  const unmatchedNoName = unmatchedTags.filter((t) => !t.name.trim());
-  const unmatchedWithName = unmatchedTags.filter((t) => t.name.trim());
+  const unmatchedNoName = unmatchedTags.filter((t) => noNameAtFirstSeen.get(t.id) ?? !t.name.trim());
+  const unmatchedWithName = unmatchedTags.filter((t) => !(noNameAtFirstSeen.get(t.id) ?? !t.name.trim()));
   const tagsById = new Map(tags.map((t) => [t.id, t]));
   const problemTagIdSet = problemTagIds(problems);
 
@@ -148,23 +169,29 @@ export function TagListSidebar<T extends BaseTag>({
   return (
     <>
       {open && (
-        <div className="max-h-[45vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white p-4 md:h-auto md:max-h-none md:w-96 md:border-b-0 md:border-r">
-          <div className="mb-3 flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
-            <button
-              type="button"
-              onClick={() => switchListMode("problems")}
-              className={`flex-1 rounded px-2 py-1 font-medium ${listMode === "problems" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
-            >
-              เฉพาะที่มีปัญหา ({problems.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => switchListMode("all")}
-              className={`flex-1 rounded px-2 py-1 font-medium ${listMode === "all" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
-            >
-              ทั้งหมด ({tags.length})
-            </button>
+        <div className="max-h-[45vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white max-md:landscape:h-auto max-md:landscape:max-h-none max-md:landscape:w-56 max-md:landscape:border-b-0 max-md:landscape:border-r md:h-auto md:max-h-none md:w-96 md:border-b-0 md:border-r">
+          {/* Sticky so the problems/all toggle stays reachable while scrolling a long list — its
+              own bg-white + border keeps scrolling rows from showing through underneath. */}
+          <div className="sticky top-0 z-10 border-b border-gray-100 bg-white p-4 pb-3 max-md:landscape:p-2 max-md:landscape:pb-2">
+            <div className="flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => switchListMode("problems")}
+                className={`flex-1 rounded px-2 py-1 font-medium max-md:landscape:px-1 max-md:landscape:py-0.5 ${listMode === "problems" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+              >
+                เฉพาะที่มีปัญหา ({problems.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => switchListMode("all")}
+                className={`flex-1 rounded px-2 py-1 font-medium max-md:landscape:px-1 max-md:landscape:py-0.5 ${listMode === "all" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+              >
+                ทั้งหมด ({tags.length})
+              </button>
+            </div>
           </div>
+
+          <div className="p-4 pt-3 max-md:landscape:p-2 max-md:landscape:pt-2">
 
           {listMode === "problems" ? (
             <>
@@ -279,6 +306,7 @@ export function TagListSidebar<T extends BaseTag>({
               })}
             </div>
           )}
+          </div>
         </div>
       )}
 
@@ -286,7 +314,7 @@ export function TagListSidebar<T extends BaseTag>({
         type="button"
         onClick={onToggleOpen}
         title={open ? "ซ่อนรายชื่อ" : "แสดงรายชื่อ"}
-        className="hidden shrink-0 flex-col items-center justify-center gap-2 border-r border-gray-200 bg-gray-50 px-1.5 py-3 text-gray-500 hover:bg-gray-100 hover:text-gray-700 md:flex"
+        className="hidden shrink-0 flex-col items-center justify-center gap-2 border-r border-gray-200 bg-gray-50 px-1.5 py-3 text-gray-500 hover:bg-gray-100 hover:text-gray-700 max-md:landscape:flex md:flex"
       >
         <span aria-hidden className="text-base leading-none">
           {open ? "‹" : "›"}
@@ -298,7 +326,7 @@ export function TagListSidebar<T extends BaseTag>({
       <button
         type="button"
         onClick={onToggleOpen}
-        className="flex shrink-0 items-center justify-center gap-1 border-b border-gray-200 bg-gray-50 py-2 text-xs font-medium text-gray-600 active:bg-gray-100 md:hidden"
+        className="flex shrink-0 items-center justify-center gap-1 border-b border-gray-200 bg-gray-50 py-2 text-xs font-medium text-gray-600 active:bg-gray-100 max-md:landscape:hidden md:hidden"
       >
         {open ? "ซ่อนรายชื่อ ▲" : "แสดงรายชื่อ ▼"}
       </button>
