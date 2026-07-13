@@ -24,6 +24,7 @@ function TagRow<T extends BaseTag>({
   displayFields,
   groupedByRow = false,
   extraBadges,
+  inlineEdit,
 }: {
   tag: T;
   isSelected: boolean;
@@ -33,8 +34,18 @@ function TagRow<T extends BaseTag>({
   displayFields: Set<TagDisplayField>;
   groupedByRow?: boolean;
   extraBadges?: ReactNode;
+  /** Swaps this row's normal button content for an inline edit form — used by the public
+   * validate page instead of a modal dialog (see TagListSidebar's own doc comment for why). */
+  inlineEdit?: ReactNode;
 }) {
   const rowColor = colorForRow(tag.row);
+  if (inlineEdit) {
+    return (
+      <li className="relative z-10 rounded-md ring-2 ring-inset ring-indigo-600 bg-indigo-50">
+        {inlineEdit}
+      </li>
+    );
+  }
   return (
     <li
       className={isSelected ? "relative z-10 rounded-md ring-2 ring-inset ring-indigo-600 bg-indigo-100" : undefined}
@@ -85,6 +96,43 @@ function TagRow<T extends BaseTag>({
   );
 }
 
+/** One collapsible section header (a problem category, or a row in the "all" tab) — click to
+ * show/hide its rows, independent of the other sections. Defaults open so nothing looks hidden
+ * on first load. */
+function CollapsibleGroup({
+  title,
+  count,
+  colorDot,
+  children,
+}: {
+  title: string;
+  count: number;
+  colorDot?: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="mb-2 flex w-full items-center gap-2 text-left text-sm font-semibold text-gray-900"
+      >
+        {colorDot && (
+          <span className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: colorDot }} />
+        )}
+        <span className="flex-1">
+          {title} ({count})
+        </span>
+        <span aria-hidden className="shrink-0 text-xs text-gray-400">
+          {open ? "▲" : "▼"}
+        </span>
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
 /**
  * Problem/all tag list + collapse toggle, shared by the admin tagging canvas and the public
  * validate page so the two "which tags need attention" views can't drift apart. Renders itself
@@ -103,6 +151,8 @@ export function TagListSidebar<T extends BaseTag>({
   onListModeChange,
   renderBadges,
   emptyMessage = "ไม่พบปัญหา",
+  editingTagId,
+  renderInlineEdit,
 }: {
   tags: T[];
   selectedTagId: string | null;
@@ -115,6 +165,12 @@ export function TagListSidebar<T extends BaseTag>({
   onListModeChange: (mode: "problems" | "all") => void;
   renderBadges?: (tag: T) => ReactNode;
   emptyMessage?: string;
+  /** When set, the row matching this id renders `renderInlineEdit(tag)` instead of its normal
+   * button — the public validate page's mobile-safe alternative to a modal edit dialog (see
+   * TagRow's `inlineEdit` prop). Admin usage leaves both unset and keeps the modal-dialog flow
+   * via `onEditTag`. */
+  editingTagId?: string | null;
+  renderInlineEdit?: (tag: T) => ReactNode;
 }) {
   function switchListMode(mode: "problems" | "all") {
     onListModeChange(mode);
@@ -201,75 +257,79 @@ export function TagListSidebar<T extends BaseTag>({
 
               {duplicateGroups.length > 0 && (
                 <div className="mb-4">
-                  <h2 className="mb-2 text-sm font-semibold text-gray-900">เลขซ้ำในรูปเดียวกัน ({duplicateGroups.length})</h2>
-                  <div className="space-y-3">
-                    {duplicateGroups.map((g) =>
-                      g.type === "DUPLICATE_CODE" ? (
-                        <div key={g.normalizedCode}>
-                          <p className="mb-1 px-0.5 text-xs font-semibold text-red-600">รหัสซ้ำ: {g.normalizedCode}</p>
-                          <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
-                            {g.tagIds
-                              .map((id) => tagsById.get(id))
-                              .filter((t): t is T => !!t)
-                              .map((t) => (
-                                <TagRow
-                                  key={t.id}
-                                  tag={t}
-                                  isSelected={t.id === selectedTagId}
-                                  isProblem
-                                  onSelect={() => onSelectTag(t)}
-                                  onDoubleClick={() => onEditTag(t)}
-                                  displayFields={displayFields}
-                                  extraBadges={renderBadges?.(t)}
-                                />
-                              ))}
-                          </ul>
-                        </div>
-                      ) : null,
-                    )}
-                  </div>
+                  <CollapsibleGroup title="เลขซ้ำในรูปเดียวกัน" count={duplicateGroups.length}>
+                    <div className="space-y-3">
+                      {duplicateGroups.map((g) =>
+                        g.type === "DUPLICATE_CODE" ? (
+                          <div key={g.normalizedCode}>
+                            <p className="mb-1 px-0.5 text-xs font-semibold text-red-600">รหัสซ้ำ: {g.normalizedCode}</p>
+                            <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
+                              {g.tagIds
+                                .map((id) => tagsById.get(id))
+                                .filter((t): t is T => !!t)
+                                .map((t) => (
+                                  <TagRow
+                                    key={t.id}
+                                    tag={t}
+                                    isSelected={t.id === selectedTagId}
+                                    isProblem
+                                    onSelect={() => onSelectTag(t)}
+                                    onDoubleClick={() => onEditTag(t)}
+                                    displayFields={displayFields}
+                                    extraBadges={renderBadges?.(t)}
+                                    inlineEdit={editingTagId === t.id ? renderInlineEdit?.(t) : undefined}
+                                  />
+                                ))}
+                            </ul>
+                          </div>
+                        ) : null,
+                      )}
+                    </div>
+                  </CollapsibleGroup>
                 </div>
               )}
 
               {unmatchedNoName.length > 0 && (
                 <div className="mb-6">
-                  <h2 className="mb-2 text-sm font-semibold text-gray-900">มีรหัสแต่ไม่มีชื่อ ({unmatchedNoName.length})</h2>
-                  <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
-                    {unmatchedNoName.map((t) => (
-                      <TagRow
-                        key={t.id}
-                        tag={t}
-                        isSelected={t.id === selectedTagId}
-                        isProblem
-                        onSelect={() => onSelectTag(t)}
-                        onDoubleClick={() => onEditTag(t)}
-                        displayFields={displayFields}
-                        extraBadges={renderBadges?.(t)}
-                      />
-                    ))}
-                  </ul>
+                  <CollapsibleGroup title="ไม่ทราบชื่อ" count={unmatchedNoName.length}>
+                    <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
+                      {unmatchedNoName.map((t) => (
+                        <TagRow
+                          key={t.id}
+                          tag={t}
+                          isSelected={t.id === selectedTagId}
+                          isProblem
+                          onSelect={() => onSelectTag(t)}
+                          onDoubleClick={() => onEditTag(t)}
+                          displayFields={displayFields}
+                          extraBadges={renderBadges?.(t)}
+                          inlineEdit={editingTagId === t.id ? renderInlineEdit?.(t) : undefined}
+                        />
+                      ))}
+                    </ul>
+                  </CollapsibleGroup>
                 </div>
               )}
 
               {unmatchedWithName.length > 0 && (
                 <div className="mb-6">
-                  <h2 className="mb-2 text-sm font-semibold text-gray-900">
-                    รหัสไม่พบในระบบ แต่แอดมินกรอกข้อมูลแล้ว ({unmatchedWithName.length})
-                  </h2>
-                  <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
-                    {unmatchedWithName.map((t) => (
-                      <TagRow
-                        key={t.id}
-                        tag={t}
-                        isSelected={t.id === selectedTagId}
-                        isProblem
-                        onSelect={() => onSelectTag(t)}
-                        onDoubleClick={() => onEditTag(t)}
-                        displayFields={displayFields}
-                        extraBadges={renderBadges?.(t)}
-                      />
-                    ))}
-                  </ul>
+                  <CollapsibleGroup title="รอการยืนยันชื่อ" count={unmatchedWithName.length}>
+                    <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
+                      {unmatchedWithName.map((t) => (
+                        <TagRow
+                          key={t.id}
+                          tag={t}
+                          isSelected={t.id === selectedTagId}
+                          isProblem
+                          onSelect={() => onSelectTag(t)}
+                          onDoubleClick={() => onEditTag(t)}
+                          displayFields={displayFields}
+                          extraBadges={renderBadges?.(t)}
+                          inlineEdit={editingTagId === t.id ? renderInlineEdit?.(t) : undefined}
+                        />
+                      ))}
+                    </ul>
+                  </CollapsibleGroup>
                 </div>
               )}
             </>
@@ -279,28 +339,27 @@ export function TagListSidebar<T extends BaseTag>({
                 const rowColor = colorForRow(row);
                 return (
                   <div key={row}>
-                    <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900">
-                      <span className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: rowColor }} />
-                      แถว {row} ({rowTags.length})
-                    </h2>
-                    <ul
-                      className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-l-4 border-gray-200"
-                      style={{ borderLeftColor: rowColor }}
-                    >
-                      {rowTags.map((t) => (
-                        <TagRow
-                          key={t.id}
-                          tag={t}
-                          isSelected={t.id === selectedTagId}
-                          isProblem={problemTagIdSet.has(t.id)}
-                          onSelect={() => onSelectTag(t)}
-                          onDoubleClick={() => onEditTag(t)}
-                          displayFields={displayFields}
-                          groupedByRow
-                          extraBadges={renderBadges?.(t)}
-                        />
-                      ))}
-                    </ul>
+                    <CollapsibleGroup title={`แถว ${row}`} count={rowTags.length} colorDot={rowColor}>
+                      <ul
+                        className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-l-4 border-gray-200"
+                        style={{ borderLeftColor: rowColor }}
+                      >
+                        {rowTags.map((t) => (
+                          <TagRow
+                            key={t.id}
+                            tag={t}
+                            isSelected={t.id === selectedTagId}
+                            isProblem={problemTagIdSet.has(t.id)}
+                            onSelect={() => onSelectTag(t)}
+                            onDoubleClick={() => onEditTag(t)}
+                            displayFields={displayFields}
+                            groupedByRow
+                            extraBadges={renderBadges?.(t)}
+                            inlineEdit={editingTagId === t.id ? renderInlineEdit?.(t) : undefined}
+                          />
+                        ))}
+                      </ul>
+                    </CollapsibleGroup>
                   </div>
                 );
               })}
