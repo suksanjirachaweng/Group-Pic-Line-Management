@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { validateSignature, webhook } from "@line/bot-sdk";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto";
-import { replyTextMessage } from "@/lib/line";
+import { replyTextMessage, getLineUserProfile } from "@/lib/line";
 import { buildLiffRegisterUrl } from "@/lib/liffUrl";
 
 export async function POST(
@@ -43,8 +43,35 @@ export async function POST(
       data: { isFriend: event.type === "follow" },
     });
 
-    if (event.type === "follow" && event.replyToken) {
-      await sendRegistrationLinkIfSingleUniversity(channel, event.replyToken);
+    if (event.type === "follow") {
+      // Tracked independently of Registrant — a follow event alone never creates a Registrant
+      // row (that only happens once someone actually submits the registration form), so without
+      // this there's no way to later list "added the LINE friend but never registered."
+      const profile = await getLineUserProfile(channel.accessTokenEncrypted, userId);
+      await prisma.lineFollower.upsert({
+        where: { channelId_lineUserId: { channelId: channel.id, lineUserId: userId } },
+        create: {
+          channelId: channel.id,
+          lineUserId: userId,
+          displayName: profile?.displayName,
+          pictureUrl: profile?.pictureUrl,
+        },
+        update: {
+          unfollowedAt: null,
+          ...(profile ? { displayName: profile.displayName, pictureUrl: profile.pictureUrl } : {}),
+        },
+      });
+
+      if (event.replyToken) {
+        await sendRegistrationLinkIfSingleUniversity(channel, event.replyToken);
+      }
+    } else {
+      // updateMany, not update — an unfollow for a user whose very first-ever event predates
+      // this feature (no LineFollower row yet) should be a silent no-op, not a thrown error.
+      await prisma.lineFollower.updateMany({
+        where: { channelId: channel.id, lineUserId: userId },
+        data: { unfollowedAt: new Date() },
+      });
     }
   }
 

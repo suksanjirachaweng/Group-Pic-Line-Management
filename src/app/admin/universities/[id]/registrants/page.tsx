@@ -141,6 +141,12 @@ export default async function RegistrantsPage({
           >
             Export to Excel
           </a>
+          <Link
+            href={`/admin/universities/${universityId}/unregistered-followers`}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            เพิ่มเพื่อนแต่ยังไม่ลงทะเบียน
+          </Link>
           <Link href={`/admin/universities/${universityId}`} className="text-sm text-gray-500 hover:underline">
             Back to university
           </Link>

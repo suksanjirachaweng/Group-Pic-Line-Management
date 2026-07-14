@@ -79,6 +79,30 @@ export async function fetchLineBotInfo(accessTokenEncrypted: string): Promise<Li
   return { basicId: info.basicId, displayName: info.displayName, pictureUrl: info.pictureUrl ?? null };
 }
 
+export type LineUserProfile = { displayName: string; pictureUrl: string | null };
+
+/**
+ * Fetches a user's LINE display name + profile picture — only works while they remain a friend
+ * of this channel (LINE's own restriction on `getProfile`), so this is called right when a
+ * "follow" webhook event fires, when that's guaranteed true. Returns null on any failure (e.g. a
+ * transient API error) rather than throwing — a follower row with no display name yet is far
+ * better than losing the follow event entirely.
+ */
+export async function getLineUserProfile(
+  accessTokenEncrypted: string,
+  lineUserId: string,
+): Promise<LineUserProfile | null> {
+  const client = new messagingApi.MessagingApiClient({
+    channelAccessToken: decryptSecret(accessTokenEncrypted),
+  });
+  try {
+    const profile = await client.getProfile(lineUserId);
+    return { displayName: profile.displayName, pictureUrl: profile.pictureUrl ?? null };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Creates a new LIFF app on this channel pointed at our shared LIFF registration page.
  * The description must not contain "LINE" (or similar) — LINE rejects those — so we use a

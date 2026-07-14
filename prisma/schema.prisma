@@ -59,11 +59,11 @@ model University {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  formFields      FormFieldDefinition[]
-  channelPool     UniversityChannelPool[]
-  registrants     Registrant[]
-  rules           Rule[]
-  admins          AdminUserUniversity[]
+  formFields        FormFieldDefinition[]
+  channelPool       UniversityChannelPool[]
+  registrants       Registrant[]
+  rules             Rule[]
+  admins            AdminUserUniversity[]
   sheetExportConfig SheetExportConfig?
   groupPhotos       GroupPhoto[]
   legacyReferences  GroupPhotoLegacyReference[]
@@ -120,30 +120,55 @@ model FormFieldDefinition {
 // ---------------------------------------------------------------------------
 
 model Channel {
-  id                    String   @id @default(cuid())
-  name                  String
-  lineChannelId         String   @unique
-  accessTokenEncrypted  String
-  accessTokenExpiresAt  DateTime? // set only for tokens we auto-issued (short-lived, ~30d); null = manually-issued long-lived token or not yet issued
+  id                     String    @id @default(cuid())
+  name                   String
+  lineChannelId          String    @unique
+  accessTokenEncrypted   String
+  accessTokenExpiresAt   DateTime? // set only for tokens we auto-issued (short-lived, ~30d); null = manually-issued long-lived token or not yet issued
   channelSecretEncrypted String
-  liffId                String    // "" until auto-created
-  monthlyFreeQuota      Int      @default(300)
-  allowOverage          Boolean  @default(true)
-  isActive              Boolean  @default(true)
-  lineBasicId           String?
-  lineDisplayName       String?
-  linePictureUrl        String?
-  richMenuId            String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  liffId                 String // "" until auto-created
+  monthlyFreeQuota       Int       @default(300)
+  allowOverage           Boolean   @default(true)
+  isActive               Boolean   @default(true)
+  lineBasicId            String?
+  lineDisplayName        String?
+  linePictureUrl         String?
+  richMenuId             String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   universityPool UniversityChannelPool[]
   registrants    Registrant[]
   usageCounters  ChannelUsageCounter[]
   messageJobs    MessageJob[]
   messageLogs    MessageLog[]
+  followers      LineFollower[]
 
   @@map("channels")
+}
+
+/// Every LINE user who has ever followed this channel's OA, tracked independently of
+/// Registrant — a follow event alone creates no Registrant row (that only happens once someone
+/// actually submits the registration form), so without this there was no way to see "added the
+/// LINE friend but never registered." Kept (not deleted) on unfollow, just timestamped, so a
+/// re-follow doesn't look like a brand-new person. Not university-scoped directly — since one
+/// channel can serve multiple universities, "unregistered for university X" is computed by
+/// joining against Registrant per-university at query time (see getUnregisteredFollowers).
+model LineFollower {
+  id           String    @id @default(cuid())
+  channelId    String
+  lineUserId   String
+  displayName  String?
+  pictureUrl   String?
+  followedAt   DateTime  @default(now())
+  unfollowedAt DateTime?
+  updatedAt    DateTime  @updatedAt
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, lineUserId])
+  @@index([channelId])
+  @@map("line_followers")
 }
 
 // LINE requires LIFF apps to live on a separate LINE Login channel (can't be added directly to
@@ -177,11 +202,11 @@ model UniversityChannelPool {
 }
 
 model ChannelUsageCounter {
-  id            String   @id @default(cuid())
-  channelId     String
-  yearMonth     String // e.g. "2026-07"
-  messagesSent  Int      @default(0)
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(cuid())
+  channelId    String
+  yearMonth    String // e.g. "2026-07"
+  messagesSent Int      @default(0)
+  updatedAt    DateTime @updatedAt
 
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
@@ -213,12 +238,12 @@ model Registrant {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  university      University       @relation(fields: [universityId], references: [id], onDelete: Cascade)
-  channel         Channel?         @relation(fields: [channelId], references: [id])
-  ruleExecutions  RuleExecution[]
-  messageJobs     MessageJob[]
-  messageLogs     MessageLog[]
-  groupPhotoTags  GroupPhotoTag[]
+  university     University      @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  channel        Channel?        @relation(fields: [channelId], references: [id])
+  ruleExecutions RuleExecution[]
+  messageJobs    MessageJob[]
+  messageLogs    MessageLog[]
+  groupPhotoTags GroupPhotoTag[]
 
   @@index([universityId, lineUserId])
   @@index([universityId, status])
@@ -295,18 +320,18 @@ enum MessageJobStatus {
 }
 
 model MessageJob {
-  id              String            @id @default(cuid())
+  id              String           @id @default(cuid())
   registrantId    String
   channelId       String
-  source          MessageJobSource  @default(MANUAL)
-  ruleExecutionId String?           @unique
+  source          MessageJobSource @default(MANUAL)
+  ruleExecutionId String?          @unique
   body            String // may be "" when the send is image-only
   imageUrl        String? // optional image attachment for manual/bulk sends — counts as its own message against quota when set
   linkUrl         String? // when set alongside imageUrl, sent as a tappable Flex image (like a banner ad) instead of a plain image message
-  status          MessageJobStatus  @default(QUEUED)
-  attempts        Int               @default(0)
+  status          MessageJobStatus @default(QUEUED)
+  attempts        Int              @default(0)
   lastError       String?
-  createdAt       DateTime          @default(now())
+  createdAt       DateTime         @default(now())
   processedAt     DateTime?
 
   registrant    Registrant     @relation(fields: [registrantId], references: [id], onDelete: Cascade)
@@ -375,12 +400,29 @@ model GroupPhoto {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  university University         @relation(fields: [universityId], references: [id], onDelete: Cascade)
-  tags       GroupPhotoTag[]
-  shareLinks GroupPhotoShareLink[]
+  university   University               @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  tags         GroupPhotoTag[]
+  shareLinks   GroupPhotoShareLink[]
+  titleHistory GroupPhotoTitleHistory[]
 
   @@index([universityId])
   @@map("group_photos")
+}
+
+/// One entry per title change (admin tagging page or the public /validate page) — mirrors
+/// GroupPhotoTagHistory's shape/intent exactly, just for the photo's title instead of a tag's
+/// name. `title: null` records a change back to "unset" (falls back to displaying `name`).
+model GroupPhotoTitleHistory {
+  id           String           @id @default(cuid())
+  groupPhotoId String
+  title        String?
+  source       TagHistorySource
+  createdAt    DateTime         @default(now())
+
+  groupPhoto GroupPhoto @relation(fields: [groupPhotoId], references: [id], onDelete: Cascade)
+
+  @@index([groupPhotoId, createdAt])
+  @@map("group_photo_title_history")
 }
 
 enum GroupPhotoStatus {
@@ -404,25 +446,25 @@ enum TagHistorySource {
 /// One tagged person within a GroupPhoto — mirrors the legacy desktop tool's data model
 /// (name/code/row/order/X/Y) so exports stay byte-compatible with existing downstream files.
 model GroupPhotoTag {
-  id             String         @id @default(cuid())
-  groupPhotoId   String
-  code           String // raw as typed/OCR'd, e.g. "B1710"
-  normalizedCode String // digits-only, computed server-side — powers indexed duplicate/match queries
-  name           String
-  row            Int // แถว — 0 = front sitting row, 1+ = standing rows behind
-  order          Int // ลำดับ — position within the row, left to right
-  x              Float // full-resolution pixel space, matches legacy export exactly
-  y              Float
-  registrantId   String? // set when matched against a live Phase-1 Registrant (enables direct LINE send)
-  matchSource    TagMatchSource @default(MANUAL)
-  editedViaPublicLink Boolean   @default(false)
-  publicLinkEditedAt  DateTime?
-  confirmedViaPublicLink Boolean @default(false) // reviewer opened the /validate name-edit dialog and confirmed the name as-is (no change) — distinct from editedViaPublicLink so the sidebar badge can tell "confirmed correct" apart from "actually changed"
+  id                     String         @id @default(cuid())
+  groupPhotoId           String
+  code                   String // raw as typed/OCR'd, e.g. "B1710"
+  normalizedCode         String // digits-only, computed server-side — powers indexed duplicate/match queries
+  name                   String
+  row                    Int // แถว — 0 = front sitting row, 1+ = standing rows behind
+  order                  Int // ลำดับ — position within the row, left to right
+  x                      Float // full-resolution pixel space, matches legacy export exactly
+  y                      Float
+  registrantId           String? // set when matched against a live Phase-1 Registrant (enables direct LINE send)
+  matchSource            TagMatchSource @default(MANUAL)
+  editedViaPublicLink    Boolean        @default(false)
+  publicLinkEditedAt     DateTime?
+  confirmedViaPublicLink Boolean        @default(false) // reviewer opened the /validate name-edit dialog and confirmed the name as-is (no change) — distinct from editedViaPublicLink so the sidebar badge can tell "confirmed correct" apart from "actually changed"
   confirmedAt            DateTime?
-  reportedProblem Boolean       @default(false) // graduate flagged this from their own /photo-view link (wrong photo/code, can't self-fix)
-  reportedAt      DateTime?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  reportedProblem        Boolean        @default(false) // graduate flagged this from their own /photo-view link (wrong photo/code, can't self-fix)
+  reportedAt             DateTime?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
 
   groupPhoto GroupPhoto             @relation(fields: [groupPhotoId], references: [id], onDelete: Cascade)
   registrant Registrant?            @relation(fields: [registrantId], references: [id], onDelete: SetNull)
@@ -439,14 +481,14 @@ model GroupPhotoTag {
 /// point used to say before an edit (manual, auto-synced from a registrant/reference update, or
 /// via the public share-link) without needing full field-by-field diffing.
 model GroupPhotoTagHistory {
-  id        String            @id @default(cuid())
+  id        String           @id @default(cuid())
   tagId     String
   code      String
   name      String
   row       Int
   order     Int
   source    TagHistorySource
-  createdAt DateTime          @default(now())
+  createdAt DateTime         @default(now())
 
   tag GroupPhotoTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
