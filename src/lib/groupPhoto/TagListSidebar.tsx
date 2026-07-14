@@ -330,6 +330,58 @@ export function TagListSidebar<T extends BaseTag>({
                   </p>
                 )}
 
+                {unmatchedWithName.length > 0 && (
+                  <div className="mb-6">
+                    <CollapsibleGroup
+                      title="โปรดตรวจชื่อและตำแหน่งของคณาจารย์"
+                      count={unmatchedWithName.length}
+                    >
+                      <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
+                        {unmatchedWithName.map((t) => (
+                          <TagRow
+                            key={t.id}
+                            tag={t}
+                            isSelected={t.id === selectedTagId}
+                            isProblem
+                            onSelect={() => onSelectTag(t)}
+                            onDoubleClick={() => onEditTag(t)}
+                            displayFields={displayFields}
+                            extraBadges={renderBadges?.(t)}
+                            landscapeMobile={landscapeMobile}
+                            showRowOrderSuffix
+                          />
+                        ))}
+                      </ul>
+                    </CollapsibleGroup>
+                  </div>
+                )}
+
+                {unmatchedNoName.length > 0 && (
+                  <div className="mb-6">
+                    <CollapsibleGroup
+                      title="ไม่ทราบชื่อ"
+                      count={unmatchedNoName.length}
+                    >
+                      <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
+                        {unmatchedNoName.map((t) => (
+                          <TagRow
+                            key={t.id}
+                            tag={t}
+                            isSelected={t.id === selectedTagId}
+                            isProblem
+                            onSelect={() => onSelectTag(t)}
+                            onDoubleClick={() => onEditTag(t)}
+                            displayFields={displayFields}
+                            extraBadges={renderBadges?.(t)}
+                            landscapeMobile={landscapeMobile}
+                            showRowOrderSuffix
+                          />
+                        ))}
+                      </ul>
+                    </CollapsibleGroup>
+                  </div>
+                )}
+
                 {duplicateGroups.length > 0 && (
                   <div className="mb-4">
                     <CollapsibleGroup
@@ -366,58 +418,6 @@ export function TagListSidebar<T extends BaseTag>({
                           ) : null,
                         )}
                       </div>
-                    </CollapsibleGroup>
-                  </div>
-                )}
-
-                {unmatchedNoName.length > 0 && (
-                  <div className="mb-6">
-                    <CollapsibleGroup
-                      title="ไม่ทราบชื่อ"
-                      count={unmatchedNoName.length}
-                    >
-                      <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
-                        {unmatchedNoName.map((t) => (
-                          <TagRow
-                            key={t.id}
-                            tag={t}
-                            isSelected={t.id === selectedTagId}
-                            isProblem
-                            onSelect={() => onSelectTag(t)}
-                            onDoubleClick={() => onEditTag(t)}
-                            displayFields={displayFields}
-                            extraBadges={renderBadges?.(t)}
-                            landscapeMobile={landscapeMobile}
-                            showRowOrderSuffix
-                          />
-                        ))}
-                      </ul>
-                    </CollapsibleGroup>
-                  </div>
-                )}
-
-                {unmatchedWithName.length > 0 && (
-                  <div className="mb-6">
-                    <CollapsibleGroup
-                      title="รอการยืนยันชื่อ"
-                      count={unmatchedWithName.length}
-                    >
-                      <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
-                        {unmatchedWithName.map((t) => (
-                          <TagRow
-                            key={t.id}
-                            tag={t}
-                            isSelected={t.id === selectedTagId}
-                            isProblem
-                            onSelect={() => onSelectTag(t)}
-                            onDoubleClick={() => onEditTag(t)}
-                            displayFields={displayFields}
-                            extraBadges={renderBadges?.(t)}
-                            landscapeMobile={landscapeMobile}
-                            showRowOrderSuffix
-                          />
-                        ))}
-                      </ul>
                     </CollapsibleGroup>
                   </div>
                 )}
