@@ -22,8 +22,9 @@ import {
   updateGroupPhotoTagViaValidatePage,
   updateGroupPhotoTitlePublic,
   getGroupPhotoTagHistoryPublic,
+  getGroupPhotoTitleHistoryPublic,
 } from "@/lib/actions/publicGroupPhoto";
-import type { TagHistoryEntry } from "@/lib/actions/groupPhotos";
+import type { TagHistoryEntry, TitleHistoryEntry } from "@/lib/actions/groupPhotos";
 import { TagMatchSource } from "@/generated/prisma/enums";
 
 const HISTORY_SOURCE_LABEL: Record<TagHistoryEntry["source"], string> = {
@@ -132,7 +133,23 @@ export function PublicValidateView({
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(photoTitle ?? "");
   const [titleSaving, setTitleSaving] = useState(false);
+  const [titleHistory, setTitleHistory] = useState<TitleHistoryEntry[] | null>(null);
+  const [titleHistoryOpen, setTitleHistoryOpen] = useState(false);
   const displayTitle = currentTitle?.trim() || photoName;
+
+  // Fetch fresh every time the edit box opens — same convention as the tag-edit history fetch
+  // above (state reset happens in the "แก้ไข" button's onClick, not here, since resetting
+  // synchronously inside an effect body trips react-hooks/set-state-in-effect).
+  useEffect(() => {
+    if (!editingTitle) return;
+    let cancelled = false;
+    getGroupPhotoTitleHistoryPublic(photoId).then((rows) => {
+      if (!cancelled) setTitleHistory(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [editingTitle, photoId]);
 
   async function saveTitle() {
     const next = titleValue.trim() || null;
@@ -361,7 +378,9 @@ export function PublicValidateView({
   // Using a plain CSS `order` utility instead — gated on the `portrait:`/`max-md:` media query
   // Tailwind compiles to — applies at first paint with no JS involved, so there's nothing to jump.
   const sidebarNode = (
-    <div className="flex min-h-0 max-md:portrait:order-2">
+    <div
+      className={`flex min-h-0 max-md:portrait:order-2 md:flex-row ${isLandscapeMobile ? "flex-row" : "flex-col"}`}
+    >
       <TagListSidebar
         tags={tags}
         selectedTagId={selectedTagId}
@@ -475,6 +494,36 @@ export function PublicValidateView({
                   Ctrl/Cmd+Enter = บันทึก
                 </span>
               </div>
+
+              <div className="w-full max-w-xs">
+                <button
+                  type="button"
+                  onClick={() => setTitleHistoryOpen((v) => !v)}
+                  className="flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
+                >
+                  <span>ประวัติการแก้ไข{titleHistory ? ` (${titleHistory.length})` : ""}</span>
+                  <span>{titleHistoryOpen ? "▲" : "▼"}</span>
+                </button>
+                {titleHistoryOpen && (
+                  <div className="mt-1 max-h-32 space-y-1 overflow-y-auto">
+                    {titleHistory === null && <p className="text-xs text-gray-400">กำลังโหลด...</p>}
+                    {titleHistory?.length === 0 && <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>}
+                    {titleHistory?.map((h) => (
+                      <div key={h.id} className="rounded-md bg-gray-50 px-2 py-1 text-xs">
+                        <div className="flex items-center justify-between gap-2 text-gray-400">
+                          <span>
+                            {new Date(h.createdAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}
+                          </span>
+                          <span>{HISTORY_SOURCE_LABEL[h.source]}</span>
+                        </div>
+                        <p className="mt-0.5 whitespace-pre-wrap text-gray-700">
+                          {h.title?.trim() || `(ไม่ระบุ — แสดง "${photoName}")`}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-1 md:flex-row md:justify-center md:gap-2">
@@ -486,6 +535,8 @@ export function PublicValidateView({
                 onClick={() => {
                   setTitleValue(currentTitle ?? "");
                   setEditingTitle(true);
+                  setTitleHistory(null);
+                  setTitleHistoryOpen(false);
                 }}
                 className="inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-300 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 md:px-2 md:py-1 md:text-xs"
               >

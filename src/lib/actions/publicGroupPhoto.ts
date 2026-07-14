@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { RegistrantStatus } from "@/generated/prisma/enums";
-import type { TagHistoryEntry } from "@/lib/actions/groupPhotos";
+import type { TagHistoryEntry, TitleHistoryEntry } from "@/lib/actions/groupPhotos";
 
 export type PublicUpdateState = { error: string } | { success: true } | null;
 
@@ -124,8 +124,24 @@ export async function updateGroupPhotoTitlePublic(photoId: string, title: string
   const photo = await prisma.groupPhoto.findUnique({ where: { id: photoId }, select: { id: true } });
   if (!photo) throw new Error("ไม่พบรูปนี้");
 
-  await prisma.groupPhoto.update({ where: { id: photoId }, data: { title } });
+  await prisma.$transaction([
+    prisma.groupPhoto.update({ where: { id: photoId }, data: { title } }),
+    prisma.groupPhotoTitleHistory.create({ data: { groupPhotoId: photoId, title, source: "PUBLIC_LINK" } }),
+  ]);
   revalidatePath(`/group-photos/${photoId}/validate`);
+}
+
+/**
+ * Read-only counterpart to getGroupPhotoTitleHistory (admin) — same no-session model as the rest
+ * of this file, scoped by photoId alone (matches the page's own "anyone with the link can view
+ * and edit" trust model).
+ */
+export async function getGroupPhotoTitleHistoryPublic(photoId: string): Promise<TitleHistoryEntry[]> {
+  const rows = await prisma.groupPhotoTitleHistory.findMany({
+    where: { groupPhotoId: photoId },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
 }
 
 /**

@@ -191,7 +191,10 @@ export async function updateGroupPhotoTitle(
   title: string | null,
 ): Promise<void> {
   await requireUniversityAccess(universityId);
-  await prisma.groupPhoto.update({ where: { id: groupPhotoId, universityId }, data: { title } });
+  await prisma.$transaction([
+    prisma.groupPhoto.update({ where: { id: groupPhotoId, universityId }, data: { title } }),
+    prisma.groupPhotoTitleHistory.create({ data: { groupPhotoId, title, source: "ADMIN" } }),
+  ]);
   revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
 }
 
@@ -248,6 +251,25 @@ export async function getGroupPhotoTagHistory(universityId: string, tagId: strin
   await requireUniversityAccess(universityId);
   const rows = await prisma.groupPhotoTagHistory.findMany({
     where: { tag: { groupPhoto: { universityId } }, tagId },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+}
+
+export type TitleHistoryEntry = {
+  id: string;
+  title: string | null;
+  source: TagHistorySource;
+  createdAt: string;
+};
+
+export async function getGroupPhotoTitleHistory(
+  universityId: string,
+  groupPhotoId: string,
+): Promise<TitleHistoryEntry[]> {
+  await requireUniversityAccess(universityId);
+  const rows = await prisma.groupPhotoTitleHistory.findMany({
+    where: { groupPhotoId, groupPhoto: { universityId } },
     orderBy: { createdAt: "desc" },
   });
   return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));

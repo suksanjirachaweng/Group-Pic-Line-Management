@@ -1,7 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { updateGroupPhotoTitle } from "@/lib/actions/groupPhotos";
+import { useEffect, useState, useTransition } from "react";
+import {
+  updateGroupPhotoTitle,
+  getGroupPhotoTitleHistory,
+  type TitleHistoryEntry,
+} from "@/lib/actions/groupPhotos";
+
+const TITLE_HISTORY_SOURCE_LABEL: Record<TitleHistoryEntry["source"], string> = {
+  ADMIN: "แก้ไขโดยแอดมิน",
+  AUTO_SYNC: "อัปเดตอัตโนมัติ",
+  PUBLIC_LINK: "แก้ไขผ่านลิงก์แชร์",
+};
 
 export function PhotoTitleEditor({
   universityId,
@@ -18,6 +28,22 @@ export function PhotoTitleEditor({
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(title ?? "");
   const [isPending, startTransition] = useTransition();
+  const [history, setHistory] = useState<TitleHistoryEntry[] | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  // Fetch fresh every time the edit box opens — matches TagEditDialog's history-fetch convention
+  // (state reset happens in the "แก้ไข" button's onClick, not here, since resetting
+  // synchronously inside an effect body trips react-hooks/set-state-in-effect).
+  useEffect(() => {
+    if (!editing) return;
+    let cancelled = false;
+    getGroupPhotoTitleHistory(universityId, groupPhotoId).then((rows) => {
+      if (!cancelled) setHistory(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [editing, universityId, groupPhotoId]);
 
   const displayTitle = currentTitle?.trim() || name;
 
@@ -40,6 +66,8 @@ export function PhotoTitleEditor({
             onClick={() => {
               setValue(currentTitle ?? "");
               setEditing(true);
+              setHistory(null);
+              setHistoryOpen(false);
             }}
             title="แก้ไขหัวข้อรูป"
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600"
@@ -89,6 +117,34 @@ export function PhotoTitleEditor({
           ยกเลิก
         </button>
         <span className="text-xs text-gray-400">Ctrl/Cmd+Enter = บันทึก</span>
+      </div>
+
+      <div className="w-full max-w-xs">
+        <button
+          type="button"
+          onClick={() => setHistoryOpen((v) => !v)}
+          className="flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
+        >
+          <span>ประวัติการแก้ไข{history ? ` (${history.length})` : ""}</span>
+          <span>{historyOpen ? "▲" : "▼"}</span>
+        </button>
+        {historyOpen && (
+          <div className="mt-1 max-h-32 space-y-1 overflow-y-auto">
+            {history === null && <p className="text-xs text-gray-400">กำลังโหลด...</p>}
+            {history?.length === 0 && <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>}
+            {history?.map((h) => (
+              <div key={h.id} className="rounded-md bg-gray-50 px-2 py-1 text-xs">
+                <div className="flex items-center justify-between gap-2 text-gray-400">
+                  <span>
+                    {new Date(h.createdAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}
+                  </span>
+                  <span>{TITLE_HISTORY_SOURCE_LABEL[h.source]}</span>
+                </div>
+                <p className="mt-0.5 whitespace-pre-wrap text-gray-700">{h.title?.trim() || `(ไม่ระบุ — แสดง "${name}")`}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
