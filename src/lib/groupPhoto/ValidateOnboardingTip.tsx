@@ -56,74 +56,81 @@ export function ValidateOnboardingTip() {
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-2xl">
-        <h2 className="text-center text-base font-semibold text-gray-900">
-          วิธีใช้งานหน้านี้
-        </h2>
-
-        {/* Demo stage — cycles between the click-to-focus and double-click-to-edit examples
-            every ~2.2s while the tip is open. */}
-        <div className="relative mt-4 flex h-32 items-center justify-center gap-5 overflow-hidden rounded-lg bg-gray-50">
-          <div className="relative">
-            <div
-              className={`rounded-md border px-3 py-2 text-xs transition-colors ${
-                phase === "click" || phase === "dblclick"
-                  ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                  : "border-gray-200 bg-white text-gray-600"
-              }`}
-            >
-              รายชื่อ
-            </div>
-            <span
-              key={phase}
-              className="pointer-events-none absolute inset-0 animate-ping rounded-md border-2 border-indigo-400"
-              aria-hidden
-            />
-          </div>
-
-          <span className="text-gray-300" aria-hidden>
-            →
-          </span>
-
-          <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-md bg-gray-300">
-            <div
-              className={`absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-600 transition-all duration-700 ${
-                phase === "click" || phase === "dblclick"
-                  ? "left-1/2 top-1/2 scale-150"
-                  : "left-3 top-3 scale-100"
-              }`}
-            />
-            {phase === "dblclick" && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                <div className="h-8 w-14 rounded bg-white shadow" />
-              </div>
-            )}
-          </div>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-sm overflow-hidden rounded-xl border-4 border-black bg-white shadow-2xl">
+        <div className="flex flex-col items-center gap-1.5 bg-yellow-400 px-5 py-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto" />
+          <h2 className="text-center text-base font-black tracking-tight text-black">
+            วิธีใช้งานหน้านี้
+          </h2>
         </div>
 
-        <p className="mt-3 min-h-[2.5rem] text-center text-xs leading-snug text-gray-600">
-          {phase === "click"
-            ? "คลิก/แตะที่รายชื่อ — ภาพจะโฟกัสไปตำแหน่งนั้นให้เอง"
-            : "ดับเบิลคลิก/แตะ 2 ครั้ง — เปิดกล่องแก้ไขชื่อ"}
-        </p>
+        <div className="p-5">
+          {/* Demo stage — cycles between the click-to-focus and double-click-to-edit examples
+              every ~2.2s while the tip is open. */}
+          <div className="relative flex h-32 items-center justify-center gap-5 overflow-hidden rounded-lg border-2 border-black bg-yellow-50">
+            <div className="relative">
+              <div
+                className={`rounded-md border-2 px-3 py-2 text-xs font-bold transition-colors ${
+                  phase === "click" || phase === "dblclick"
+                    ? "border-black bg-yellow-400 text-black"
+                    : "border-black/30 bg-white text-black/60"
+                }`}
+              >
+                รายชื่อ
+              </div>
+              <span
+                key={phase}
+                className="pointer-events-none absolute inset-0 animate-ping rounded-md border-2 border-yellow-500"
+                aria-hidden
+              />
+            </div>
 
-        <label className="mt-4 flex items-center gap-2 text-xs text-gray-600">
-          <input
-            type="checkbox"
-            checked={dontShowAgain}
-            onChange={(e) => setDontShowAgain(e.target.checked)}
-          />
-          ไม่ต้องแสดงข้อความนี้อีก
-        </label>
+            <span className="text-black" aria-hidden>
+              →
+            </span>
 
-        <button
-          type="button"
-          onClick={close}
-          className="mt-3 w-full rounded-md bg-indigo-600 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-        >
-          เข้าใจแล้ว
-        </button>
+            <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-md border-2 border-black bg-black">
+              <div
+                className={`absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-yellow-400 transition-all duration-700 ${
+                  phase === "click" || phase === "dblclick"
+                    ? "left-1/2 top-1/2 scale-150"
+                    : "left-3 top-3 scale-100"
+                }`}
+              />
+              {phase === "dblclick" && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                  <div className="h-8 w-14 rounded border-2 border-yellow-400 bg-white shadow" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <p className="mt-3 min-h-[2.5rem] text-center text-xs font-medium leading-snug text-black">
+            {phase === "click"
+              ? "คลิก/แตะที่รายชื่อ — ภาพจะโฟกัสไปตำแหน่งนั้นให้เอง"
+              : "ดับเบิลคลิก/แตะ 2 ครั้ง — เปิดกล่องแก้ไขชื่อ"}
+          </p>
+
+          <label className="mt-4 flex items-center gap-2 text-xs text-black">
+            <input
+              type="checkbox"
+              checked={dontShowAgain}
+              onChange={(e) => setDontShowAgain(e.target.checked)}
+              className="accent-yellow-400"
+            />
+            ไม่ต้องแสดงข้อความนี้อีก
+          </label>
+
+          <button
+            type="button"
+            onClick={close}
+            className="mt-3 w-full rounded-md border-2 border-black bg-yellow-400 py-2 text-sm font-black text-black hover:bg-yellow-300"
+          >
+            เข้าใจแล้ว
+          </button>
+        </div>
       </div>
     </div>
   );
