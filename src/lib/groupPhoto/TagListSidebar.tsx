@@ -62,6 +62,7 @@ function TagRow<T extends BaseTag>({
   groupedByRow = false,
   extraBadges,
   landscapeMobile,
+  showRowOrderSuffix = false,
 }: {
   tag: T;
   isSelected: boolean;
@@ -72,6 +73,11 @@ function TagRow<T extends BaseTag>({
   groupedByRow?: boolean;
   extraBadges?: ReactNode;
   landscapeMobile?: boolean;
+  /** Problem-list rows always show "name (แถว X, ลำดับ Y)" — the row/order matters most when
+   * hunting down a specific flagged entry — instead of following the order/code checkboxes,
+   * which stay in effect for the "all" tab. Matches the format from before the checkbox picker
+   * existed. */
+  showRowOrderSuffix?: boolean;
 }) {
   const rowColor = colorForRow(tag.row);
   return (
@@ -108,7 +114,7 @@ function TagRow<T extends BaseTag>({
             />
           )
         )}
-        {displayFields.has("order") && (
+        {!showRowOrderSuffix && displayFields.has("order") && (
           <span
             className={`shrink-0 font-mono ${isSelected ? "font-bold text-gray-900" : "text-gray-400"}`}
           >
@@ -122,12 +128,23 @@ function TagRow<T extends BaseTag>({
             {tag.code || "—"}
           </span>
         )}
-        {displayFields.has("name") && (
+        {showRowOrderSuffix ? (
           <span
-            className={`truncate text-gray-600 ${isSelected ? "font-semibold" : ""}`}
+            className={`truncate ${isSelected ? "font-semibold text-gray-900" : "text-gray-600"}`}
           >
-            {tag.name.trim() || "(ยังไม่มีชื่อ)"}
+            {tag.name.trim() || "(ยังไม่มีชื่อ)"}{" "}
+            <span className="text-gray-400">
+              (แถว {tag.row}, ลำดับ {tag.order})
+            </span>
           </span>
+        ) : (
+          displayFields.has("name") && (
+            <span
+              className={`truncate text-gray-600 ${isSelected ? "font-semibold" : ""}`}
+            >
+              {tag.name.trim() || "(ยังไม่มีชื่อ)"}
+            </span>
+          )
         )}
         {(extraBadges || isProblem) && (
           <span className="ml-auto flex shrink-0 items-center gap-1">
@@ -281,7 +298,7 @@ export function TagListSidebar<T extends BaseTag>({
     <>
       {open && (
         <div
-          className={`max-h-[32vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white md:h-auto md:max-h-none md:w-96 md:border-b-0 md:border-r ${landscapeMobileClasses("max-md:landscape:h-auto max-md:landscape:max-h-none max-md:landscape:w-56 max-md:landscape:border-b-0 max-md:landscape:border-r", "!h-auto !max-h-none !w-56 !border-b-0 !border-r", landscapeMobile)}`}
+          className={`max-h-[32vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white md:h-auto md:max-h-none md:min-h-0 md:w-96 md:border-b-0 md:border-r ${landscapeMobileClasses("max-md:landscape:h-auto max-md:landscape:max-h-none max-md:landscape:min-h-0 max-md:landscape:w-56 max-md:landscape:border-b-0 max-md:landscape:border-r", "!h-auto !max-h-none !min-h-0 !w-56 !border-b-0 !border-r", landscapeMobile)}`}
         >
           {/* Sticky so the problems/all toggle stays reachable while scrolling a long list — its
               own bg-white + border keeps scrolling rows from showing through underneath. */}
@@ -341,6 +358,7 @@ export function TagListSidebar<T extends BaseTag>({
                                       displayFields={displayFields}
                                       extraBadges={renderBadges?.(t)}
                                       landscapeMobile={landscapeMobile}
+                                      showRowOrderSuffix
                                     />
                                   ))}
                               </ul>
@@ -370,6 +388,7 @@ export function TagListSidebar<T extends BaseTag>({
                             displayFields={displayFields}
                             extraBadges={renderBadges?.(t)}
                             landscapeMobile={landscapeMobile}
+                            showRowOrderSuffix
                           />
                         ))}
                       </ul>
@@ -395,6 +414,7 @@ export function TagListSidebar<T extends BaseTag>({
                             displayFields={displayFields}
                             extraBadges={renderBadges?.(t)}
                             landscapeMobile={landscapeMobile}
+                            showRowOrderSuffix
                           />
                         ))}
                       </ul>

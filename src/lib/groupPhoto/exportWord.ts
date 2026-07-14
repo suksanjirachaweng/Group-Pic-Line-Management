@@ -1,4 +1,13 @@
-import { AlignmentType, Document, HeadingLevel, ImageRun, Packer, PageOrientation, Paragraph, TextRun } from "docx";
+import {
+  AlignmentType,
+  Document,
+  HeadingLevel,
+  ImageRun,
+  Packer,
+  PageOrientation,
+  Paragraph,
+  TextRun,
+} from "docx";
 import sharp from "sharp";
 import { toThaiNumeral } from "./exportFormat";
 
@@ -24,27 +33,44 @@ const MARGIN_TWIPS = 720; // 0.5in
 // A name someone actually verified via the public link (confirmed as-is, or corrected) takes
 // priority over the plain "problem" red — a human already looked at it, that's more trustworthy
 // than the automatic matched/unmatched flag, even if the code still doesn't match anything.
-const VERIFIED_NAME_COLOR = "006400"; // dark green
+const VERIFIED_NAME_COLOR = "009400"; // dark green
 
-async function fetchAndCompressImage(imageUrl: string): Promise<{ buffer: Buffer; width: number; height: number }> {
+async function fetchAndCompressImage(
+  imageUrl: string,
+): Promise<{ buffer: Buffer; width: number; height: number }> {
   const resp = await fetch(imageUrl);
-  if (!resp.ok) throw new Error(`Failed to fetch photo for export (${resp.status})`);
+  if (!resp.ok)
+    throw new Error(`Failed to fetch photo for export (${resp.status})`);
   const original = sharp(Buffer.from(await resp.arrayBuffer()));
   const metadata = await original.metadata();
   const sourceWidth = metadata.width ?? MAX_EMBEDDED_DIMENSION_PX;
   const sourceHeight = metadata.height ?? MAX_EMBEDDED_DIMENSION_PX;
 
-  const scale = Math.min(1, MAX_EMBEDDED_DIMENSION_PX / Math.max(sourceWidth, sourceHeight));
+  const scale = Math.min(
+    1,
+    MAX_EMBEDDED_DIMENSION_PX / Math.max(sourceWidth, sourceHeight),
+  );
   const width = Math.round(sourceWidth * scale);
   const height = Math.round(sourceHeight * scale);
 
-  const buffer = await original.resize(width, height).jpeg({ quality: 82 }).toBuffer();
+  const buffer = await original
+    .resize(width, height)
+    .jpeg({ quality: 82 })
+    .toBuffer();
   return { buffer, width, height };
 }
 
-function fitWithin(width: number, height: number, maxWidth: number, maxHeight: number) {
+function fitWithin(
+  width: number,
+  height: number,
+  maxWidth: number,
+  maxHeight: number,
+) {
   const scale = Math.min(maxWidth / width, maxHeight / height, 1);
-  return { width: Math.round(width * scale), height: Math.round(height * scale) };
+  return {
+    width: Math.round(width * scale),
+    height: Math.round(height * scale),
+  };
 }
 
 /**
@@ -58,8 +84,17 @@ export async function buildGroupPhotoWordDoc(input: {
   tags: TagForWordExport[];
   problemTagIds: Set<string>;
 }): Promise<Buffer> {
-  const { buffer: imageBuffer, width, height } = await fetchAndCompressImage(input.imageUrl);
-  const display = fitWithin(width, height, MAX_DISPLAY_WIDTH_PX, MAX_DISPLAY_HEIGHT_PX);
+  const {
+    buffer: imageBuffer,
+    width,
+    height,
+  } = await fetchAndCompressImage(input.imageUrl);
+  const display = fitWithin(
+    width,
+    height,
+    MAX_DISPLAY_WIDTH_PX,
+    MAX_DISPLAY_HEIGHT_PX,
+  );
 
   const byRow = new Map<number, TagForWordExport[]>();
   for (const t of input.tags) {
@@ -72,7 +107,10 @@ export async function buildGroupPhotoWordDoc(input: {
 
   const nameListParagraphs = rows.map((row) => {
     const rowTags = byRow.get(row) ?? [];
-    const label = row === 0 ? "แถวหน้านั่งจากซ้าย" : `แถวยืนที่ ${toThaiNumeral(row)} จากซ้าย`;
+    const label =
+      row === 0
+        ? "แถวหน้านั่งจากซ้าย"
+        : `แถวยืนที่ ${toThaiNumeral(row)} จากซ้าย`;
     const runs: TextRun[] = [new TextRun({ text: `${label}\t`, bold: true })];
     rowTags.forEach((t, i) => {
       const isVerified = t.editedViaPublicLink || t.confirmedViaPublicLink;
@@ -80,7 +118,11 @@ export async function buildGroupPhotoWordDoc(input: {
       runs.push(
         new TextRun({
           text: t.name.trim() || "(ยังไม่มีชื่อ)",
-          color: isVerified ? VERIFIED_NAME_COLOR : isProblem ? "FF0000" : "000000",
+          color: isVerified
+            ? VERIFIED_NAME_COLOR
+            : isProblem
+              ? "FF0000"
+              : "000000",
         }),
       );
       if (i < rowTags.length - 1) runs.push(new TextRun({ text: ", " }));
@@ -94,7 +136,12 @@ export async function buildGroupPhotoWordDoc(input: {
         properties: {
           page: {
             size: { orientation: PageOrientation.LANDSCAPE },
-            margin: { top: MARGIN_TWIPS, bottom: MARGIN_TWIPS, left: MARGIN_TWIPS, right: MARGIN_TWIPS },
+            margin: {
+              top: MARGIN_TWIPS,
+              bottom: MARGIN_TWIPS,
+              left: MARGIN_TWIPS,
+              right: MARGIN_TWIPS,
+            },
           },
         },
         children: [
@@ -111,7 +158,10 @@ export async function buildGroupPhotoWordDoc(input: {
               new ImageRun({
                 type: "jpg",
                 data: imageBuffer,
-                transformation: { width: display.width, height: display.height },
+                transformation: {
+                  width: display.width,
+                  height: display.height,
+                },
               }),
             ],
           }),

@@ -17,6 +17,7 @@ import { useIsMobileWidth } from "@/lib/groupPhoto/useIsMobileWidth";
 import { useVisualViewportRect } from "@/lib/groupPhoto/useVisualViewportRect";
 import { ZoomButtons } from "@/lib/groupPhoto/ZoomButtons";
 import { WordExportButton } from "@/lib/groupPhoto/ExportButtons";
+import { ValidateOnboardingTip } from "@/lib/groupPhoto/ValidateOnboardingTip";
 import {
   updateGroupPhotoTagViaValidatePage,
   updateGroupPhotoTitlePublic,
@@ -360,7 +361,7 @@ export function PublicValidateView({
   // Using a plain CSS `order` utility instead — gated on the `portrait:`/`max-md:` media query
   // Tailwind compiles to — applies at first paint with no JS involved, so there's nothing to jump.
   const sidebarNode = (
-    <div className="max-md:portrait:order-2">
+    <div className="flex min-h-0 max-md:portrait:order-2">
       <TagListSidebar
         tags={tags}
         selectedTagId={selectedTagId}
@@ -419,6 +420,7 @@ export function PublicValidateView({
 
   return (
     <div className="flex h-dvh flex-col">
+      <ValidateOnboardingTip />
       {/* Stacked (logo, then title below it) and compact on mobile — a title beside the logo
           only gets a narrow leftover column to wrap in, which on a long university/faculty name
           multiplies into many lines and eats most of the screen; putting it below the logo gives
