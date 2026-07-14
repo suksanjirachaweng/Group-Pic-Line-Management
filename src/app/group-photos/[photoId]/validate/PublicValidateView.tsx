@@ -276,11 +276,14 @@ export function PublicValidateView({
         </button>
       </div>
       <label className="block text-xs font-medium text-gray-700">ชื่อ-นามสกุล</label>
+      {/* text-base (16px), not text-sm — iOS Safari auto-zooms the whole page when a focused
+          input's font-size is under 16px, and never zooms back out on its own once the input
+          blurs, leaving the page stuck zoomed in after the popup closes. */}
       <input
         value={editName}
         onChange={(e) => setEditName(e.target.value)}
         placeholder="เว้นว่างไว้ก่อนได้"
-        className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
+        className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-base"
         autoFocus
       />
       {editError && <p className="mt-1 text-xs text-red-600">{editError}</p>}
