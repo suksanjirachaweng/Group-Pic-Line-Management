@@ -208,6 +208,19 @@ export function PublicValidateView({
     });
   }
 
+  // A plain click/select (as opposed to double-click-to-edit via `openEditDialog`) never used to
+  // touch `editingTagId` — so selecting a different row while a popup was already open left that
+  // stale popup on screen, still showing the previous tag's code/name, just visually dragged
+  // along to wherever the pan/zoom-on-select landed (since its position is recomputed from the
+  // *old* tag's coordinates against the *new* pan/zoom). Closing it here whenever the selection
+  // moves to a genuinely different tag avoids that.
+  function selectTag(tagId: string | null) {
+    setSelectedTagId(tagId);
+    if (editingTagId !== null && tagId !== editingTagId) {
+      setEditingTagId(null);
+    }
+  }
+
   const editNameChanged = editName.trim() !== editOriginalName.trim();
 
   async function handleSaveEdit() {
@@ -348,7 +361,7 @@ export function PublicValidateView({
       <TagListSidebar
         tags={tags}
         selectedTagId={selectedTagId}
-        onSelectTag={(t) => setSelectedTagId(t ? t.id : null)}
+        onSelectTag={(t) => selectTag(t ? t.id : null)}
         onEditTag={openEditDialog}
         displayFields={displayFields}
         open={sidebarOpen}
@@ -385,7 +398,7 @@ export function PublicValidateView({
         imageHeight={imageHeight}
         tags={visibleReviewTags}
         selectedTagId={selectedTagId}
-        onSelectTag={setSelectedTagId}
+        onSelectTag={selectTag}
         displayFields={displayFields}
         onDoubleClickTag={(t) => {
           const full = tagsById.get(t.id);
