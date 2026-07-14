@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import type { GroupPhotoStatus } from "@/generated/prisma/enums";
 import { LegacyReferenceUploadForm } from "./LegacyReferenceUploadForm";
+import { StripNameTitlesButton } from "./StripNameTitlesButton";
 import { UploadGroupPhotoButton } from "./UploadGroupPhotoButton";
 import { DeleteGroupPhotoButton } from "./DeleteGroupPhotoButton";
 import { PhotoSelectAll } from "./PhotoSelectAll";
@@ -225,24 +226,27 @@ async function DataTab({
             รายชื่อทั้งหมด (รวมทุกแหล่งข้อมูล)
             <span className="ml-2 text-xs font-normal text-gray-400">{filtered.length} รายการ</span>
           </h3>
-          <form method="get" className="flex gap-2">
-            <input type="hidden" name="tab" value="data" />
-            {sort && <input type="hidden" name="sort" value={sort} />}
-            {sort && <input type="hidden" name="dir" value={dir} />}
-            <input
-              type="text"
-              name="q"
-              defaultValue={q}
-              placeholder="ค้นหาชื่อหรือ CODE"
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-            />
-            <button
-              type="submit"
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
-            >
-              ค้นหา
-            </button>
-          </form>
+          <div className="flex flex-wrap items-center gap-2">
+            <StripNameTitlesButton universityId={universityId} />
+            <form method="get" className="flex gap-2">
+              <input type="hidden" name="tab" value="data" />
+              {sort && <input type="hidden" name="sort" value={sort} />}
+              {sort && <input type="hidden" name="dir" value={dir} />}
+              <input
+                type="text"
+                name="q"
+                defaultValue={q}
+                placeholder="ค้นหาชื่อหรือ CODE"
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+              />
+              <button
+                type="submit"
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
+              >
+                ค้นหา
+              </button>
+            </form>
+          </div>
         </div>
 
         <div className="overflow-x-auto rounded-md border border-gray-200">

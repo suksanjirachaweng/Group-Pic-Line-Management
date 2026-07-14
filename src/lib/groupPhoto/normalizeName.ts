@@ -14,6 +14,10 @@ const STRIPPABLE_TITLE_PATTERNS: RegExp[] = [
   /^เด็กหญิง\s+/,
   /^ด\.ช\.\s*/,
   /^ด\.ญ\.\s*/,
+  // "คุณ" is plain polite address (like "Mr./Ms."), no title information — but "คุณครู"/"คุณหมอ"
+  // are informal-but-real role references (teacher/doctor), so those are excluded the same way
+  // "นายแพทย์" is above.
+  /^คุณ\s+(?!ครู|หมอ)/,
   /^(mr|mrs|ms|miss)\.?\s+/i,
 ];
 

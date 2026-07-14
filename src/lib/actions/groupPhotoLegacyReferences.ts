@@ -160,3 +160,40 @@ export async function importLegacyReferencesFromSheetLink(
   revalidatePath(`/admin/universities/${universityId}/group-photos`);
   return { success: true, count: rows.length };
 }
+
+/**
+ * Retroactively strips unnecessary name-title prefixes (นาย/นาง/นางสาว/น.ส./Mr./Mrs./etc, see
+ * `stripNameTitle`) from every existing `GroupPhotoLegacyReference` row for this university — for
+ * data imported before that stripping existed at import time, or from a source (e.g. an older
+ * Excel/Sheet import) that predates it. Only touches rows whose name actually changes; never
+ * touches `Registrant.displayName` (that's the person's own live LINE profile name, not an
+ * admin-imported reference the admin should be editing).
+ */
+export async function stripLegacyReferenceNameTitles(
+  universityId: string,
+): Promise<{ changed: number }> {
+  await requireUniversityAccess(universityId);
+
+  const rows = await prisma.groupPhotoLegacyReference.findMany({
+    where: { universityId },
+    select: { id: true, name: true },
+  });
+
+  const updates = rows
+    .map((r) => ({ id: r.id, originalName: r.name, strippedName: stripNameTitle(r.name) }))
+    .filter((r) => r.strippedName !== r.originalName && r.strippedName.length > 0);
+
+  if (updates.length > 0) {
+    await prisma.$transaction(
+      updates.map((u) =>
+        prisma.groupPhotoLegacyReference.update({
+          where: { id: u.id },
+          data: { name: u.strippedName },
+        }),
+      ),
+    );
+  }
+
+  revalidatePath(`/admin/universities/${universityId}/group-photos`);
+  return { changed: updates.length };
+}
