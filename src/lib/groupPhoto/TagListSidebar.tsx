@@ -1,11 +1,20 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { validateTags, problemTagIds, type TagForValidation } from "./validateTags";
+import {
+  validateTags,
+  problemTagIds,
+  type TagForValidation,
+} from "./validateTags";
 import { colorForRow } from "./rowColor";
 import type { TagDisplayField } from "./TagLabel";
 
-type BaseTag = TagForValidation & { code: string; name: string; row: number; order: number };
+type BaseTag = TagForValidation & {
+  code: string;
+  name: string;
+  row: number;
+  order: number;
+};
 
 /**
  * Picks between the mobile-landscape CSS variant and its JS-driven equivalent. When
@@ -67,11 +76,18 @@ function TagRow<T extends BaseTag>({
   const rowColor = colorForRow(tag.row);
   return (
     <li
-      className={isSelected ? "relative z-10 rounded-md ring-2 ring-inset ring-indigo-600 bg-indigo-100" : undefined}
+      className={
+        isSelected
+          ? "relative z-10 rounded-md ring-2 ring-inset ring-indigo-600 bg-indigo-100"
+          : undefined
+      }
       style={
         isSelected
           ? undefined
-          : { backgroundColor: `${rowColor}1A`, borderLeft: groupedByRow ? undefined : `4px solid ${rowColor}` }
+          : {
+              backgroundColor: `${rowColor}1A`,
+              borderLeft: groupedByRow ? undefined : `4px solid ${rowColor}`,
+            }
       }
     >
       <button
@@ -86,28 +102,41 @@ function TagRow<T extends BaseTag>({
           </span>
         ) : (
           !groupedByRow && (
-            <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: rowColor }} />
+            <span
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: rowColor }}
+            />
           )
         )}
         {displayFields.has("order") && (
-          <span className={`shrink-0 font-mono ${isSelected ? "font-bold text-gray-900" : "text-gray-400"}`}>
+          <span
+            className={`shrink-0 font-mono ${isSelected ? "font-bold text-gray-900" : "text-gray-400"}`}
+          >
             {tag.order}
           </span>
         )}
         {displayFields.has("code") && (
-          <span className={`font-mono ${isSelected ? "font-bold" : isProblem ? "text-red-600" : "text-gray-700"}`}>
+          <span
+            className={`font-mono ${isSelected ? "font-bold" : isProblem ? "text-red-600" : "text-gray-700"}`}
+          >
             {tag.code || "—"}
           </span>
         )}
         {displayFields.has("name") && (
-          <span className={`truncate text-gray-600 ${isSelected ? "font-semibold" : ""}`}>
+          <span
+            className={`truncate text-gray-600 ${isSelected ? "font-semibold" : ""}`}
+          >
             {tag.name.trim() || "(ยังไม่มีชื่อ)"}
           </span>
         )}
         {(extraBadges || isProblem) && (
           <span className="ml-auto flex shrink-0 items-center gap-1">
             {extraBadges}
-            {isProblem && <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700">ปัญหา</span>}
+            {isProblem && (
+              <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
+                ปัญหา
+              </span>
+            )}
           </span>
         )}
       </button>
@@ -138,7 +167,10 @@ function CollapsibleGroup({
         className="mb-2 flex w-full items-center gap-2 text-left text-sm font-semibold text-gray-900 max-md:mb-1 max-md:text-xs"
       >
         {colorDot && (
-          <span className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: colorDot }} />
+          <span
+            className="inline-block h-3 w-3 shrink-0 rounded-full"
+            style={{ backgroundColor: colorDot }}
+          />
         )}
         <span className="flex-1">
           {title} ({count})
@@ -202,9 +234,9 @@ export function TagListSidebar<T extends BaseTag>({
   // syncedInitial — tags not yet seen (e.g. added later via mark-file import) get folded in, and
   // likewise frozen, the first render they appear on.
   const [prevTags, setPrevTags] = useState(tags);
-  const [noNameAtFirstSeen, setNoNameAtFirstSeen] = useState<Map<string, boolean>>(
-    () => new Map(tags.map((t) => [t.id, !t.name.trim()])),
-  );
+  const [noNameAtFirstSeen, setNoNameAtFirstSeen] = useState<
+    Map<string, boolean>
+  >(() => new Map(tags.map((t) => [t.id, !t.name.trim()])));
   if (tags !== prevTags) {
     setPrevTags(tags);
     const missing = tags.filter((t) => !noNameAtFirstSeen.has(t.id));
@@ -217,14 +249,20 @@ export function TagListSidebar<T extends BaseTag>({
 
   const problems = useMemo(() => validateTags(tags), [tags]);
   const duplicateGroups = problems.filter((p) => p.type === "DUPLICATE_CODE");
-  const unmatchedIds = new Set(problems.filter((p) => p.type === "UNMATCHED_CODE").map((p) => p.tagId));
+  const unmatchedIds = new Set(
+    problems.filter((p) => p.type === "UNMATCHED_CODE").map((p) => p.tagId),
+  );
   const unmatchedTags = tags.filter((t) => unmatchedIds.has(t.id));
   // Split the unmatched-code bucket by whether it's actually actionable: a tag with no name yet
   // is still unidentified and needs someone to look at it, while one an admin already typed a
   // name into (just not found in the registration/reference data) is effectively resolved —
   // mixing the two made the "needs attention" list look far bigger than it really was.
-  const unmatchedNoName = unmatchedTags.filter((t) => noNameAtFirstSeen.get(t.id) ?? !t.name.trim());
-  const unmatchedWithName = unmatchedTags.filter((t) => !(noNameAtFirstSeen.get(t.id) ?? !t.name.trim()));
+  const unmatchedNoName = unmatchedTags.filter(
+    (t) => noNameAtFirstSeen.get(t.id) ?? !t.name.trim(),
+  );
+  const unmatchedWithName = unmatchedTags.filter(
+    (t) => !(noNameAtFirstSeen.get(t.id) ?? !t.name.trim()),
+  );
   const tagsById = new Map(tags.map((t) => [t.id, t]));
   const problemTagIdSet = problemTagIds(problems);
 
@@ -254,125 +292,82 @@ export function TagListSidebar<T extends BaseTag>({
                 onClick={() => switchListMode("problems")}
                 className={`flex-1 rounded px-2 py-1 font-medium max-md:px-1.5 max-md:py-0.5 max-md:text-[11px] ${landscapeMobileClasses("max-md:landscape:px-1 max-md:landscape:py-0.5", "!px-1 !py-0.5", landscapeMobile)} ${listMode === "problems" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
               >
-                เฉพาะที่มีปัญหา ({problems.length})
+                รายชื่อที่มีปัญหา ({problems.length})
               </button>
               <button
                 type="button"
                 onClick={() => switchListMode("all")}
                 className={`flex-1 rounded px-2 py-1 font-medium max-md:px-1.5 max-md:py-0.5 max-md:text-[11px] ${landscapeMobileClasses("max-md:landscape:px-1 max-md:landscape:py-0.5", "!px-1 !py-0.5", landscapeMobile)} ${listMode === "all" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
               >
-                ทั้งหมด ({tags.length})
+                รายชื่อทั้งหมด ({tags.length})
               </button>
             </div>
           </div>
 
           <div className="p-4 pt-3 max-md:px-2 max-md:pt-1.5">
+            {listMode === "problems" ? (
+              <>
+                {problems.length === 0 && (
+                  <p className="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
+                    {emptyMessage}
+                  </p>
+                )}
 
-          {listMode === "problems" ? (
-            <>
-              {problems.length === 0 && (
-                <p className="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{emptyMessage}</p>
-              )}
+                {duplicateGroups.length > 0 && (
+                  <div className="mb-4">
+                    <CollapsibleGroup
+                      title="เลขซ้ำในรูปเดียวกัน"
+                      count={duplicateGroups.length}
+                    >
+                      <div className="space-y-3">
+                        {duplicateGroups.map((g) =>
+                          g.type === "DUPLICATE_CODE" ? (
+                            <div key={g.normalizedCode}>
+                              <p className="mb-1 px-0.5 text-xs font-semibold text-red-600">
+                                รหัสซ้ำ: {g.normalizedCode}
+                              </p>
+                              <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
+                                {g.tagIds
+                                  .map((id) => tagsById.get(id))
+                                  .filter((t): t is T => !!t)
+                                  .map((t) => (
+                                    <TagRow
+                                      key={t.id}
+                                      tag={t}
+                                      isSelected={t.id === selectedTagId}
+                                      isProblem
+                                      onSelect={() => onSelectTag(t)}
+                                      onDoubleClick={() => onEditTag(t)}
+                                      displayFields={displayFields}
+                                      extraBadges={renderBadges?.(t)}
+                                      landscapeMobile={landscapeMobile}
+                                    />
+                                  ))}
+                              </ul>
+                            </div>
+                          ) : null,
+                        )}
+                      </div>
+                    </CollapsibleGroup>
+                  </div>
+                )}
 
-              {duplicateGroups.length > 0 && (
-                <div className="mb-4">
-                  <CollapsibleGroup title="เลขซ้ำในรูปเดียวกัน" count={duplicateGroups.length}>
-                    <div className="space-y-3">
-                      {duplicateGroups.map((g) =>
-                        g.type === "DUPLICATE_CODE" ? (
-                          <div key={g.normalizedCode}>
-                            <p className="mb-1 px-0.5 text-xs font-semibold text-red-600">รหัสซ้ำ: {g.normalizedCode}</p>
-                            <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
-                              {g.tagIds
-                                .map((id) => tagsById.get(id))
-                                .filter((t): t is T => !!t)
-                                .map((t) => (
-                                  <TagRow
-                                    key={t.id}
-                                    tag={t}
-                                    isSelected={t.id === selectedTagId}
-                                    isProblem
-                                    onSelect={() => onSelectTag(t)}
-                                    onDoubleClick={() => onEditTag(t)}
-                                    displayFields={displayFields}
-                                    extraBadges={renderBadges?.(t)}
-                                    landscapeMobile={landscapeMobile}
-                                  />
-                                ))}
-                            </ul>
-                          </div>
-                        ) : null,
-                      )}
-                    </div>
-                  </CollapsibleGroup>
-                </div>
-              )}
-
-              {unmatchedNoName.length > 0 && (
-                <div className="mb-6">
-                  <CollapsibleGroup title="ไม่ทราบชื่อ" count={unmatchedNoName.length}>
-                    <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
-                      {unmatchedNoName.map((t) => (
-                        <TagRow
-                          key={t.id}
-                          tag={t}
-                          isSelected={t.id === selectedTagId}
-                          isProblem
-                          onSelect={() => onSelectTag(t)}
-                          onDoubleClick={() => onEditTag(t)}
-                          displayFields={displayFields}
-                          extraBadges={renderBadges?.(t)}
-                          landscapeMobile={landscapeMobile}
-                        />
-                      ))}
-                    </ul>
-                  </CollapsibleGroup>
-                </div>
-              )}
-
-              {unmatchedWithName.length > 0 && (
-                <div className="mb-6">
-                  <CollapsibleGroup title="รอการยืนยันชื่อ" count={unmatchedWithName.length}>
-                    <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
-                      {unmatchedWithName.map((t) => (
-                        <TagRow
-                          key={t.id}
-                          tag={t}
-                          isSelected={t.id === selectedTagId}
-                          isProblem
-                          onSelect={() => onSelectTag(t)}
-                          onDoubleClick={() => onEditTag(t)}
-                          displayFields={displayFields}
-                          extraBadges={renderBadges?.(t)}
-                          landscapeMobile={landscapeMobile}
-                        />
-                      ))}
-                    </ul>
-                  </CollapsibleGroup>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="space-y-4">
-              {tagsByRow.map(([row, rowTags]) => {
-                const rowColor = colorForRow(row);
-                return (
-                  <div key={row}>
-                    <CollapsibleGroup title={`แถว ${row}`} count={rowTags.length} colorDot={rowColor}>
-                      <ul
-                        className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-l-4 border-gray-200"
-                        style={{ borderLeftColor: rowColor }}
-                      >
-                        {rowTags.map((t) => (
+                {unmatchedNoName.length > 0 && (
+                  <div className="mb-6">
+                    <CollapsibleGroup
+                      title="ไม่ทราบชื่อ"
+                      count={unmatchedNoName.length}
+                    >
+                      <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
+                        {unmatchedNoName.map((t) => (
                           <TagRow
                             key={t.id}
                             tag={t}
                             isSelected={t.id === selectedTagId}
-                            isProblem={problemTagIdSet.has(t.id)}
+                            isProblem
                             onSelect={() => onSelectTag(t)}
                             onDoubleClick={() => onEditTag(t)}
                             displayFields={displayFields}
-                            groupedByRow
                             extraBadges={renderBadges?.(t)}
                             landscapeMobile={landscapeMobile}
                           />
@@ -380,10 +375,69 @@ export function TagListSidebar<T extends BaseTag>({
                       </ul>
                     </CollapsibleGroup>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+
+                {unmatchedWithName.length > 0 && (
+                  <div className="mb-6">
+                    <CollapsibleGroup
+                      title="รอการยืนยันชื่อ"
+                      count={unmatchedWithName.length}
+                    >
+                      <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
+                        {unmatchedWithName.map((t) => (
+                          <TagRow
+                            key={t.id}
+                            tag={t}
+                            isSelected={t.id === selectedTagId}
+                            isProblem
+                            onSelect={() => onSelectTag(t)}
+                            onDoubleClick={() => onEditTag(t)}
+                            displayFields={displayFields}
+                            extraBadges={renderBadges?.(t)}
+                            landscapeMobile={landscapeMobile}
+                          />
+                        ))}
+                      </ul>
+                    </CollapsibleGroup>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="space-y-4">
+                {tagsByRow.map(([row, rowTags]) => {
+                  const rowColor = colorForRow(row);
+                  return (
+                    <div key={row}>
+                      <CollapsibleGroup
+                        title={`แถว ${row}`}
+                        count={rowTags.length}
+                        colorDot={rowColor}
+                      >
+                        <ul
+                          className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-l-4 border-gray-200"
+                          style={{ borderLeftColor: rowColor }}
+                        >
+                          {rowTags.map((t) => (
+                            <TagRow
+                              key={t.id}
+                              tag={t}
+                              isSelected={t.id === selectedTagId}
+                              isProblem={problemTagIdSet.has(t.id)}
+                              onSelect={() => onSelectTag(t)}
+                              onDoubleClick={() => onEditTag(t)}
+                              displayFields={displayFields}
+                              groupedByRow
+                              extraBadges={renderBadges?.(t)}
+                              landscapeMobile={landscapeMobile}
+                            />
+                          ))}
+                        </ul>
+                      </CollapsibleGroup>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
