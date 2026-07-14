@@ -2,7 +2,14 @@ import { AlignmentType, Document, HeadingLevel, ImageRun, Packer, PageOrientatio
 import sharp from "sharp";
 import { toThaiNumeral } from "./exportFormat";
 
-export type TagForWordExport = { id: string; name: string; row: number; order: number };
+export type TagForWordExport = {
+  id: string;
+  name: string;
+  row: number;
+  order: number;
+  editedViaPublicLink: boolean;
+  confirmedViaPublicLink: boolean;
+};
 
 // Content area of a landscape Letter page (11in wide) at 96dpi with 0.5in margins each side:
 // (11 - 1) * 96 = 960px wide. Leave a little breathing room below that, and cap the height too
@@ -14,6 +21,10 @@ const MAX_DISPLAY_HEIGHT_PX = 560;
 // re-compressed to this still looks sharp at the display size above).
 const MAX_EMBEDDED_DIMENSION_PX = 2000;
 const MARGIN_TWIPS = 720; // 0.5in
+// A name someone actually verified via the public link (confirmed as-is, or corrected) takes
+// priority over the plain "problem" red — a human already looked at it, that's more trustworthy
+// than the automatic matched/unmatched flag, even if the code still doesn't match anything.
+const VERIFIED_NAME_COLOR = "006400"; // dark green
 
 async function fetchAndCompressImage(imageUrl: string): Promise<{ buffer: Buffer; width: number; height: number }> {
   const resp = await fetch(imageUrl);
@@ -64,11 +75,12 @@ export async function buildGroupPhotoWordDoc(input: {
     const label = row === 0 ? "แถวหน้านั่งจากซ้าย" : `แถวยืนที่ ${toThaiNumeral(row)} จากซ้าย`;
     const runs: TextRun[] = [new TextRun({ text: `${label}\t`, bold: true })];
     rowTags.forEach((t, i) => {
+      const isVerified = t.editedViaPublicLink || t.confirmedViaPublicLink;
       const isProblem = input.problemTagIds.has(t.id);
       runs.push(
         new TextRun({
           text: t.name.trim() || "(ยังไม่มีชื่อ)",
-          color: isProblem ? "FF0000" : "000000",
+          color: isVerified ? VERIFIED_NAME_COLOR : isProblem ? "FF0000" : "000000",
         }),
       );
       if (i < rowTags.length - 1) runs.push(new TextRun({ text: ", " }));
