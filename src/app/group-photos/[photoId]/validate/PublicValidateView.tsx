@@ -13,6 +13,8 @@ import {
 } from "@/lib/groupPhoto/TagLabel";
 import { TagListSidebar } from "@/lib/groupPhoto/TagListSidebar";
 import { useIsLandscapeMobile } from "@/lib/groupPhoto/useIsLandscapeMobile";
+import { useIsMobileWidth } from "@/lib/groupPhoto/useIsMobileWidth";
+import { useVisualViewportRect } from "@/lib/groupPhoto/useVisualViewportRect";
 import { ZoomButtons } from "@/lib/groupPhoto/ZoomButtons";
 import { WordExportButton } from "@/lib/groupPhoto/ExportButtons";
 import {
@@ -69,8 +71,30 @@ export function PublicValidateView({
 }) {
   const canvasRef = useRef<ReviewCanvasHandle>(null);
   const isLandscapeMobile = useIsLandscapeMobile();
+  const isMobileWidth = useIsMobileWidth();
   const [tags, setTags] = useState<PublicValidateTagRecord[]>(initialTags);
-  const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
+  // On mobile, default to whichever problem row the sidebar's "problems" tab renders first (a
+  // duplicate-code group's first tag, else the first unnamed unmatched tag, else the first named
+  // one — same bucket order TagListSidebar itself uses), so opening the link immediately shows
+  // the first thing that needs attention — centered/zoomed via ReviewCanvas's own
+  // centered-on-selection-change effect — instead of a blank overview. A lazy initializer (React
+  // only ever calls this once, on the very first render) rather than a mount effect, since
+  // setting state synchronously inside an effect body is exactly the kind of thing
+  // react-hooks/set-state-in-effect flags — this needs no effect at all.
+  const [selectedTagId, setSelectedTagId] = useState<string | null>(() => {
+    if (typeof window === "undefined" || window.innerWidth > 767) return null;
+    const initialProblems = validateTags(initialTags);
+    const duplicateGroup = initialProblems.find((p) => p.type === "DUPLICATE_CODE");
+    if (duplicateGroup && duplicateGroup.type === "DUPLICATE_CODE" && duplicateGroup.tagIds[0]) {
+      return duplicateGroup.tagIds[0];
+    }
+    const unmatchedIds = new Set(
+      initialProblems.filter((p) => p.type === "UNMATCHED_CODE").map((p) => p.tagId),
+    );
+    const unmatchedTags = initialTags.filter((t) => unmatchedIds.has(t.id));
+    const first = unmatchedTags.find((t) => !t.name.trim()) ?? unmatchedTags[0];
+    return first ? first.id : null;
+  });
   const [listMode, setListMode] = useState<"problems" | "all">("problems");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [displayFields, setDisplayFields] = useState<Set<TagDisplayField>>(
@@ -86,6 +110,9 @@ export function PublicValidateView({
     null,
   );
   const [editHistoryOpen, setEditHistoryOpen] = useState(false);
+  // Drives the mobile floating edit dialog below — only listens to visualViewport while a mobile
+  // edit is actually in progress, so a page that's never edited on mobile never pays for it.
+  const mobileDialogViewportRect = useVisualViewportRect(isMobileWidth && editingTagId !== null);
 
   // Fetch fresh every time a different tag's dialog opens — most edit sessions never open this
   // section, so it's not worth preloading alongside the rest of the tag list.
@@ -152,12 +179,21 @@ export function PublicValidateView({
 
   // Opens the custom edit popup anchored to this tag's marker on the canvas (via ReviewCanvas's
   // `editingTagId`/`renderEditPopup`) — restores the original "popup right next to the person
-  // you're editing" behavior. Selecting the tag first (which ReviewCanvas already auto-centers/
-  // zooms to on selection change) brings the marker into view before the popup renders next to
-  // it. Force the sidebar open too, so the corresponding list row stays visible for context.
+  // you're editing" behavior. Force the sidebar open too, so the corresponding list row stays
+  // visible for context.
+  //
+  // Calls `centerOnTag` on the canvas ref directly, synchronously, instead of relying solely on
+  // `setSelectedTagId` to trigger ReviewCanvas's own re-center effect: that effect only runs on
+  // the render AFTER selectedTagId changes, so the popup (positioned from the CURRENT pan/zoom at
+  // the moment editingTagId changes) would render one frame at the old pan/zoom position, then
+  // visibly jump once the effect catches up — exactly the "dialog moves from one spot to another"
+  // bug reported after switching between two already-open edits. Calling centerOnTag here lands
+  // both the pan/zoom update and editingTagId in the same React commit, so the popup is correctly
+  // positioned from its very first paint.
   function openEditDialog(tag: PublicValidateTagRecord) {
     setSidebarOpen(true);
     setSelectedTagId(tag.id);
+    canvasRef.current?.centerOnTag(tag.x, tag.y);
     setEditingTagId(tag.id);
     setEditCode(tag.code);
     setEditName(tag.name);
@@ -206,6 +242,151 @@ export function PublicValidateView({
     );
     setEditingTagId(null);
   }
+
+  // On mobile portrait (mobile-width, not the landscape 2-column layout), show the photo before
+  // the list instead of after it — the marker for whatever's selected (the auto-selected first
+  // problem on load, or a row tapped afterward) is the thing to look at first; the list is for
+  // browsing/switching, better reached by scrolling down to it than pushed above the photo.
+  const reversedMobileOrder = isMobileWidth && !isLandscapeMobile;
+
+  const editFormNode = (
+    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-xl">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="font-mono text-xs text-gray-500">รหัส {editCode}</span>
+        <button
+          type="button"
+          onClick={() => setEditingTagId(null)}
+          disabled={editSaving}
+          className="shrink-0 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+          aria-label="ยกเลิก"
+        >
+          ✕
+        </button>
+      </div>
+      <label className="block text-xs font-medium text-gray-700">ชื่อ-นามสกุล</label>
+      <input
+        value={editName}
+        onChange={(e) => setEditName(e.target.value)}
+        placeholder="เว้นว่างไว้ก่อนได้"
+        className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
+        autoFocus
+      />
+      {editError && <p className="mt-1 text-xs text-red-600">{editError}</p>}
+
+      {/* Save/Cancel come right after the input, before the (usually-collapsed) history section
+          — on a short keyboard-open viewport, the primary actions being the very next thing
+          after the input means there's nothing to scroll past to reach them. */}
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={() => setEditingTagId(null)}
+          disabled={editSaving}
+          className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          ยกเลิก
+        </button>
+        <button
+          type="button"
+          onClick={handleSaveEdit}
+          disabled={editSaving}
+          className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium text-white disabled:opacity-50 ${
+            editNameChanged ? "bg-indigo-600 hover:bg-indigo-700" : "bg-green-600 hover:bg-green-700"
+          }`}
+        >
+          {editSaving ? "กำลังบันทึก..." : editNameChanged ? "บันทึก" : "ยืนยัน"}
+        </button>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setEditHistoryOpen((v) => !v)}
+        className="mt-3 flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
+      >
+        <span>ประวัติการแก้ไข{editHistory ? ` (${editHistory.length})` : ""}</span>
+        <span>{editHistoryOpen ? "▲" : "▼"}</span>
+      </button>
+      {editHistoryOpen && (
+        <div className="mt-1 max-h-28 space-y-1 overflow-y-auto">
+          {editHistory === null && <p className="text-xs text-gray-400">กำลังโหลด...</p>}
+          {editHistory?.length === 0 && (
+            <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>
+          )}
+          {editHistory?.map((h) => (
+            <div key={h.id} className="rounded-md bg-gray-50 px-2 py-1 text-xs">
+              <div className="flex items-center justify-between gap-2 text-gray-400">
+                <span>
+                  {new Date(h.createdAt).toLocaleString("th-TH", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })}
+                </span>
+                <span>{HISTORY_SOURCE_LABEL[h.source]}</span>
+              </div>
+              <p className="mt-0.5 text-gray-700">
+                <span className="font-mono">{h.code}</span> — {h.name || "(ยังไม่มีชื่อ)"}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const sidebarNode = (
+    <TagListSidebar
+      tags={tags}
+      selectedTagId={selectedTagId}
+      onSelectTag={(t) => setSelectedTagId(t ? t.id : null)}
+      onEditTag={openEditDialog}
+      displayFields={displayFields}
+      open={sidebarOpen}
+      onToggleOpen={() => setSidebarOpen((v) => !v)}
+      listMode={listMode}
+      onListModeChange={switchListMode}
+      emptyMessage="ไม่พบปัญหา — ข้อมูลพร้อม export"
+      landscapeMobile={isLandscapeMobile}
+      renderBadges={(t) =>
+        t.editedViaPublicLink ? (
+          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+            แก้ไข
+          </span>
+        ) : t.confirmedViaPublicLink ? (
+          <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
+            ยืนยัน
+          </span>
+        ) : null
+      }
+    />
+  );
+
+  // The custom edit popup only renders here on non-mobile (`editingTagId={null}` on mobile
+  // suppresses it) — mobile instead gets its own fixed, visualViewport-centered dialog (below),
+  // since anchoring next to a marker doesn't leave reliable room once the on-screen keyboard eats
+  // a large chunk of the screen (see `mobileDialogViewportRect`'s doc comment).
+  const canvasNode = (
+    <div className="min-h-0 flex-1">
+      <ReviewCanvas
+        ref={canvasRef}
+        imageUrl={imageUrl}
+        imageWidth={imageWidth}
+        imageHeight={imageHeight}
+        tags={visibleReviewTags}
+        selectedTagId={selectedTagId}
+        onSelectTag={setSelectedTagId}
+        displayFields={displayFields}
+        onDoubleClickTag={(t) => {
+          const full = tagsById.get(t.id);
+          if (full) openEditDialog(full);
+        }}
+        readOnly
+        grayUnselected
+        hideToolbar
+        fitHeightOnMobileOrientation
+        editingTagId={isMobileWidth ? null : editingTagId}
+        renderEditPopup={() => editFormNode}
+      />
+    </div>
+  );
 
   return (
     <div className="flex h-dvh flex-col">
@@ -291,154 +472,36 @@ export function PublicValidateView({
       </div>
 
       <div className={`flex min-h-0 flex-1 overflow-hidden md:flex-row ${isLandscapeMobile ? "flex-row" : "flex-col"}`}>
-        <TagListSidebar
-          tags={tags}
-          selectedTagId={selectedTagId}
-          onSelectTag={(t) => setSelectedTagId(t ? t.id : null)}
-          onEditTag={openEditDialog}
-          displayFields={displayFields}
-          open={sidebarOpen}
-          onToggleOpen={() => setSidebarOpen((v) => !v)}
-          listMode={listMode}
-          onListModeChange={switchListMode}
-          emptyMessage="ไม่พบปัญหา — ข้อมูลพร้อม export"
-          landscapeMobile={isLandscapeMobile}
-          renderBadges={(t) =>
-            t.editedViaPublicLink ? (
-              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-                แก้ไข
-              </span>
-            ) : t.confirmedViaPublicLink ? (
-              <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
-                ยืนยัน
-              </span>
-            ) : null
-          }
-        />
-
-        <div className="min-h-0 flex-1">
-          <ReviewCanvas
-            ref={canvasRef}
-            imageUrl={imageUrl}
-            imageWidth={imageWidth}
-            imageHeight={imageHeight}
-            tags={visibleReviewTags}
-            selectedTagId={selectedTagId}
-            onSelectTag={setSelectedTagId}
-            displayFields={displayFields}
-            onDoubleClickTag={(t) => {
-              const full = tagsById.get(t.id);
-              if (full) openEditDialog(full);
-            }}
-            readOnly
-            grayUnselected
-            hideToolbar
-            fitHeightOnMobileOrientation
-            editingTagId={editingTagId}
-            renderEditPopup={() => (
-              <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-xl">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="font-mono text-xs text-gray-500">รหัส {editCode}</span>
-                  <button
-                    type="button"
-                    onClick={() => setEditingTagId(null)}
-                    disabled={editSaving}
-                    className="shrink-0 text-gray-400 hover:text-gray-600 disabled:opacity-50"
-                    aria-label="ยกเลิก"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <label className="block text-xs font-medium text-gray-700">
-                  ชื่อ-นามสกุล
-                </label>
-                <input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="เว้นว่างไว้ก่อนได้"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
-                  autoFocus
-                />
-                {editError && (
-                  <p className="mt-1 text-xs text-red-600">{editError}</p>
-                )}
-
-                {/* Save/Cancel come right after the input, before the (usually-collapsed)
-                    history section — on a short keyboard-open viewport, the primary actions
-                    being the very next thing after the input means there's nothing to scroll
-                    past to reach them. */}
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditingTagId(null)}
-                    disabled={editSaving}
-                    className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    ยกเลิก
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveEdit}
-                    disabled={editSaving}
-                    className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium text-white disabled:opacity-50 ${
-                      editNameChanged
-                        ? "bg-indigo-600 hover:bg-indigo-700"
-                        : "bg-green-600 hover:bg-green-700"
-                    }`}
-                  >
-                    {editSaving
-                      ? "กำลังบันทึก..."
-                      : editNameChanged
-                        ? "บันทึก"
-                        : "ยืนยัน"}
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setEditHistoryOpen((v) => !v)}
-                  className="mt-3 flex w-full items-center justify-between text-xs font-medium text-gray-500 hover:text-gray-700"
-                >
-                  <span>
-                    ประวัติการแก้ไข{editHistory ? ` (${editHistory.length})` : ""}
-                  </span>
-                  <span>{editHistoryOpen ? "▲" : "▼"}</span>
-                </button>
-                {editHistoryOpen && (
-                  <div className="mt-1 max-h-28 space-y-1 overflow-y-auto">
-                    {editHistory === null && (
-                      <p className="text-xs text-gray-400">กำลังโหลด...</p>
-                    )}
-                    {editHistory?.length === 0 && (
-                      <p className="text-xs text-gray-400">ยังไม่มีประวัติ</p>
-                    )}
-                    {editHistory?.map((h) => (
-                      <div
-                        key={h.id}
-                        className="rounded-md bg-gray-50 px-2 py-1 text-xs"
-                      >
-                        <div className="flex items-center justify-between gap-2 text-gray-400">
-                          <span>
-                            {new Date(h.createdAt).toLocaleString("th-TH", {
-                              dateStyle: "short",
-                              timeStyle: "short",
-                            })}
-                          </span>
-                          <span>{HISTORY_SOURCE_LABEL[h.source]}</span>
-                        </div>
-                        <p className="mt-0.5 text-gray-700">
-                          <span className="font-mono">{h.code}</span> —{" "}
-                          {h.name || "(ยังไม่มีชื่อ)"}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          />
-        </div>
+        {reversedMobileOrder ? (
+          <>
+            {canvasNode}
+            {sidebarNode}
+          </>
+        ) : (
+          <>
+            {sidebarNode}
+            {canvasNode}
+          </>
+        )}
       </div>
+
+      {/* Mobile-only floating edit dialog — a true `position: fixed` overlay, but sized/positioned
+          from `window.visualViewport` (via `mobileDialogViewportRect`) so it centers within
+          whatever space is actually visible above the on-screen keyboard, instead of the full
+          (keyboard-obscured) layout viewport. Backdrop click dismisses, matching normal dialog
+          conventions. Desktop keeps the marker-anchored popup inside ReviewCanvas instead (see
+          `canvasNode` above), which has no keyboard to work around. */}
+      {isMobileWidth && editingTagId && mobileDialogViewportRect && (
+        <div
+          className="fixed inset-x-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          style={{ top: mobileDialogViewportRect.top, height: mobileDialogViewportRect.height }}
+          onClick={() => setEditingTagId(null)}
+        >
+          <div className="w-full max-w-xs" onClick={(e) => e.stopPropagation()}>
+            {editFormNode}
+          </div>
+        </div>
+      )}
 
       {/* Hidden entirely on mobile — zoom is pinch/drag there already, and the hint text +
           display-field checkboxes are just clutter competing with the photo/list for the little

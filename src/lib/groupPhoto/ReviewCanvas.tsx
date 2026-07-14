@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -49,11 +50,17 @@ export type ReviewTag = {
   isProblem: boolean;
 };
 
-/** Imperative zoom controls for callers that render their own zoom buttons outside this
+/** Imperative zoom/center controls for callers that render their own zoom buttons outside this
  * component (e.g. a consolidated toolbar) instead of using the built-in one. */
 export type ReviewCanvasHandle = {
   zoomIn: () => void;
   zoomOut: () => void;
+  /** Re-centers/zooms onto a point immediately (synchronously updates pan/zoom state) — for a
+   * caller that's about to show its own popup anchored to that same point (see
+   * `renderEditPopup`) in the very same event handler, so the popup's position and the canvas's
+   * pan/zoom land in one React commit instead of the popup briefly rendering at the old position
+   * before a follow-up re-center effect catches up a render later. */
+  centerOnTag: (x: number, y: number) => void;
 };
 
 /**
@@ -317,13 +324,34 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
     };
   }, [fitHeightOnMobileOrientation]);
 
+  // Reads the current scale via the functional updater (not a closed-over `scale` variable) so
+  // this stays correct when invoked through the imperative handle below, whose identity only
+  // changes when imageWidth/imageHeight/canvasSize do — not on every pan/zoom.
+  const centerOn = useCallback(
+    (x: number, y: number) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const displayX = (x / imageWidth) * canvasSize.width;
+      const displayY = (y / imageHeight) * canvasSize.height;
+      const rect = container.getBoundingClientRect();
+      setScale((prevScale) => {
+        const targetScale = Math.max(prevScale, REVIEW_ZOOM);
+        setTx(rect.width / 2 - displayX * targetScale);
+        setTy(rect.height / 2 - displayY * targetScale);
+        return targetScale;
+      });
+    },
+    [imageWidth, imageHeight, canvasSize],
+  );
+
   useImperativeHandle(
     ref,
     () => ({
       zoomIn: () => zoomBy(ZOOM_STEP),
       zoomOut: () => zoomBy(1 / ZOOM_STEP),
+      centerOnTag: centerOn,
     }),
-    [],
+    [centerOn],
   );
 
   // Reads `canvasSize` state (not the canvas ref) so this is safe to call during render, e.g. to
@@ -332,18 +360,6 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
     const displayX = (x / imageWidth) * canvasSize.width;
     const displayY = (y / imageHeight) * canvasSize.height;
     return { left: tx + displayX * scale, top: ty + displayY * scale };
-  }
-
-  function centerOn(x: number, y: number) {
-    const container = containerRef.current;
-    if (!container) return;
-    const targetScale = Math.max(scale, REVIEW_ZOOM);
-    const displayX = (x / imageWidth) * canvasSize.width;
-    const displayY = (y / imageHeight) * canvasSize.height;
-    const rect = container.getBoundingClientRect();
-    setScale(targetScale);
-    setTx(rect.width / 2 - displayX * targetScale);
-    setTy(rect.height / 2 - displayY * targetScale);
   }
 
   const selectedTag = useMemo(
