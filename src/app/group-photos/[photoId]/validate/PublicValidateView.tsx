@@ -189,11 +189,13 @@ export function PublicValidateView({
   // visibly jump once the effect catches up — exactly the "dialog moves from one spot to another"
   // bug reported after switching between two already-open edits. Calling centerOnTag here lands
   // both the pan/zoom update and editingTagId in the same React commit, so the popup is correctly
-  // positioned from its very first paint.
+  // positioned from its very first paint. `onlyIfOffscreen` keeps this from panning/zooming the
+  // whole photo every time someone clicks through a list of already-visible markers to edit them
+  // one after another — only actually off-screen markers get pulled into view.
   function openEditDialog(tag: PublicValidateTagRecord) {
     setSidebarOpen(true);
     setSelectedTagId(tag.id);
-    canvasRef.current?.centerOnTag(tag.x, tag.y);
+    canvasRef.current?.centerOnTag(tag.x, tag.y, { onlyIfOffscreen: true });
     setEditingTagId(tag.id);
     setEditCode(tag.code);
     setEditName(tag.name);
