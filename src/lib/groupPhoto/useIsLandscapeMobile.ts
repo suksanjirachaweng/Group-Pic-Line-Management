@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 function computeIsLandscapeMobile(): boolean {
   const isLandscape = window.innerWidth > window.innerHeight;
@@ -28,11 +28,16 @@ function computeIsLandscapeMobile(): boolean {
  * instant someone tapped a name field to fix a typo, purely because the keyboard opened.
  * `orientationchange` only fires on an actual device rotation, so a value derived from it stays
  * correct even while the keyboard is open.
+ *
+ * `useLayoutEffect`, not `useEffect`, for the same reason as `useIsMobileWidth`: this starts out
+ * `false` (no `window` during SSR), so a plain `useEffect` would paint one frame in the wrong
+ * layout before correcting itself — visible as a jump right after load. Running before paint
+ * avoids that.
  */
 export function useIsLandscapeMobile(): boolean {
   const [value, setValue] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     function recompute() {
       setValue(computeIsLandscapeMobile());
     }

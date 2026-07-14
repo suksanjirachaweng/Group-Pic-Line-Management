@@ -245,12 +245,6 @@ export function PublicValidateView({
     setEditingTagId(null);
   }
 
-  // On mobile portrait (mobile-width, not the landscape 2-column layout), show the photo before
-  // the list instead of after it — the marker for whatever's selected (the auto-selected first
-  // problem on load, or a row tapped afterward) is the thing to look at first; the list is for
-  // browsing/switching, better reached by scrolling down to it than pushed above the photo.
-  const reversedMobileOrder = isMobileWidth && !isLandscapeMobile;
-
   const editFormNode = (
     <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-xl">
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -334,31 +328,45 @@ export function PublicValidateView({
     </div>
   );
 
+  // On mobile portrait (not the landscape 2-column layout), show the photo before the list
+  // instead of after it — the marker for whatever's selected (the auto-selected first problem on
+  // load, or a row tapped afterward) is the thing to look at first; the list is for browsing/
+  // switching, better reached by scrolling down to it than pushed above the photo.
+  //
+  // This used to be a JS-computed boolean (`isMobileWidth`) that swapped which node came first in
+  // the JSX. That state starts `false` on both the server and the client's first render (no
+  // `window` during SSR), so the real first-paint HTML always rendered list-then-photo — on an
+  // actual phone, the correct reversed order only appeared once the client's `useLayoutEffect` ran
+  // a moment later, which read as the list visibly jumping from top to bottom right after load.
+  // Using a plain CSS `order` utility instead — gated on the `portrait:`/`max-md:` media query
+  // Tailwind compiles to — applies at first paint with no JS involved, so there's nothing to jump.
   const sidebarNode = (
-    <TagListSidebar
-      tags={tags}
-      selectedTagId={selectedTagId}
-      onSelectTag={(t) => setSelectedTagId(t ? t.id : null)}
-      onEditTag={openEditDialog}
-      displayFields={displayFields}
-      open={sidebarOpen}
-      onToggleOpen={() => setSidebarOpen((v) => !v)}
-      listMode={listMode}
-      onListModeChange={switchListMode}
-      emptyMessage="ไม่พบปัญหา — ข้อมูลพร้อม export"
-      landscapeMobile={isLandscapeMobile}
-      renderBadges={(t) =>
-        t.editedViaPublicLink ? (
-          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-            แก้ไข
-          </span>
-        ) : t.confirmedViaPublicLink ? (
-          <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
-            ยืนยัน
-          </span>
-        ) : null
-      }
-    />
+    <div className="max-md:portrait:order-2">
+      <TagListSidebar
+        tags={tags}
+        selectedTagId={selectedTagId}
+        onSelectTag={(t) => setSelectedTagId(t ? t.id : null)}
+        onEditTag={openEditDialog}
+        displayFields={displayFields}
+        open={sidebarOpen}
+        onToggleOpen={() => setSidebarOpen((v) => !v)}
+        listMode={listMode}
+        onListModeChange={switchListMode}
+        emptyMessage="ไม่พบปัญหา — ข้อมูลพร้อม export"
+        landscapeMobile={isLandscapeMobile}
+        renderBadges={(t) =>
+          t.editedViaPublicLink ? (
+            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+              แก้ไข
+            </span>
+          ) : t.confirmedViaPublicLink ? (
+            <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
+              ยืนยัน
+            </span>
+          ) : null
+        }
+      />
+    </div>
   );
 
   // The custom edit popup only renders here on non-mobile (`editingTagId={null}` on mobile
@@ -366,7 +374,7 @@ export function PublicValidateView({
   // since anchoring next to a marker doesn't leave reliable room once the on-screen keyboard eats
   // a large chunk of the screen (see `mobileDialogViewportRect`'s doc comment).
   const canvasNode = (
-    <div className="min-h-0 flex-1">
+    <div className="min-h-0 flex-1 max-md:portrait:order-1">
       <ReviewCanvas
         ref={canvasRef}
         imageUrl={imageUrl}
@@ -474,17 +482,8 @@ export function PublicValidateView({
       </div>
 
       <div className={`flex min-h-0 flex-1 overflow-hidden md:flex-row ${isLandscapeMobile ? "flex-row" : "flex-col"}`}>
-        {reversedMobileOrder ? (
-          <>
-            {canvasNode}
-            {sidebarNode}
-          </>
-        ) : (
-          <>
-            {sidebarNode}
-            {canvasNode}
-          </>
-        )}
+        {sidebarNode}
+        {canvasNode}
       </div>
 
       {/* Mobile-only floating edit dialog — a true `position: fixed` overlay, but sized/positioned
