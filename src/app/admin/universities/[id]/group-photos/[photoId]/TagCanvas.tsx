@@ -272,29 +272,14 @@ export function TagCanvas({
   const highlightedTagId =
     searchIndex >= 0 ? searchMatches[searchIndex]?.id : undefined;
 
-  function centerOn(
-    x: number,
-    y: number,
-    opts?: { onlyIfOffscreen?: boolean },
-  ) {
+  function centerOn(x: number, y: number) {
     const canvas = displayCanvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
+    const targetScale = Math.max(scale, SEARCH_ZOOM);
     const displayX = (x / imageWidth) * canvas.width;
     const displayY = (y / imageHeight) * canvas.height;
     const rect = container.getBoundingClientRect();
-    if (opts?.onlyIfOffscreen) {
-      const screenX = tx + displayX * scale;
-      const screenY = ty + displayY * scale;
-      const margin = 48;
-      const alreadyVisible =
-        screenX >= margin &&
-        screenX <= rect.width - margin &&
-        screenY >= margin &&
-        screenY <= rect.height - margin;
-      if (alreadyVisible) return;
-    }
-    const targetScale = Math.max(scale, SEARCH_ZOOM);
     setScale(targetScale);
     setTx(rect.width / 2 - displayX * targetScale);
     setTy(rect.height / 2 - displayY * targetScale);
@@ -854,9 +839,7 @@ export function TagCanvas({
           onSelectTag={(t) => {
             if (t) {
               setSelectedTagId(t.id);
-              // Only pans/zooms if this marker isn't already visible — clicking through a list
-              // of already-visible markers shouldn't yank the photo around on every click.
-              centerOn(t.x, t.y, { onlyIfOffscreen: true });
+              centerOn(t.x, t.y);
             } else {
               setSelectedTagId(null);
             }

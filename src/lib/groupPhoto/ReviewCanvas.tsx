@@ -59,13 +59,8 @@ export type ReviewCanvasHandle = {
    * caller that's about to show its own popup anchored to that same point (see
    * `renderEditPopup`) in the very same event handler, so the popup's position and the canvas's
    * pan/zoom land in one React commit instead of the popup briefly rendering at the old position
-   * before a follow-up re-center effect catches up a render later.
-   *
-   * Pass `onlyIfOffscreen: true` to skip the pan/zoom entirely when the point is already visible
-   * — used when the caller is just browsing through a list (selecting one already-visible marker
-   * after another shouldn't yank the whole photo around every click). Omit it for a genuine
-   * "take me there" action like search find-next, where jumping is the point. */
-  centerOnTag: (x: number, y: number, opts?: { onlyIfOffscreen?: boolean }) => void;
+   * before a follow-up re-center effect catches up a render later. */
+  centerOnTag: (x: number, y: number) => void;
 };
 
 /**
@@ -329,35 +324,24 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
     };
   }, [fitHeightOnMobileOrientation]);
 
-  // Needs the current tx/ty/scale (not just a functional-updater trick on scale alone) to answer
-  // "is this point already visible", so — unlike before — this closes over them directly and
-  // lists them as deps. That means `centerOn`'s identity now changes on every pan/zoom instead of
-  // staying stable, but that only costs a cheap re-run of the useImperativeHandle factory below,
-  // not an extra render of anything.
+  // Reads the current scale via the functional updater (not a closed-over `scale` variable) so
+  // this stays correct when invoked through the imperative handle below, whose identity only
+  // changes when imageWidth/imageHeight/canvasSize do — not on every pan/zoom.
   const centerOn = useCallback(
-    (x: number, y: number, opts?: { onlyIfOffscreen?: boolean }) => {
+    (x: number, y: number) => {
       const container = containerRef.current;
       if (!container) return;
       const displayX = (x / imageWidth) * canvasSize.width;
       const displayY = (y / imageHeight) * canvasSize.height;
       const rect = container.getBoundingClientRect();
-      if (opts?.onlyIfOffscreen) {
-        const screenX = tx + displayX * scale;
-        const screenY = ty + displayY * scale;
-        const margin = 48;
-        const alreadyVisible =
-          screenX >= margin &&
-          screenX <= rect.width - margin &&
-          screenY >= margin &&
-          screenY <= rect.height - margin;
-        if (alreadyVisible) return;
-      }
-      const targetScale = Math.max(scale, REVIEW_ZOOM);
-      setScale(targetScale);
-      setTx(rect.width / 2 - displayX * targetScale);
-      setTy(rect.height / 2 - displayY * targetScale);
+      setScale((prevScale) => {
+        const targetScale = Math.max(prevScale, REVIEW_ZOOM);
+        setTx(rect.width / 2 - displayX * targetScale);
+        setTy(rect.height / 2 - displayY * targetScale);
+        return targetScale;
+      });
     },
-    [imageWidth, imageHeight, canvasSize, scale, tx, ty],
+    [imageWidth, imageHeight, canvasSize],
   );
 
   useImperativeHandle(
@@ -402,9 +386,7 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
 
   useEffect(() => {
     if (!selectedTag || !loaded) return;
-    // Only nudges the view when the newly-selected marker isn't already visible — browsing
-    // through a list of already-visible markers shouldn't pan/zoom the photo on every click.
-    centerOn(selectedTag.x, selectedTag.y, { onlyIfOffscreen: true });
+    centerOn(selectedTag.x, selectedTag.y);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-center when the selection itself changes, not on every pan/zoom
   }, [selectedTag?.id, loaded]);
 

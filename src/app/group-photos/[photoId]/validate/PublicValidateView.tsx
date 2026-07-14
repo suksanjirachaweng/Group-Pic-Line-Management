@@ -182,27 +182,30 @@ export function PublicValidateView({
   // you're editing" behavior. Force the sidebar open too, so the corresponding list row stays
   // visible for context.
   //
-  // Calls `centerOnTag` on the canvas ref directly, synchronously, instead of relying solely on
-  // `setSelectedTagId` to trigger ReviewCanvas's own re-center effect: that effect only runs on
-  // the render AFTER selectedTagId changes, so the popup (positioned from the CURRENT pan/zoom at
-  // the moment editingTagId changes) would render one frame at the old pan/zoom position, then
-  // visibly jump once the effect catches up — exactly the "dialog moves from one spot to another"
-  // bug reported after switching between two already-open edits. Calling centerOnTag here lands
-  // both the pan/zoom update and editingTagId in the same React commit, so the popup is correctly
-  // positioned from its very first paint. `onlyIfOffscreen` keeps this from panning/zooming the
-  // whole photo every time someone clicks through a list of already-visible markers to edit them
-  // one after another — only actually off-screen markers get pulled into view.
+  // Always pans/zooms to the target (unconditionally, like the original behavior) — an
+  // "only if offscreen" variant was tried and reverted: it made the framing inconsistent between
+  // clicks (some centered, some not) and, on mobile, meant the very first auto-selected problem
+  // tag on page load never zoomed in at all, since it was technically already "visible" in the
+  // fully-zoomed-out overview.
+  //
+  // Explicitly closes any currently-open popup, pans/zooms, and only opens the new popup on the
+  // next frame (after the pan/zoom commit has actually painted) — rather than setting
+  // `editingTagId` in the same synchronous batch as the pan — so the popup never has to be
+  // positioned from a pan/zoom state that hasn't been committed yet.
   function openEditDialog(tag: PublicValidateTagRecord) {
+    setEditingTagId(null);
     setSidebarOpen(true);
     setSelectedTagId(tag.id);
-    canvasRef.current?.centerOnTag(tag.x, tag.y, { onlyIfOffscreen: true });
-    setEditingTagId(tag.id);
-    setEditCode(tag.code);
-    setEditName(tag.name);
-    setEditOriginalName(tag.name);
-    setEditError(null);
-    setEditHistory(null);
-    setEditHistoryOpen(false);
+    canvasRef.current?.centerOnTag(tag.x, tag.y);
+    requestAnimationFrame(() => {
+      setEditingTagId(tag.id);
+      setEditCode(tag.code);
+      setEditName(tag.name);
+      setEditOriginalName(tag.name);
+      setEditError(null);
+      setEditHistory(null);
+      setEditHistoryOpen(false);
+    });
   }
 
   const editNameChanged = editName.trim() !== editOriginalName.trim();
