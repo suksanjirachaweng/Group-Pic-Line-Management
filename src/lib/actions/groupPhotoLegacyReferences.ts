@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess } from "@/lib/authz";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
+import { stripNameTitle } from "@/lib/groupPhoto/normalizeName";
 import { getSheetsClient } from "@/lib/sheets";
 import { LegacyReferenceSource } from "@/generated/prisma/enums";
 
@@ -33,7 +34,7 @@ export async function importLegacyReferences(
 
   const rows: { name: string; code: string; phone: string | null }[] = [];
   sheet.eachRow((row) => {
-    const name = String(row.getCell(3).value ?? "").trim();
+    const name = stripNameTitle(String(row.getCell(3).value ?? ""));
     const code = String(row.getCell(4).value ?? "").trim();
     const phoneCell = row.getCell(5).value;
     const phone = phoneCell ? String(phoneCell).trim() : null;
@@ -122,7 +123,7 @@ export async function importLegacyReferencesFromSheetLink(
   const rows: { name: string; code: string; phone: string | null }[] = [];
   for (const row of values.slice(1)) {
     const timestampRaw = String(row[0] ?? "").trim();
-    const name = String(row[2] ?? "").trim();
+    const name = stripNameTitle(String(row[2] ?? ""));
     const code = String(row[3] ?? "").trim();
     const phoneRaw = row[4];
     const phone = phoneRaw ? String(phoneRaw).trim() : null;

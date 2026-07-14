@@ -8,6 +8,34 @@ import type { TagDisplayField } from "./TagLabel";
 type BaseTag = TagForValidation & { code: string; name: string; row: number; order: number };
 
 /**
+ * Picks between the mobile-landscape CSS variant and its JS-driven equivalent. When
+ * `landscapeMobile` is `undefined` (the admin tagging canvas, which doesn't pass the prop), uses
+ * `cssVariantClasses` (the original `max-md:landscape:` utilities) unchanged. When it's an
+ * explicit boolean (the public /validate page), uses `jsImportantClasses` instead — see
+ * `useIsLandscapeMobile`'s doc comment for why the CSS-variant version is unreliable there
+ * (spuriously matches once an on-screen keyboard shrinks the viewport enough that width exceeds
+ * height, even while the phone is held upright).
+ *
+ * Both arguments must be written out as complete, literal Tailwind class names at each call site
+ * — Tailwind's build only generates CSS for class names it can find as literal text while
+ * scanning the source, so a class name assembled at runtime (e.g. via `.split(" ").map(u =>
+ * \`!${u}\`)`) is invisible to it and silently produces no CSS at all. `jsImportantClasses` is
+ * `!`-prefixed because it overrides a same-property base utility applied unconditionally (e.g.
+ * `w-full` vs. `!w-56`) — two plain, non-`!important` utilities for the same property don't have
+ * a guaranteed winner, so `!important` is required to guarantee this one wins. The CSS-variant
+ * side doesn't need that: a `max-md:landscape:` rule is wrapped in a media query, and
+ * media-query-wrapped rules are reliably emitted after plain ones.
+ */
+function landscapeMobileClasses(
+  cssVariantClasses: string,
+  jsImportantClasses: string,
+  landscapeMobile: boolean | undefined,
+): string {
+  if (landscapeMobile === undefined) return cssVariantClasses;
+  return landscapeMobile ? jsImportantClasses : "";
+}
+
+/**
  * One row in any of the sidebar lists (duplicate-code groups, unmatched-code list, or the "all"
  * tab) — shared so every list looks and behaves the same: light row-color tint by default, a
  * clear indigo ring/bold text when selected. Which of order/code/name actually render follows
@@ -24,6 +52,7 @@ function TagRow<T extends BaseTag>({
   displayFields,
   groupedByRow = false,
   extraBadges,
+  landscapeMobile,
 }: {
   tag: T;
   isSelected: boolean;
@@ -33,6 +62,7 @@ function TagRow<T extends BaseTag>({
   displayFields: Set<TagDisplayField>;
   groupedByRow?: boolean;
   extraBadges?: ReactNode;
+  landscapeMobile?: boolean;
 }) {
   const rowColor = colorForRow(tag.row);
   return (
@@ -48,7 +78,7 @@ function TagRow<T extends BaseTag>({
         type="button"
         onClick={onSelect}
         onDoubleClick={onDoubleClick}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:brightness-95 max-md:landscape:gap-1.5 max-md:landscape:px-2 max-md:landscape:py-1.5 max-md:landscape:text-xs"
+        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:brightness-95 max-md:px-2 max-md:py-1.5 max-md:text-xs ${landscapeMobileClasses("max-md:landscape:gap-1.5 max-md:landscape:px-2 max-md:landscape:py-1.5 max-md:landscape:text-xs", "!gap-1.5 !px-2 !py-1.5 !text-xs", landscapeMobile)}`}
       >
         {isSelected ? (
           <span className="shrink-0 text-indigo-600" aria-hidden>
@@ -105,7 +135,7 @@ function CollapsibleGroup({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="mb-2 flex w-full items-center gap-2 text-left text-sm font-semibold text-gray-900"
+        className="mb-2 flex w-full items-center gap-2 text-left text-sm font-semibold text-gray-900 max-md:mb-1 max-md:text-xs"
       >
         {colorDot && (
           <span className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: colorDot }} />
@@ -140,6 +170,7 @@ export function TagListSidebar<T extends BaseTag>({
   onListModeChange,
   renderBadges,
   emptyMessage = "ไม่พบปัญหา",
+  landscapeMobile,
 }: {
   tags: T[];
   selectedTagId: string | null;
@@ -152,6 +183,11 @@ export function TagListSidebar<T extends BaseTag>({
   onListModeChange: (mode: "problems" | "all") => void;
   renderBadges?: (tag: T) => ReactNode;
   emptyMessage?: string;
+  /** JS-computed mobile-landscape state (see `useIsLandscapeMobile`) to use instead of Tailwind's
+   * `landscape:` CSS variant. Pass this from callers that show an edit UI with a text input on
+   * mobile (the public /validate page) — omit it to keep the original CSS-only behavior (the
+   * admin tagging canvas, which doesn't hit the keyboard-triggered bug this works around). */
+  landscapeMobile?: boolean;
 }) {
   function switchListMode(mode: "problems" | "all") {
     onListModeChange(mode);
@@ -206,7 +242,9 @@ export function TagListSidebar<T extends BaseTag>({
   return (
     <>
       {open && (
-        <div className="max-h-[45vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white max-md:landscape:h-auto max-md:landscape:max-h-none max-md:landscape:w-56 max-md:landscape:border-b-0 max-md:landscape:border-r md:h-auto md:max-h-none md:w-96 md:border-b-0 md:border-r">
+        <div
+          className={`max-h-[32vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white md:h-auto md:max-h-none md:w-96 md:border-b-0 md:border-r ${landscapeMobileClasses("max-md:landscape:h-auto max-md:landscape:max-h-none max-md:landscape:w-56 max-md:landscape:border-b-0 max-md:landscape:border-r", "!h-auto !max-h-none !w-56 !border-b-0 !border-r", landscapeMobile)}`}
+        >
           {/* Sticky so the problems/all toggle stays reachable while scrolling a long list — its
               own bg-white + border keeps scrolling rows from showing through underneath. */}
           <div className="sticky top-0 z-10 border-b border-gray-100 bg-white p-4 pb-3 max-md:px-2 max-md:py-1.5">
@@ -214,14 +252,14 @@ export function TagListSidebar<T extends BaseTag>({
               <button
                 type="button"
                 onClick={() => switchListMode("problems")}
-                className={`flex-1 rounded px-2 py-1 font-medium max-md:landscape:px-1 max-md:landscape:py-0.5 ${listMode === "problems" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                className={`flex-1 rounded px-2 py-1 font-medium max-md:px-1.5 max-md:py-0.5 max-md:text-[11px] ${landscapeMobileClasses("max-md:landscape:px-1 max-md:landscape:py-0.5", "!px-1 !py-0.5", landscapeMobile)} ${listMode === "problems" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
               >
                 เฉพาะที่มีปัญหา ({problems.length})
               </button>
               <button
                 type="button"
                 onClick={() => switchListMode("all")}
-                className={`flex-1 rounded px-2 py-1 font-medium max-md:landscape:px-1 max-md:landscape:py-0.5 ${listMode === "all" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                className={`flex-1 rounded px-2 py-1 font-medium max-md:px-1.5 max-md:py-0.5 max-md:text-[11px] ${landscapeMobileClasses("max-md:landscape:px-1 max-md:landscape:py-0.5", "!px-1 !py-0.5", landscapeMobile)} ${listMode === "all" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
               >
                 ทั้งหมด ({tags.length})
               </button>
@@ -258,6 +296,7 @@ export function TagListSidebar<T extends BaseTag>({
                                     onDoubleClick={() => onEditTag(t)}
                                     displayFields={displayFields}
                                     extraBadges={renderBadges?.(t)}
+                                    landscapeMobile={landscapeMobile}
                                   />
                                 ))}
                             </ul>
@@ -283,6 +322,7 @@ export function TagListSidebar<T extends BaseTag>({
                           onDoubleClick={() => onEditTag(t)}
                           displayFields={displayFields}
                           extraBadges={renderBadges?.(t)}
+                          landscapeMobile={landscapeMobile}
                         />
                       ))}
                     </ul>
@@ -304,6 +344,7 @@ export function TagListSidebar<T extends BaseTag>({
                           onDoubleClick={() => onEditTag(t)}
                           displayFields={displayFields}
                           extraBadges={renderBadges?.(t)}
+                          landscapeMobile={landscapeMobile}
                         />
                       ))}
                     </ul>
@@ -333,6 +374,7 @@ export function TagListSidebar<T extends BaseTag>({
                             displayFields={displayFields}
                             groupedByRow
                             extraBadges={renderBadges?.(t)}
+                            landscapeMobile={landscapeMobile}
                           />
                         ))}
                       </ul>
@@ -350,7 +392,7 @@ export function TagListSidebar<T extends BaseTag>({
         type="button"
         onClick={onToggleOpen}
         title={open ? "ซ่อนรายชื่อ" : "แสดงรายชื่อ"}
-        className="hidden shrink-0 flex-col items-center justify-center gap-2 border-r border-gray-200 bg-gray-50 px-1.5 py-3 text-gray-500 hover:bg-gray-100 hover:text-gray-700 max-md:landscape:flex md:flex"
+        className={`hidden shrink-0 flex-col items-center justify-center gap-2 border-r border-gray-200 bg-gray-50 px-1.5 py-3 text-gray-500 hover:bg-gray-100 hover:text-gray-700 md:flex ${landscapeMobile === undefined ? "max-md:landscape:flex" : landscapeMobile ? "!flex" : ""}`}
       >
         <span aria-hidden className="text-base leading-none">
           {open ? "‹" : "›"}
@@ -362,7 +404,7 @@ export function TagListSidebar<T extends BaseTag>({
       <button
         type="button"
         onClick={onToggleOpen}
-        className="flex shrink-0 items-center justify-center gap-1 border-b border-gray-200 bg-gray-50 py-2 text-xs font-medium text-gray-600 active:bg-gray-100 max-md:landscape:hidden md:hidden"
+        className={`flex shrink-0 items-center justify-center gap-1 border-b border-gray-200 bg-gray-50 py-2 text-xs font-medium text-gray-600 active:bg-gray-100 md:hidden ${landscapeMobile === undefined ? "max-md:landscape:hidden" : landscapeMobile ? "!hidden" : ""}`}
       >
         {open ? "ซ่อนรายชื่อ ▲" : "แสดงรายชื่อ ▼"}
       </button>

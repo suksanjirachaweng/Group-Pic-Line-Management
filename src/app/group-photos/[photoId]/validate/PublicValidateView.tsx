@@ -12,6 +12,7 @@ import {
   type TagDisplayField,
 } from "@/lib/groupPhoto/TagLabel";
 import { TagListSidebar } from "@/lib/groupPhoto/TagListSidebar";
+import { useIsLandscapeMobile } from "@/lib/groupPhoto/useIsLandscapeMobile";
 import { ZoomButtons } from "@/lib/groupPhoto/ZoomButtons";
 import { WordExportButton } from "@/lib/groupPhoto/ExportButtons";
 import {
@@ -67,6 +68,7 @@ export function PublicValidateView({
   initialTags: PublicValidateTagRecord[];
 }) {
   const canvasRef = useRef<ReviewCanvasHandle>(null);
+  const isLandscapeMobile = useIsLandscapeMobile();
   const [tags, setTags] = useState<PublicValidateTagRecord[]>(initialTags);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const [listMode, setListMode] = useState<"problems" | "all">("problems");
@@ -207,17 +209,22 @@ export function PublicValidateView({
 
   return (
     <div className="flex h-dvh flex-col">
-      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-3 py-2 sm:px-4">
-        <div className="flex shrink-0 flex-col items-center gap-1">
+      {/* Stacked (logo, then title below it) and compact on mobile — a title beside the logo
+          only gets a narrow leftover column to wrap in, which on a long university/faculty name
+          multiplies into many lines and eats most of the screen; putting it below the logo gives
+          it the full width instead, and smaller fonts/gaps keep the whole block short. Desktop
+          keeps the original side-by-side row, which already has plenty of width to spare. */}
+      <div className="flex flex-col items-center gap-1 border-b border-gray-200 bg-white px-3 py-1.5 sm:px-4 md:flex-row md:gap-3 md:py-2">
+        <div className="flex shrink-0 flex-col items-center gap-0.5 md:gap-1">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto" />
+          <img src="/nsl-logo.png" alt="Newsalon" className="h-6 w-auto md:h-7" />
           {currentTitle?.trim() && currentTitle.trim() !== photoName && (
-            <span className="text-[11px] leading-tight text-gray-400">
+            <span className="text-[10px] leading-tight text-gray-400 md:text-[11px]">
               (คณะ: {photoName})
             </span>
           )}
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 w-full flex-1">
           {editingTitle ? (
             <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-1.5">
               <textarea
@@ -258,8 +265,8 @@ export function PublicValidateView({
               </div>
             </div>
           ) : (
-            <div className="flex items-center justify-center gap-2">
-              <h1 className="whitespace-pre-wrap text-center text-sm font-semibold leading-snug text-gray-900">
+            <div className="flex flex-col items-center gap-1 md:flex-row md:justify-center md:gap-2">
+              <h1 className="whitespace-pre-wrap text-center text-xs font-semibold leading-tight text-gray-900 md:text-sm md:leading-snug">
                 {displayTitle}
               </h1>
               <button
@@ -268,7 +275,7 @@ export function PublicValidateView({
                   setTitleValue(currentTitle ?? "");
                   setEditingTitle(true);
                 }}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600"
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-300 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 md:px-2 md:py-1 md:text-xs"
               >
                 <span aria-hidden>✎</span> แก้ไข
               </button>
@@ -283,7 +290,7 @@ export function PublicValidateView({
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden max-md:landscape:flex-row md:flex-row">
+      <div className={`flex min-h-0 flex-1 overflow-hidden md:flex-row ${isLandscapeMobile ? "flex-row" : "flex-col"}`}>
         <TagListSidebar
           tags={tags}
           selectedTagId={selectedTagId}
@@ -295,6 +302,7 @@ export function PublicValidateView({
           listMode={listMode}
           onListModeChange={switchListMode}
           emptyMessage="ไม่พบปัญหา — ข้อมูลพร้อม export"
+          landscapeMobile={isLandscapeMobile}
           renderBadges={(t) =>
             t.editedViaPublicLink ? (
               <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
