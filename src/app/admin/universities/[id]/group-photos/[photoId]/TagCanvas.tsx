@@ -1,15 +1,42 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { saveGroupPhotoTag, deleteGroupPhotoTag, bulkAdjustTagPositions, moveGroupPhotoTag } from "@/lib/actions/groupPhotos";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import {
+  saveGroupPhotoTag,
+  deleteGroupPhotoTag,
+  bulkAdjustTagPositions,
+  moveGroupPhotoTag,
+} from "@/lib/actions/groupPhotos";
 import { ocrCardCrop } from "@/lib/actions/ocr";
 import { TagMatchSource } from "@/generated/prisma/enums";
-import { clientPointToFullRes, fullResToFraction, extractCrop, pixelDistance } from "./coordinateMapping";
+import {
+  clientPointToFullRes,
+  fullResToFraction,
+  extractCrop,
+  pixelDistance,
+} from "./coordinateMapping";
 import { useFaceDetection, type FaceCandidate } from "./useFaceDetection";
-import { TagEditDialog, type DialogInitial, type RegistrantLookup, type ReferenceLookup, type SavePayload } from "./TagEditDialog";
+import {
+  TagEditDialog,
+  type DialogInitial,
+  type RegistrantLookup,
+  type ReferenceLookup,
+  type SavePayload,
+} from "./TagEditDialog";
 import { validateTags, problemTagIds } from "@/lib/groupPhoto/validateTags";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
-import { TagLabel, TagMarker, TagDisplayFieldPicker, type TagDisplayField } from "@/lib/groupPhoto/TagLabel";
+import {
+  TagLabel,
+  TagMarker,
+  TagDisplayFieldPicker,
+  type TagDisplayField,
+} from "@/lib/groupPhoto/TagLabel";
 import { TagListSidebar } from "@/lib/groupPhoto/TagListSidebar";
 import { colorForRow } from "@/lib/groupPhoto/rowColor";
 import { ZoomButtons } from "@/lib/groupPhoto/ZoomButtons";
@@ -27,7 +54,9 @@ const GRAY_MARKER_COLOR = "#9ca3af";
 
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
-  return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable;
+  return (
+    el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable
+  );
 }
 
 /** Concurrency-limited OCR pass over every detected face candidate, so results stream in as they
@@ -54,7 +83,12 @@ async function runOcrBatch(
       }
     }
   }
-  await Promise.all(Array.from({ length: Math.min(OCR_BATCH_CONCURRENCY, points.length) }, worker));
+  await Promise.all(
+    Array.from(
+      { length: Math.min(OCR_BATCH_CONCURRENCY, points.length) },
+      worker,
+    ),
+  );
 }
 
 export type TagRecord = {
@@ -84,19 +118,29 @@ function applyRowOrderShift(
 ): TagRecord[] {
   const existing = savedId ? prevTags.find((t) => t.id === savedId) : undefined;
   if (!existing) {
-    return prevTags.map((t) => (t.row === targetRow && t.order >= targetOrder ? { ...t, order: t.order + 1 } : t));
+    return prevTags.map((t) =>
+      t.row === targetRow && t.order >= targetOrder
+        ? { ...t, order: t.order + 1 }
+        : t,
+    );
   }
   if (existing.row === targetRow) {
     if (targetOrder > existing.order) {
       return prevTags.map((t) =>
-        t.id !== savedId && t.row === targetRow && t.order > existing.order && t.order <= targetOrder
+        t.id !== savedId &&
+        t.row === targetRow &&
+        t.order > existing.order &&
+        t.order <= targetOrder
           ? { ...t, order: t.order - 1 }
           : t,
       );
     }
     if (targetOrder < existing.order) {
       return prevTags.map((t) =>
-        t.id !== savedId && t.row === targetRow && t.order >= targetOrder && t.order < existing.order
+        t.id !== savedId &&
+        t.row === targetRow &&
+        t.order >= targetOrder &&
+        t.order < existing.order
           ? { ...t, order: t.order + 1 }
           : t,
       );
@@ -105,8 +149,10 @@ function applyRowOrderShift(
   }
   return prevTags.map((t) => {
     if (t.id === savedId) return t;
-    if (t.row === existing.row && t.order > existing.order) return { ...t, order: t.order - 1 };
-    if (t.row === targetRow && t.order >= targetOrder) return { ...t, order: t.order + 1 };
+    if (t.row === existing.row && t.order > existing.order)
+      return { ...t, order: t.order - 1 };
+    if (t.row === targetRow && t.order >= targetOrder)
+      return { ...t, order: t.order + 1 };
     return t;
   });
 }
@@ -136,7 +182,10 @@ export function TagCanvas({
   // effect below uses once it has the real decoded bitmap) so the canvas — and every tag marker
   // positioned over it — is correctly sized from the very first render, instead of sitting
   // collapsed in a tiny top-left corner until the image fetch/decode finishes.
-  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>(() => {
+  const [canvasSize, setCanvasSize] = useState<{
+    width: number;
+    height: number;
+  }>(() => {
     const targetW = Math.min(DISPLAY_MAX_WIDTH, imageWidth);
     const targetH = Math.round(imageHeight * (targetW / imageWidth));
     return { width: targetW, height: targetH };
@@ -144,11 +193,17 @@ export function TagCanvas({
   const [scale, setScale] = useState(0.25);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
-  const [dialogInitial, setDialogInitial] = useState<DialogInitial | null>(null);
+  const [dialogInitial, setDialogInitial] = useState<DialogInitial | null>(
+    null,
+  );
   const [ocrEnabled, setOcrEnabled] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
-  const [candidateCodes, setCandidateCodes] = useState<Record<string, string | null>>({});
-  const [candidateOcrPending, setCandidateOcrPending] = useState<Set<string>>(new Set());
+  const [candidateCodes, setCandidateCodes] = useState<
+    Record<string, string | null>
+  >({});
+  const [candidateOcrPending, setCandidateOcrPending] = useState<Set<string>>(
+    new Set(),
+  );
   const [displayFields, setDisplayFields] = useState<Set<TagDisplayField>>(
     () => new Set<TagDisplayField>(["code", "name", "line"]),
   );
@@ -163,7 +218,11 @@ export function TagCanvas({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchIndex, setSearchIndex] = useState(-1);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
-  const [dragPreview, setDragPreview] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [dragPreview, setDragPreview] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [listMode, setListMode] = useState<"problems" | "all">("problems");
 
@@ -171,7 +230,12 @@ export function TagCanvas({
   const fullBitmapRef = useRef<ImageBitmap | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { candidates: faceCandidates, isDetecting, detect: runFaceDetection, dismiss: dismissCandidate } = useFaceDetection();
+  const {
+    candidates: faceCandidates,
+    isDetecting,
+    detect: runFaceDetection,
+    dismiss: dismissCandidate,
+  } = useFaceDetection();
 
   const registrantByCode = useMemo(() => {
     const m = new Map<string, RegistrantLookup>();
@@ -186,7 +250,10 @@ export function TagCanvas({
 
   const problems = useMemo(() => validateTags(tags), [tags]);
   const problemIds = useMemo(() => problemTagIds(problems), [problems]);
-  const reportedCount = useMemo(() => tags.filter((t) => t.reportedProblem).length, [tags]);
+  const reportedCount = useMemo(
+    () => tags.filter((t) => t.reportedProblem).length,
+    [tags],
+  );
 
   // Search by code or name/surname — cycles through matches on repeated search, jumping the
   // viewport to each one in turn (Ctrl-F-style "find next"), which matters once a photo has
@@ -202,7 +269,8 @@ export function TagCanvas({
         (qCode && t.normalizedCode.includes(qCode)),
     );
   }, [tags, searchQuery]);
-  const highlightedTagId = searchIndex >= 0 ? searchMatches[searchIndex]?.id : undefined;
+  const highlightedTagId =
+    searchIndex >= 0 ? searchMatches[searchIndex]?.id : undefined;
 
   function centerOn(x: number, y: number) {
     const canvas = displayCanvasRef.current;
@@ -250,7 +318,14 @@ export function TagCanvas({
       arr.push(t);
       byRow.set(t.row, arr);
     }
-    const segments: { key: string; x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
+    const segments: {
+      key: string;
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      color: string;
+    }[] = [];
     for (const [row, rowTags] of byRow) {
       const sorted = [...rowTags].sort((a, b) => a.order - b.order);
       const color = colorForRow(row);
@@ -271,7 +346,15 @@ export function TagCanvas({
     }
     return segments;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- previewPoint closes over bulk*/imageWidth/imageHeight, all listed explicitly below
-  }, [tags, imageWidth, imageHeight, bulkAdjustMode, bulkDx, bulkDy, bulkScale]);
+  }, [
+    tags,
+    imageWidth,
+    imageHeight,
+    bulkAdjustMode,
+    bulkDx,
+    bulkDy,
+    bulkScale,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -310,7 +393,9 @@ export function TagCanvas({
     if (!ocrEnabled) return;
     const bitmap = fullBitmapRef.current;
     if (!bitmap) return;
-    const todo = faceCandidates.filter((c) => !(c.id in candidateCodes) && !candidateOcrPending.has(c.id));
+    const todo = faceCandidates.filter(
+      (c) => !(c.id in candidateCodes) && !candidateOcrPending.has(c.id),
+    );
     if (todo.length === 0) return;
 
     (async () => {
@@ -334,7 +419,10 @@ export function TagCanvas({
   // Suggests where a new point probably belongs, so adding a missed person doesn't always start
   // from a blank "row 0" guess — both fields stay manually editable in the dialog either way,
   // same as the legacy tool where a human always picked the row themselves.
-  function suggestRowOrder(x: number, y: number): { row: number; order: number } {
+  function suggestRowOrder(
+    x: number,
+    y: number,
+  ): { row: number; order: number } {
     if (tags.length === 0) return { row: 0, order: 0 };
     // Default row: whichever existing tag is geometrically closest to the click — a new person
     // is almost always tagged right next to who they're standing/sitting beside.
@@ -355,10 +443,23 @@ export function TagCanvas({
     return { row: nearest.row, order };
   }
 
-  async function openNewTagDialog(x: number, y: number, precomputedCode?: string | null) {
+  async function openNewTagDialog(
+    x: number,
+    y: number,
+    precomputedCode?: string | null,
+  ) {
     setSelectedTagId(null);
     const { row, order } = suggestRowOrder(x, y);
-    setDialogInitial({ code: precomputedCode ?? "", name: "", row, order, x, y, registrantId: null, matchSource: TagMatchSource.MANUAL });
+    setDialogInitial({
+      code: precomputedCode ?? "",
+      name: "",
+      row,
+      order,
+      x,
+      y,
+      registrantId: null,
+      matchSource: TagMatchSource.MANUAL,
+    });
 
     // A candidate already OCR'd during the batch face-detection pass — reuse that result instead
     // of paying for a second OCR call on promotion.
@@ -374,7 +475,9 @@ export function TagCanvas({
       fd.set("crop", crop, "crop.jpg");
       const result = await ocrCardCrop(universityId, fd);
       if (result.code) {
-        setDialogInitial((prev) => (prev && !prev.id ? { ...prev, code: result.code! } : prev));
+        setDialogInitial((prev) =>
+          prev && !prev.id ? { ...prev, code: result.code! } : prev,
+        );
       }
     } catch (err) {
       // OCR is a convenience prefill, not a requirement — leave the code field for manual entry
@@ -403,10 +506,19 @@ export function TagCanvas({
   // getBoundingClientRect() already reflects the current CSS pan/zoom transform, so this ratio
   // converts a fixed on-screen click radius into full-res pixels correctly at any zoom level,
   // rather than tracking the `scale` state separately.
-  function findNearestTagWithinThreshold(clientX: number, clientY: number): TagRecord | null {
+  function findNearestTagWithinThreshold(
+    clientX: number,
+    clientY: number,
+  ): TagRecord | null {
     const canvas = displayCanvasRef.current;
     if (!canvas || tags.length === 0) return null;
-    const { x, y } = clientPointToFullRes(clientX, clientY, canvas, imageWidth, imageHeight);
+    const { x, y } = clientPointToFullRes(
+      clientX,
+      clientY,
+      canvas,
+      imageWidth,
+      imageHeight,
+    );
     let nearest = tags[0];
     let best = pixelDistance(x, y, nearest.x, nearest.y);
     for (const t of tags) {
@@ -443,7 +555,13 @@ export function TagCanvas({
     }
     const canvas = displayCanvasRef.current;
     if (!canvas) return;
-    const { x, y } = clientPointToFullRes(e.clientX, e.clientY, canvas, imageWidth, imageHeight);
+    const { x, y } = clientPointToFullRes(
+      e.clientX,
+      e.clientY,
+      canvas,
+      imageWidth,
+      imageHeight,
+    );
     if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
     clickTimerRef.current = setTimeout(() => {
       clickTimerRef.current = null;
@@ -485,14 +603,28 @@ export function TagCanvas({
     });
     const normalizedCode = input.code.replace(/\D+/g, "");
     setTags((prev) => {
-      const shifted = applyRowOrderShift(prev, dialogInitial.id, input.row, input.order);
+      const shifted = applyRowOrderShift(
+        prev,
+        dialogInitial.id,
+        input.row,
+        input.order,
+      );
       if (dialogInitial.id) {
         const id = dialogInitial.id;
-        return shifted.map((t) => (t.id === id ? { ...t, ...input, normalizedCode } : t));
+        return shifted.map((t) =>
+          t.id === id ? { ...t, ...input, normalizedCode } : t,
+        );
       }
       return [
         ...shifted,
-        { id: result.id, x: dialogInitial.x, y: dialogInitial.y, ...input, normalizedCode, reportedProblem: false },
+        {
+          id: result.id,
+          x: dialogInitial.x,
+          y: dialogInitial.y,
+          ...input,
+          normalizedCode,
+          reportedProblem: false,
+        },
       ];
     });
     setDialogInitial(null);
@@ -529,8 +661,22 @@ export function TagCanvas({
   function zoomToFit() {
     const canvas = displayCanvasRef.current;
     const rect = containerRef.current?.getBoundingClientRect();
-    if (!canvas || !rect || !canvas.width || !canvas.height || !rect.width || !rect.height) return;
-    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(rect.width / canvas.width, rect.height / canvas.height)));
+    if (
+      !canvas ||
+      !rect ||
+      !canvas.width ||
+      !canvas.height ||
+      !rect.width ||
+      !rect.height
+    )
+      return;
+    const next = Math.min(
+      MAX_SCALE,
+      Math.max(
+        MIN_SCALE,
+        Math.min(rect.width / canvas.width, rect.height / canvas.height),
+      ),
+    );
     setScale(next);
     setTx((rect.width - canvas.width * next) / 2);
     setTy((rect.height - canvas.height * next) / 2);
@@ -563,7 +709,9 @@ export function TagCanvas({
       setTags((prev) => prev.map((t) => ({ ...t, ...previewPoint(t) })));
       resetBulkAdjust();
     } catch (err) {
-      window.alert(`บันทึกตำแหน่งใหม่ไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`);
+      window.alert(
+        `บันทึกตำแหน่งใหม่ไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`,
+      );
     } finally {
       setBulkSaving(false);
     }
@@ -637,7 +785,13 @@ export function TagCanvas({
       const canvas = displayCanvasRef.current;
       if (!canvas) return;
       dragMovedRef.current = true;
-      const { x, y } = clientPointToFullRes(e.clientX, e.clientY, canvas, imageWidth, imageHeight);
+      const { x, y } = clientPointToFullRes(
+        e.clientX,
+        e.clientY,
+        canvas,
+        imageWidth,
+        imageHeight,
+      );
       setDragPreview({ id: draggingTagRef.current, x, y });
     }
   }
@@ -656,11 +810,20 @@ export function TagCanvas({
       if (preview && preview.id === tagId) {
         const { x, y } = preview;
         const original = tags.find((t) => t.id === tagId);
-        setTags((prev) => prev.map((t) => (t.id === tagId ? { ...t, x, y } : t)));
-        moveGroupPhotoTag(universityId, groupPhotoId, tagId, x, y).catch((err) => {
-          window.alert(`ย้ายตำแหน่งไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`);
-          if (original) setTags((prev) => prev.map((t) => (t.id === tagId ? original : t)));
-        });
+        setTags((prev) =>
+          prev.map((t) => (t.id === tagId ? { ...t, x, y } : t)),
+        );
+        moveGroupPhotoTag(universityId, groupPhotoId, tagId, x, y).catch(
+          (err) => {
+            window.alert(
+              `ย้ายตำแหน่งไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`,
+            );
+            if (original)
+              setTags((prev) =>
+                prev.map((t) => (t.id === tagId ? original : t)),
+              );
+          },
+        );
       }
       return null;
     });
@@ -702,226 +865,268 @@ export function TagCanvas({
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         >
-        <div className="absolute left-0 top-0 origin-top-left" style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}>
-          <canvas
-            ref={displayCanvasRef}
-            width={canvasSize.width}
-            height={canvasSize.height}
-            onClick={handleCanvasClick}
-            onDoubleClick={handleCanvasDoubleClick}
-            className={`block bg-gray-800 ${spacePressed ? "cursor-grab" : "cursor-crosshair"}`}
-          />
-          <div className="pointer-events-none absolute inset-0">
-            {displayFields.has("line") && (
-              <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-                {rowLineSegments.map((seg) => (
-                  <line
-                    key={seg.key}
-                    x1={seg.x1}
-                    y1={seg.y1}
-                    x2={seg.x2}
-                    y2={seg.y2}
-                    stroke={seg.color}
-                    strokeWidth={0.3}
-                    strokeLinecap="round"
-                  />
-                ))}
-              </svg>
-            )}
-            {tags.map((t) => {
-              const overridden = dragPreview && dragPreview.id === t.id ? { ...t, x: dragPreview.x, y: dragPreview.y } : t;
-              const p = previewPoint(overridden);
-              const { xFrac, yFrac } = fullResToFraction(p.x, p.y, imageWidth, imageHeight);
-              const isProblem = problemIds.has(t.id);
-              const isHighlighted = t.id === highlightedTagId;
-              const isSelected = t.id === selectedTagId;
-              // Same "gray out everyone else" principle as the validate page — but only while
-              // browsing via the list (sidebarOpen), so normal click-to-select/drag during regular
-              // tagging work doesn't gray out the whole photo on every click.
-              const grayed = sidebarOpen && selectedTagId !== null && !isSelected && !isHighlighted;
-              const color = grayed ? GRAY_MARKER_COLOR : colorForRow(t.row);
-              return (
-                <div
-                  key={t.id}
-                  className="absolute transition-opacity duration-150"
-                  style={{
-                    left: `${xFrac * 100}%`,
-                    top: `${yFrac * 100}%`,
-                    zIndex: isHighlighted || isSelected ? 10 : undefined,
-                    opacity: grayed ? 0.6 : 1,
-                  }}
-                >
-                  <TagMarker
-                    color={color}
-                    size={isHighlighted ? 20 : isSelected ? 18 : 14}
-                    ring={
-                      isHighlighted
-                        ? "0 0 0 4px #6366f1"
-                        : isSelected
-                          ? "0 0 0 3px #facc15"
-                          : t.reportedProblem
-                            ? "0 0 0 2px #f97316"
-                            : isProblem
-                              ? "0 0 0 2px #ef4444"
-                              : undefined
-                    }
-                    title={t.reportedProblem ? `${t.code} — ${t.name} (บัณฑิตแจ้งปัญหา)` : `${t.code} — ${t.name}`}
-                  />
-                  <TagLabel order={t.order} code={t.code} name={t.name} color={color} fields={displayFields} angle={labelAngle} />
-                </div>
-              );
-            })}
-            {faceCandidates.map((c) => {
-              const { xFrac, yFrac } = fullResToFraction(c.x, c.y, imageWidth, imageHeight);
-              const code = candidateCodes[c.id];
-              const pending = candidateOcrPending.has(c.id);
-              return (
-                <div
-                  key={c.id}
-                  className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%` }}
-                >
-                  <button
-                    type="button"
-                    className="rounded-full border-2 border-dashed border-sky-400 bg-sky-400/10 hover:bg-sky-400/30"
-                    style={{ width: 16, height: 16 }}
-                    onClick={() => handlePromoteCandidate(c.id, c.x, c.y)}
-                    title="คลิกเพื่อเพิ่มคนนี้"
-                  />
-                  {code && (
-                    <div className="pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-sky-700/80 px-1 text-[10px] leading-tight text-white">
-                      {code}
-                    </div>
-                  )}
-                  {pending && !code && (
-                    <div className="pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap text-[10px] text-sky-200">
-                      …
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {!loaded && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="flex items-center gap-3 rounded-lg bg-white px-5 py-4 shadow-xl">
-              <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
-              <span className="text-sm font-medium text-gray-700">กำลังโหลดรูป...</span>
-            </div>
-          </div>
-        )}
-
-        {bulkAdjustMode && (
-          <div className="absolute right-3 top-3 z-20 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-xl">
-            <p className="mb-2 text-xs font-semibold text-gray-900">ปรับตำแหน่งทั้งหมด ({tags.length} คน)</p>
-            <div className="mb-2 grid grid-cols-3 gap-1">
-              <div />
-              <button
-                type="button"
-                onClick={() => setBulkDy((d) => d - BULK_NUDGE_STEP)}
-                className="rounded-md border border-gray-300 py-1 text-sm hover:bg-gray-50"
-              >
-                ↑
-              </button>
-              <div />
-              <button
-                type="button"
-                onClick={() => setBulkDx((d) => d - BULK_NUDGE_STEP)}
-                className="rounded-md border border-gray-300 py-1 text-sm hover:bg-gray-50"
-              >
-                ←
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setBulkDx(0);
-                  setBulkDy(0);
-                }}
-                className="rounded-md border border-gray-300 py-1 text-[10px] hover:bg-gray-50"
-              >
-                รีเซ็ต
-              </button>
-              <button
-                type="button"
-                onClick={() => setBulkDx((d) => d + BULK_NUDGE_STEP)}
-                className="rounded-md border border-gray-300 py-1 text-sm hover:bg-gray-50"
-              >
-                →
-              </button>
-              <div />
-              <button
-                type="button"
-                onClick={() => setBulkDy((d) => d + BULK_NUDGE_STEP)}
-                className="rounded-md border border-gray-300 py-1 text-sm hover:bg-gray-50"
-              >
-                ↓
-              </button>
-              <div />
-            </div>
-
-            <div className="mb-2 grid grid-cols-2 gap-2 text-xs text-gray-600">
-              <label>
-                dx (px)
-                <input
-                  type="number"
-                  value={bulkDx}
-                  onChange={(e) => setBulkDx(Number(e.target.value))}
-                  className="mt-0.5 w-full rounded-md border border-gray-300 px-1.5 py-1"
-                />
-              </label>
-              <label>
-                dy (px)
-                <input
-                  type="number"
-                  value={bulkDy}
-                  onChange={(e) => setBulkDy(Number(e.target.value))}
-                  className="mt-0.5 w-full rounded-md border border-gray-300 px-1.5 py-1"
-                />
-              </label>
-            </div>
-
-            <label className="mb-1 flex items-center justify-between text-xs text-gray-600">
-              ขนาด (scale)
-              <span>{Math.round(bulkScale * 100)}%</span>
-            </label>
-            <input
-              type="range"
-              min={0.5}
-              max={2}
-              step={0.01}
-              value={bulkScale}
-              onChange={(e) => setBulkScale(Number(e.target.value))}
-              className="mb-3 w-full"
+          <div
+            className="absolute left-0 top-0 origin-top-left"
+            style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}
+          >
+            <canvas
+              ref={displayCanvasRef}
+              width={canvasSize.width}
+              height={canvasSize.height}
+              onClick={handleCanvasClick}
+              onDoubleClick={handleCanvasDoubleClick}
+              className={`block bg-gray-800 ${spacePressed ? "cursor-grab" : "cursor-crosshair"}`}
             />
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={resetBulkAdjust}
-                className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                onClick={handleBulkSave}
-                disabled={bulkSaving}
-                className="rounded-md bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {bulkSaving ? "กำลังบันทึก..." : "บันทึกตำแหน่งใหม่"}
-              </button>
+            <div className="pointer-events-none absolute inset-0">
+              {displayFields.has("line") && (
+                <svg
+                  className="absolute inset-0 h-full w-full"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                >
+                  {rowLineSegments.map((seg) => (
+                    <line
+                      key={seg.key}
+                      x1={seg.x1}
+                      y1={seg.y1}
+                      x2={seg.x2}
+                      y2={seg.y2}
+                      stroke={seg.color}
+                      strokeWidth={0.3}
+                      strokeLinecap="round"
+                    />
+                  ))}
+                </svg>
+              )}
+              {tags.map((t) => {
+                const overridden =
+                  dragPreview && dragPreview.id === t.id
+                    ? { ...t, x: dragPreview.x, y: dragPreview.y }
+                    : t;
+                const p = previewPoint(overridden);
+                const { xFrac, yFrac } = fullResToFraction(
+                  p.x,
+                  p.y,
+                  imageWidth,
+                  imageHeight,
+                );
+                const isProblem = problemIds.has(t.id);
+                const isHighlighted = t.id === highlightedTagId;
+                const isSelected = t.id === selectedTagId;
+                // Same "gray out everyone else" principle as the validate page — but only while
+                // browsing via the list (sidebarOpen), so normal click-to-select/drag during regular
+                // tagging work doesn't gray out the whole photo on every click.
+                const grayed =
+                  sidebarOpen &&
+                  selectedTagId !== null &&
+                  !isSelected &&
+                  !isHighlighted;
+                const color = grayed ? GRAY_MARKER_COLOR : colorForRow(t.row);
+                return (
+                  <div
+                    key={t.id}
+                    className="absolute transition-opacity duration-150"
+                    style={{
+                      left: `${xFrac * 100}%`,
+                      top: `${yFrac * 100}%`,
+                      zIndex: isHighlighted || isSelected ? 10 : undefined,
+                      opacity: grayed ? 0.6 : 1,
+                    }}
+                  >
+                    <TagMarker
+                      color={color}
+                      size={isHighlighted ? 20 : isSelected ? 18 : 14}
+                      ring={
+                        isHighlighted
+                          ? "0 0 0 4px #6366f1"
+                          : isSelected
+                            ? "0 0 0 3px #facc15"
+                            : t.reportedProblem
+                              ? "0 0 0 2px #f97316"
+                              : isProblem
+                                ? "0 0 0 2px #ef4444"
+                                : undefined
+                      }
+                      title={
+                        t.reportedProblem
+                          ? `${t.code} — ${t.name} (บัณฑิตแจ้งปัญหา)`
+                          : `${t.code} — ${t.name}`
+                      }
+                    />
+                    <TagLabel
+                      order={t.order}
+                      code={t.code}
+                      name={t.name}
+                      color={color}
+                      fields={displayFields}
+                      angle={labelAngle}
+                    />
+                  </div>
+                );
+              })}
+              {faceCandidates.map((c) => {
+                const { xFrac, yFrac } = fullResToFraction(
+                  c.x,
+                  c.y,
+                  imageWidth,
+                  imageHeight,
+                );
+                const code = candidateCodes[c.id];
+                const pending = candidateOcrPending.has(c.id);
+                return (
+                  <div
+                    key={c.id}
+                    className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2"
+                    style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%` }}
+                  >
+                    <button
+                      type="button"
+                      className="rounded-full border-2 border-dashed border-sky-400 bg-sky-400/10 hover:bg-sky-400/30"
+                      style={{ width: 16, height: 16 }}
+                      onClick={() => handlePromoteCandidate(c.id, c.x, c.y)}
+                      title="คลิกเพื่อเพิ่มคนนี้"
+                    />
+                    {code && (
+                      <div className="pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-sky-700/80 px-1 text-[10px] leading-tight text-white">
+                        {code}
+                      </div>
+                    )}
+                    {pending && !code && (
+                      <div className="pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap text-[10px] text-sky-200">
+                        …
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
-        )}
-      </div>
+
+          {!loaded && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="flex items-center gap-3 rounded-lg bg-white px-5 py-4 shadow-xl">
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
+                <span className="text-sm font-medium text-gray-700">
+                  กำลังโหลดรูป...
+                </span>
+              </div>
+            </div>
+          )}
+
+          {bulkAdjustMode && (
+            <div className="absolute right-3 top-3 z-20 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-xl">
+              <p className="mb-2 text-xs font-semibold text-gray-900">
+                ปรับตำแหน่งทั้งหมด ({tags.length} คน)
+              </p>
+              <div className="mb-2 grid grid-cols-3 gap-1">
+                <div />
+                <button
+                  type="button"
+                  onClick={() => setBulkDy((d) => d - BULK_NUDGE_STEP)}
+                  className="rounded-md border border-gray-300 py-1 text-sm hover:bg-gray-50"
+                >
+                  ↑
+                </button>
+                <div />
+                <button
+                  type="button"
+                  onClick={() => setBulkDx((d) => d - BULK_NUDGE_STEP)}
+                  className="rounded-md border border-gray-300 py-1 text-sm hover:bg-gray-50"
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkDx(0);
+                    setBulkDy(0);
+                  }}
+                  className="rounded-md border border-gray-300 py-1 text-[10px] hover:bg-gray-50"
+                >
+                  รีเซ็ต
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkDx((d) => d + BULK_NUDGE_STEP)}
+                  className="rounded-md border border-gray-300 py-1 text-sm hover:bg-gray-50"
+                >
+                  →
+                </button>
+                <div />
+                <button
+                  type="button"
+                  onClick={() => setBulkDy((d) => d + BULK_NUDGE_STEP)}
+                  className="rounded-md border border-gray-300 py-1 text-sm hover:bg-gray-50"
+                >
+                  ↓
+                </button>
+                <div />
+              </div>
+
+              <div className="mb-2 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                <label>
+                  dx (px)
+                  <input
+                    type="number"
+                    value={bulkDx}
+                    onChange={(e) => setBulkDx(Number(e.target.value))}
+                    className="mt-0.5 w-full rounded-md border border-gray-300 px-1.5 py-1"
+                  />
+                </label>
+                <label>
+                  dy (px)
+                  <input
+                    type="number"
+                    value={bulkDy}
+                    onChange={(e) => setBulkDy(Number(e.target.value))}
+                    className="mt-0.5 w-full rounded-md border border-gray-300 px-1.5 py-1"
+                  />
+                </label>
+              </div>
+
+              <label className="mb-1 flex items-center justify-between text-xs text-gray-600">
+                ขนาด (scale)
+                <span>{Math.round(bulkScale * 100)}%</span>
+              </label>
+              <input
+                type="range"
+                min={0.5}
+                max={2}
+                step={0.01}
+                value={bulkScale}
+                onChange={(e) => setBulkScale(Number(e.target.value))}
+                className="mb-3 w-full"
+              />
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={resetBulkAdjust}
+                  className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkSave}
+                  disabled={bulkSaving}
+                  className="rounded-md bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {bulkSaving ? "กำลังบันทึก..." : "บันทึกตำแหน่งใหม่"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-2 border-t border-gray-200 bg-white px-3 py-2 text-xs">
         {/* Row 1: the photo/detection controls. */}
         <div className="flex flex-wrap items-center gap-2">
-          <ZoomButtons onZoomOut={() => zoomBy(1 / ZOOM_STEP)} onZoomIn={() => zoomBy(ZOOM_STEP)} />
+          <ZoomButtons
+            onZoomOut={() => zoomBy(1 / ZOOM_STEP)}
+            onZoomIn={() => zoomBy(ZOOM_STEP)}
+          />
 
           <div className="mx-1 h-5 w-px bg-gray-200" />
 
@@ -941,7 +1146,11 @@ export function TagCanvas({
               className="flex items-center gap-1.5 text-gray-600"
               title="อ่านตัวเลขจากป้ายอัตโนมัติตอนเพิ่มคนใหม่/ตรวจจับใบหน้า — ปิดถ้าไม่อยากเสียเวลา/ค่าใช้จ่าย OCR"
             >
-              <input type="checkbox" checked={ocrEnabled} onChange={(e) => setOcrEnabled(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={ocrEnabled}
+                onChange={(e) => setOcrEnabled(e.target.checked)}
+              />
               OCR
             </label>
 
@@ -953,10 +1162,18 @@ export function TagCanvas({
                 setHasDetected(true);
                 runFaceDetection(fullBitmapRef.current);
               }}
-              title={hasDetected ? "ตรวจจับไปแล้วในรูปนี้ — กดซ้ำจะได้ผลลัพธ์เดิม" : "ช่วยแนะนำตำแหน่งคนที่ยังไม่ได้แท็ก"}
+              title={
+                hasDetected
+                  ? "ตรวจจับไปแล้วในรูปนี้ — กดซ้ำจะได้ผลลัพธ์เดิม"
+                  : "ช่วยแนะนำตำแหน่งคนที่ยังไม่ได้แท็ก"
+              }
               className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
-              {isDetecting ? "กำลังตรวจจับ..." : hasDetected ? "ตรวจจับแล้ว" : "ตรวจจับใบหน้า"}
+              {isDetecting
+                ? "กำลังตรวจจับ..."
+                : hasDetected
+                  ? "ตรวจจับแล้ว"
+                  : "ตรวจจับใบหน้า"}
             </button>
           </div>
 
@@ -968,10 +1185,10 @@ export function TagCanvas({
               title="เลื่อน/ย่อขยายจุดที่แท็กไว้ทั้งหมดพร้อมกัน — ใช้เมื่ออัปเดตรูปแล้วตำแหน่งเพี้ยน"
               className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
-              ปรับตำแหน่ง
+              ปรับตำแหน่งทุกจุด
             </button>
             <label className="flex items-center gap-1 text-gray-600">
-              มุมป้าย
+              มุมเอียง
               <input
                 type="number"
                 value={labelAngle}
@@ -988,7 +1205,8 @@ export function TagCanvas({
             collapse onto row 1 on wide screens. */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="hidden text-gray-400 lg:inline">
-            คลิก = เลือกจุด, ลาก = ย้ายตำแหน่ง, Space+ลาก = เลื่อนภาพ, Ctrl +/- = ซูม, Ctrl+0 = พอดีจอ, Shift+คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
+            คลิก = เลือกจุด, ลาก = ย้ายตำแหน่ง, Space+ลาก = เลื่อนภาพ, Ctrl +/-
+            = ซูม, Ctrl+0 = พอดีจอ, Shift+คลิก = เพิ่มคน, ดับเบิลคลิก = แก้ไข
           </span>
 
           <div className="ml-auto flex items-center gap-2">
@@ -1017,12 +1235,17 @@ export function TagCanvas({
               </button>
               {searchQuery.trim() && (
                 <span className="whitespace-nowrap text-gray-400">
-                  {searchMatches.length > 0 ? `${searchIndex >= 0 ? searchIndex + 1 : 0}/${searchMatches.length}` : "ไม่พบ"}
+                  {searchMatches.length > 0
+                    ? `${searchIndex >= 0 ? searchIndex + 1 : 0}/${searchMatches.length}`
+                    : "ไม่พบ"}
                 </span>
               )}
             </div>
 
-            <TagDisplayFieldPicker value={displayFields} onChange={setDisplayFields} />
+            <TagDisplayFieldPicker
+              value={displayFields}
+              onChange={setDisplayFields}
+            />
           </div>
         </div>
       </div>
