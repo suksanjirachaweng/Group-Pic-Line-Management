@@ -25,6 +25,7 @@ import {
   pixelDistance,
 } from "./coordinateMapping";
 import { useFaceDetection, type FaceCandidate } from "./useFaceDetection";
+import { useBulkCardOcr } from "./useBulkCardOcr";
 import {
   TagEditDialog,
   type DialogInitial,
@@ -253,6 +254,24 @@ export function TagCanvas({
     detect: runFaceDetection,
     dismiss: dismissCandidate,
   } = useFaceDetection();
+
+  const {
+    candidates: bulkOcrCandidates,
+    isDetecting: isBulkOcrRunning,
+    progress: bulkOcrProgress,
+    detect: runBulkOcr,
+    dismiss: dismissBulkOcrCandidate,
+  } = useBulkCardOcr();
+
+  // Skip suggesting a candidate for someone who already has a tag near that position — bulk OCR
+  // re-reads the whole photo from scratch each run, so on a partially-tagged photo most of its
+  // hits are already-tagged people, not new ones.
+  const ALREADY_TAGGED_THRESHOLD = 100;
+  const newBulkOcrCandidates = useMemo(() => {
+    return bulkOcrCandidates.filter((c) =>
+      tags.every((t) => pixelDistance(c.x, c.y, t.x, t.y) >= ALREADY_TAGGED_THRESHOLD),
+    );
+  }, [bulkOcrCandidates, tags]);
 
   const registrantByCode = useMemo(() => {
     const m = new Map<string, RegistrantLookup>();
@@ -603,6 +622,16 @@ export function TagCanvas({
     const knownCode = candidateCodes[candidateId];
     dismissCandidate(candidateId);
     void openNewTagDialog(x, y, knownCode ?? undefined);
+  }
+
+  function handlePromoteBulkOcrCandidate(
+    candidateId: string,
+    x: number,
+    y: number,
+    code: string,
+  ) {
+    dismissBulkOcrCandidate(candidateId);
+    void openNewTagDialog(x, y, code);
   }
 
   async function handleSave(input: SavePayload) {
@@ -1117,6 +1146,34 @@ export function TagCanvas({
                   </div>
                 );
               })}
+              {newBulkOcrCandidates.map((c) => {
+                const { xFrac, yFrac } = fullResToFraction(
+                  c.x,
+                  c.y,
+                  imageWidth,
+                  imageHeight,
+                );
+                return (
+                  <div
+                    key={c.id}
+                    className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2"
+                    style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%` }}
+                  >
+                    <button
+                      type="button"
+                      className="rounded-full border-2 border-dashed border-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/30"
+                      style={{ width: 16, height: 16 }}
+                      onClick={() =>
+                        handlePromoteBulkOcrCandidate(c.id, c.x, c.y, c.code)
+                      }
+                      title="อ่านได้จากป้ายอัตโนมัติ — คลิกเพื่อเพิ่มคนนี้"
+                    />
+                    <div className="pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-emerald-700/80 px-1 text-[10px] leading-tight text-white">
+                      {c.code}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -1344,6 +1401,21 @@ export function TagCanvas({
                 : hasDetected
                   ? "ตรวจจับแล้ว"
                   : "ตรวจจับใบหน้า"}
+            </button>
+
+            <button
+              type="button"
+              disabled={!loaded || isBulkOcrRunning}
+              onClick={() => {
+                if (!fullBitmapRef.current) return;
+                void runBulkOcr(fullBitmapRef.current, universityId);
+              }}
+              title="อ่านตัวเลขบนป้ายทั้งภาพโดยตรง (ไม่ต้องพึ่งการตรวจจับใบหน้าก่อน) — ตำแหน่งที่ได้เป็นค่าประมาณ ควรตรวจสอบก่อนบันทึกจริง"
+              className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {isBulkOcrRunning
+                ? `กำลังอ่านป้าย... ${bulkOcrProgress.done}/${bulkOcrProgress.total}`
+                : "อ่านป้ายอัตโนมัติ"}
             </button>
 
             <button
