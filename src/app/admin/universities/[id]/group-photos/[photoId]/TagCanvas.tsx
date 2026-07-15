@@ -161,6 +161,57 @@ function applyRowOrderShift(
   });
 }
 
+/**
+ * Pure version of the row/order suggestion heuristic, taking an explicit tag list instead of
+ * closing over component state — needed so a sequential "accept all" batch save can chain each
+ * suggestion off a running local list (updated after each save) rather than the component's own
+ * `tags` state, which wouldn't have caught up between saves within the same synchronous loop.
+ *
+ * Always attaching to the nearest tag's row (regardless of how far away it actually is) works
+ * fine for adding one person at a time next to an already-dense crowd of real tags, but bulk-OCR
+ * candidates can land on a mostly-untagged photo — with no genuinely-nearby existing tag to
+ * anchor on, blind nearest-neighbor chains everything onto a single row instead of recognizing a
+ * new one. Guards against that by comparing the Y-gap to the nearest tag against that row's own
+ * typical X-spacing (a proxy for "one person's width" that scales with the photo's own
+ * resolution) — a Y-jump bigger than that isn't the same row.
+ */
+function suggestRowOrderAgainst(
+  list: TagRecord[],
+  x: number,
+  y: number,
+): { row: number; order: number } {
+  if (list.length === 0) return { row: 0, order: 0 };
+  let nearest = list[0];
+  let best = pixelDistance(x, y, nearest.x, nearest.y);
+  for (const t of list) {
+    const d = pixelDistance(x, y, t.x, t.y);
+    if (d < best) {
+      best = d;
+      nearest = t;
+    }
+  }
+
+  const sameRow = list
+    .filter((t) => t.row === nearest.row)
+    .sort((a, b) => a.x - b.x);
+  let unit = best;
+  if (sameRow.length >= 2) {
+    const gaps: number[] = [];
+    for (let i = 1; i < sameRow.length; i++) gaps.push(sameRow[i].x - sameRow[i - 1].x);
+    gaps.sort((a, b) => a - b);
+    unit = gaps[Math.floor(gaps.length / 2)];
+  }
+
+  const ROW_GAP_FACTOR = 1;
+  if (unit > 0 && Math.abs(y - nearest.y) > unit * ROW_GAP_FACTOR) {
+    const maxRow = Math.max(...list.map((t) => t.row));
+    return { row: maxRow + 1, order: 0 };
+  }
+
+  const order = sameRow.filter((t) => t.x < x).length;
+  return { row: nearest.row, order };
+}
+
 export function TagCanvas({
   universityId,
   groupPhotoId,
@@ -262,6 +313,7 @@ export function TagCanvas({
     detect: runBulkOcr,
     dismiss: dismissBulkOcrCandidate,
   } = useBulkCardOcr();
+  const [bulkOcrAccepting, setBulkOcrAccepting] = useState(false);
 
   // Skip suggesting a candidate for someone who already has a tag near that position — bulk OCR
   // re-reads the whole photo from scratch each run, so on a partially-tagged photo most of its
@@ -455,28 +507,14 @@ export function TagCanvas({
   // Suggests where a new point probably belongs, so adding a missed person doesn't always start
   // from a blank "row 0" guess — both fields stay manually editable in the dialog either way,
   // same as the legacy tool where a human always picked the row themselves.
-  function suggestRowOrder(
-    x: number,
-    y: number,
-  ): { row: number; order: number } {
-    if (tags.length === 0) return { row: 0, order: 0 };
-    // Default row: whichever existing tag is geometrically closest to the click — a new person
-    // is almost always tagged right next to who they're standing/sitting beside.
-    let nearest = tags[0];
-    let best = pixelDistance(x, y, nearest.x, nearest.y);
-    for (const t of tags) {
-      const d = pixelDistance(x, y, t.x, t.y);
-      if (d < best) {
-        best = d;
-        nearest = t;
-      }
-    }
-    // Default order: insert left-to-right by X position among that row's existing tags, so a
-    // person missed in the middle of an already-tagged row lands between their real neighbors —
-    // saving then shifts everyone from that slot onward over by one automatically (server + local
-    // state both apply the same shift, see applyRowOrderShift).
-    const order = tags.filter((t) => t.row === nearest.row && t.x < x).length;
-    return { row: nearest.row, order };
+  // Default row: whichever existing tag is geometrically closest to the click — a new person is
+  // almost always tagged right next to who they're standing/sitting beside. Default order: insert
+  // left-to-right by X position among that row's existing tags, so a person missed in the middle
+  // of an already-tagged row lands between their real neighbors — saving then shifts everyone from
+  // that slot onward over by one automatically (server + local state both apply the same shift,
+  // see applyRowOrderShift).
+  function suggestRowOrder(x: number, y: number): { row: number; order: number } {
+    return suggestRowOrderAgainst(tags, x, y);
   }
 
   async function openNewTagDialog(
@@ -624,14 +662,91 @@ export function TagCanvas({
     void openNewTagDialog(x, y, knownCode ?? undefined);
   }
 
-  function handlePromoteBulkOcrCandidate(
+  // Saves a bulk-OCR candidate straight to a real tag (no dialog) — code and position are already
+  // known from the OCR pass, so the only things left to fill in are name/registrant match (same
+  // code lookup TagEditDialog does when typing a code) and row/order (same nearest-neighbor
+  // heuristic as adding a person manually). Takes an explicit tag list rather than reading `tags`
+  // directly so a sequential batch save (see handleAcceptAllBulkOcrCandidates) can chain each
+  // suggestion off its own running list instead of possibly-stale component state.
+  async function saveBulkOcrCandidate(
+    against: TagRecord[],
+    candidate: { code: string; x: number; y: number },
+  ): Promise<TagRecord> {
+    const normalizedCode = candidate.code.replace(/\D+/g, "");
+    const reg = registrantByCode.get(normalizedCode);
+    const ref = !reg ? referenceByCode.get(normalizedCode) : undefined;
+    const name = reg ? reg.name : ref ? ref.name : "";
+    const registrantId = reg ? reg.id : null;
+    const matchSource = reg
+      ? TagMatchSource.REGISTRANT
+      : ref
+        ? TagMatchSource.LEGACY_REFERENCE
+        : TagMatchSource.MANUAL;
+    const { row, order } = suggestRowOrderAgainst(against, candidate.x, candidate.y);
+
+    const result = await saveGroupPhotoTag(universityId, groupPhotoId, {
+      id: undefined,
+      code: candidate.code,
+      name,
+      row,
+      order,
+      x: candidate.x,
+      y: candidate.y,
+      registrantId,
+      matchSource,
+    });
+
+    return {
+      id: result.id,
+      code: candidate.code,
+      normalizedCode,
+      name,
+      row,
+      order,
+      x: candidate.x,
+      y: candidate.y,
+      registrantId,
+      matchSource,
+      reportedProblem: false,
+    };
+  }
+
+  async function handleQuickSaveBulkOcrCandidate(
     candidateId: string,
     x: number,
     y: number,
     code: string,
   ) {
     dismissBulkOcrCandidate(candidateId);
-    void openNewTagDialog(x, y, code);
+    const saved = await saveBulkOcrCandidate(tags, { code, x, y });
+    setTags((prev) => [
+      ...applyRowOrderShift(prev, undefined, saved.row, saved.order),
+      saved,
+    ]);
+  }
+
+  async function handleAcceptAllBulkOcrCandidates() {
+    const toSave = newBulkOcrCandidates;
+    if (toSave.length === 0) return;
+    setBulkOcrAccepting(true);
+    try {
+      // Sequential, not concurrent — each save's row/order suggestion depends on the previous
+      // one already being reflected in `running`, since two candidates in the same new row need
+      // to land at consecutive orders, not both guess order 0.
+      let running = tags;
+      for (const candidate of toSave) {
+        dismissBulkOcrCandidate(candidate.id);
+        try {
+          const saved = await saveBulkOcrCandidate(running, candidate);
+          running = [...applyRowOrderShift(running, undefined, saved.row, saved.order), saved];
+          setTags(running);
+        } catch (err) {
+          console.error("Failed to save a bulk OCR candidate:", err);
+        }
+      }
+    } finally {
+      setBulkOcrAccepting(false);
+    }
   }
 
   async function handleSave(input: SavePayload) {
@@ -1164,9 +1279,9 @@ export function TagCanvas({
                       className="rounded-full border-2 border-dashed border-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/30"
                       style={{ width: 16, height: 16 }}
                       onClick={() =>
-                        handlePromoteBulkOcrCandidate(c.id, c.x, c.y, c.code)
+                        void handleQuickSaveBulkOcrCandidate(c.id, c.x, c.y, c.code)
                       }
-                      title="อ่านได้จากป้ายอัตโนมัติ — คลิกเพื่อเพิ่มคนนี้"
+                      title="อ่านได้จากป้ายอัตโนมัติ — คลิกเพื่อบันทึกคนนี้ทันที"
                     />
                     <div className="pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-emerald-700/80 px-1 text-[10px] leading-tight text-white">
                       {c.code}
@@ -1417,6 +1532,20 @@ export function TagCanvas({
                 ? `กำลังอ่านป้าย... ${bulkOcrProgress.done}/${bulkOcrProgress.total}`
                 : "อ่านป้ายอัตโนมัติ"}
             </button>
+
+            {newBulkOcrCandidates.length > 0 && (
+              <button
+                type="button"
+                disabled={bulkOcrAccepting || isBulkOcrRunning}
+                onClick={() => void handleAcceptAllBulkOcrCandidates()}
+                title="บันทึกทุกจุดที่อ่านป้ายได้เป็นแท็กจริงทันที (แถว/ลำดับ เดาให้อัตโนมัติจากตำแหน่งใกล้เคียง — แก้ทีหลังได้)"
+                className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+              >
+                {bulkOcrAccepting
+                  ? "กำลังบันทึก..."
+                  : `ยืนยันทั้งหมด (${newBulkOcrCandidates.length})`}
+              </button>
+            )}
 
             <button
               type="button"

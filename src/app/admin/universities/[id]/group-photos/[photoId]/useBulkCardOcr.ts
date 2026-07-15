@@ -12,7 +12,11 @@ export type BulkOcrCandidate = { id: string; code: string; x: number; y: number 
 // tiles read faster (fewer API calls) but bind numbers to positions less reliably.
 const TILE_SIZE = 600;
 const TILE_OVERLAP = 200;
-const CONCURRENCY = 4;
+// Each tile is already small (600x600 JPEG, well under 200KB) — per-request payload size isn't
+// the bottleneck for a big photo, the sheer number of tiles is (a wide graduation photo can tile
+// into several hundred). Higher concurrency is the lever that actually helps; matches the existing
+// per-candidate OCR batch's concurrency (see OCR_BATCH_CONCURRENCY in TagCanvas.tsx).
+const CONCURRENCY = 8;
 
 function tileStarts(size: number, tile: number, overlap: number): number[] {
   const starts: number[] = [];
