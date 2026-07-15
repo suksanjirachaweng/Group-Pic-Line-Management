@@ -316,7 +316,11 @@ function resolveRowsForNewPoints(
 
   if (unmatched.length > 0) {
     const clusters = clusterIntoRows(unmatched);
-    let rowsIncreaseDownward = true;
+    // Default (no existing tags to infer a direction from): row 0 = sitting front row, which sits
+    // LOWER in the frame (larger Y) than the standing rows behind it — confirmed against real
+    // sample data, row 0 averaged Y=3387 vs row 8's Y=1419 on an 4870-tall photo. So row number
+    // increases going *up* the frame by default, not down.
+    let rowsIncreaseDownward = false;
     if (existingTags.length >= 2) {
       const sorted = [...existingTags].sort((a, b) => a.row - b.row);
       rowsIncreaseDownward = sorted[sorted.length - 1].y >= sorted[0].y;
@@ -433,6 +437,7 @@ export function TagCanvas({
     candidates: bulkOcrCandidates,
     isDetecting: isBulkOcrRunning,
     progress: bulkOcrProgress,
+    failedTiles: bulkOcrFailedTiles,
     detect: runBulkOcr,
     dismiss: dismissBulkOcrCandidate,
   } = useBulkCardOcr();
@@ -1672,6 +1677,15 @@ export function TagCanvas({
                 ? `กำลังอ่านป้าย... ${bulkOcrProgress.done}/${bulkOcrProgress.total}`
                 : "อ่านป้ายอัตโนมัติ"}
             </button>
+
+            {!isBulkOcrRunning && bulkOcrFailedTiles > 0 && (
+              <span
+                className="rounded bg-amber-50 px-2 py-0.5 text-amber-700"
+                title="บาง tile เรียก OCR ไม่สำเร็จ (เช่น โดน rate limit ชั่วคราว) — ผลลัพธ์ที่ได้อาจน้อยกว่าที่ควร ลองกด 'อ่านป้ายอัตโนมัติ' ซ้ำได้"
+              >
+                {bulkOcrFailedTiles} tile ล้มเหลว
+              </span>
+            )}
 
             {newBulkOcrCandidates.length > 0 && (
               <button

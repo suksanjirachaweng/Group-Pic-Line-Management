@@ -36,10 +36,15 @@ export function useBulkCardOcr() {
     total: 0,
   });
   const [candidates, setCandidates] = useState<BulkOcrCandidate[]>([]);
+  // Surfaced so it's possible to tell, after a run, whether tiles are silently failing (e.g. API
+  // rate limits) rather than the photo genuinely having fewer readable cards than expected — the
+  // per-tile catch below used to only log to the console, invisible in normal use.
+  const [failedTiles, setFailedTiles] = useState(0);
 
   const detect = useCallback(async (fullBitmap: ImageBitmap, universityId: string) => {
     setIsDetecting(true);
     setCandidates([]);
+    setFailedTiles(0);
     try {
       const { width, height } = fullBitmap;
       const xStarts = tileStarts(width, TILE_SIZE, TILE_OVERLAP);
@@ -91,6 +96,7 @@ export function useBulkCardOcr() {
             }
           } catch (err) {
             console.error("Bulk card OCR failed for a tile:", err);
+            setFailedTiles((n) => n + 1);
           }
           done++;
           setProgress({ done, total: tiles.length });
@@ -112,7 +118,8 @@ export function useBulkCardOcr() {
   const reset = useCallback(() => {
     setCandidates([]);
     setProgress({ done: 0, total: 0 });
+    setFailedTiles(0);
   }, []);
 
-  return { candidates, isDetecting, progress, detect, dismiss, reset };
+  return { candidates, isDetecting, progress, failedTiles, detect, dismiss, reset };
 }
