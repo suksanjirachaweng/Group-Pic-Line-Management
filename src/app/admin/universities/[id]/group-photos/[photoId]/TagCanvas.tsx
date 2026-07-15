@@ -12,13 +12,16 @@ import {
   deleteGroupPhotoTag,
   bulkAdjustTagPositions,
   moveGroupPhotoTag,
+  updateGroupPhotoImage,
 } from "@/lib/actions/groupPhotos";
 import { ocrCardCrop } from "@/lib/actions/ocr";
 import { TagMatchSource } from "@/generated/prisma/enums";
+import { uploadLargePhoto } from "@/lib/groupPhoto/uploadLargePhoto";
 import {
   clientPointToFullRes,
   fullResToFraction,
   extractCrop,
+  extractRectCrop,
   pixelDistance,
 } from "./coordinateMapping";
 import { useFaceDetection, type FaceCandidate } from "./useFaceDetection";
@@ -225,6 +228,20 @@ export function TagCanvas({
   } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [listMode, setListMode] = useState<"problems" | "all">("problems");
+  const [cropMode, setCropMode] = useState(false);
+  // Tracked relative to the container's own top-left (not the pan/zoomed canvas — this overlay is
+  // a container-relative sibling of it, so it isn't dragged around by that transform while the
+  // user is still drawing it) so the overlay's style can be computed directly during render with
+  // no ref reads. Converted back to client coordinates — via containerRef, read in the confirm
+  // handler rather than render — then through `clientPointToFullRes` once the selection is final.
+  const [cropRect, setCropRect] = useState<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  } | null>(null);
+  const cropDragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [cropSaving, setCropSaving] = useState(false);
 
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const fullBitmapRef = useRef<ImageBitmap | null>(null);
@@ -538,7 +555,7 @@ export function TagCanvas({
     // mousedown/mouseup) — swallow that one click rather than opening a new-tag dialog. Also
     // swallow plain clicks while Space is held (Photoshop's Hand tool doesn't add anything either),
     // or while bulk-adjusting (that's a dedicated mode, not a moment to add a new person).
-    if (draggedRef.current || spacePressed || bulkAdjustMode) {
+    if (draggedRef.current || spacePressed || bulkAdjustMode || cropMode) {
       draggedRef.current = false;
       return;
     }
@@ -575,7 +592,7 @@ export function TagCanvas({
       clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
     }
-    if (bulkAdjustMode) return;
+    if (bulkAdjustMode || cropMode) return;
     const nearest = findNearestTagWithinThreshold(e.clientX, e.clientY);
     if (!nearest) return;
     setSelectedTagId(null);
@@ -762,8 +779,21 @@ export function TagCanvas({
   const dragMovedRef = useRef(false);
 
   function handleMouseDown(e: ReactMouseEvent) {
+    // Space+drag still pans even while cropMode is on, so the target area can be navigated into
+    // view before drawing the selection — checked first, same priority it already has over
+    // normal tag dragging below.
     if (spacePressed || e.button === 1) {
       draggingRef.current = { x: e.clientX - tx, y: e.clientY - ty };
+      return;
+    }
+    if (cropMode) {
+      if (e.button !== 0) return;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      cropDragStartRef.current = { x, y };
+      setCropRect({ x1: x, y1: y, x2: x, y2: y });
       return;
     }
     if (e.button !== 0 || bulkAdjustMode || e.shiftKey) return;
@@ -781,6 +811,18 @@ export function TagCanvas({
       setTy(e.clientY - draggingRef.current.y);
       return;
     }
+    if (cropMode) {
+      if (!cropDragStartRef.current) return;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setCropRect({
+        x1: cropDragStartRef.current.x,
+        y1: cropDragStartRef.current.y,
+        x2: e.clientX - rect.left,
+        y2: e.clientY - rect.top,
+      });
+      return;
+    }
     if (draggingTagRef.current) {
       const canvas = displayCanvasRef.current;
       if (!canvas) return;
@@ -796,7 +838,18 @@ export function TagCanvas({
     }
   }
   function handleMouseUp() {
-    draggingRef.current = null;
+    // A space-pan gesture always takes priority, even mid-cropMode (see handleMouseDown) — clear
+    // it here regardless of cropMode, same as before crop mode existed.
+    if (draggingRef.current) {
+      draggingRef.current = null;
+      return;
+    }
+    if (cropMode) {
+      // Leave cropRect as-is — the floating panel's confirm/cancel buttons act on it next,
+      // rather than clearing it here the way a normal tag-drag gesture resolves immediately.
+      cropDragStartRef.current = null;
+      return;
+    }
     const tagId = draggingTagRef.current;
     if (!tagId) return;
     draggingTagRef.current = null;
@@ -828,6 +881,71 @@ export function TagCanvas({
       return null;
     });
     setSelectedTagId(tagId);
+  }
+
+  function exitCropMode() {
+    setCropMode(false);
+    setCropRect(null);
+    cropDragStartRef.current = null;
+  }
+
+  async function handleCropConfirm() {
+    const canvas = displayCanvasRef.current;
+    const bitmap = fullBitmapRef.current;
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    if (!cropRect || !canvas || !bitmap || !containerRect) return;
+
+    const p1 = clientPointToFullRes(
+      containerRect.left + cropRect.x1,
+      containerRect.top + cropRect.y1,
+      canvas,
+      imageWidth,
+      imageHeight,
+    );
+    const p2 = clientPointToFullRes(
+      containerRect.left + cropRect.x2,
+      containerRect.top + cropRect.y2,
+      canvas,
+      imageWidth,
+      imageHeight,
+    );
+    const sx = Math.max(0, Math.min(p1.x, p2.x));
+    const sy = Math.max(0, Math.min(p1.y, p2.y));
+    const sw = Math.min(imageWidth - sx, Math.abs(p2.x - p1.x));
+    const sh = Math.min(imageHeight - sy, Math.abs(p2.y - p1.y));
+    if (sw < 20 || sh < 20) {
+      window.alert("พื้นที่ที่เลือกเล็กเกินไป กรุณาลากเลือกใหม่");
+      return;
+    }
+    if (
+      !window.confirm(
+        "ครอบตัดรูปแล้ว ต้องการบันทึกอัปเดตรูปภาพเลยหรือไม่? แท็กที่มีอยู่จะยังอยู่เหมือนเดิม แต่ตำแหน่งอาจเพี้ยนถ้าพื้นที่ที่ครอบตัดตัดคนที่แท็กไว้ออกไป (ปรับได้ทีหลังด้วยปุ่ม \"ปรับตำแหน่งทุกจุด\")",
+      )
+    ) {
+      return;
+    }
+
+    setCropSaving(true);
+    try {
+      const blob = await extractRectCrop(bitmap, sx, sy, sw, sh);
+      const file = new File([blob], "cropped.jpg", { type: "image/jpeg" });
+      const { url } = await uploadLargePhoto(universityId, file);
+      await updateGroupPhotoImage(universityId, groupPhotoId, {
+        imageUrl: url,
+        imageWidth: Math.round(sw),
+        imageHeight: Math.round(sh),
+      });
+      // A full reload, not router.refresh() — confirmed router.refresh() alone doesn't get the
+      // already-mounted canvas to actually redraw the new image (new props arrive, but nothing
+      // visibly updates until the next real navigation), even though the underlying [imageUrl]
+      // effect looks like it should re-run. A reload guarantees the new image is what loads.
+      window.location.reload();
+    } catch (err) {
+      window.alert(`บันทึกรูปที่ครอบตัดไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`);
+    } finally {
+      setCropSaving(false);
+      exitCropMode();
+    }
   }
 
   return (
@@ -1002,6 +1120,49 @@ export function TagCanvas({
             </div>
           </div>
 
+          {/* Selection rectangle — a container-relative sibling of the pan/zoomed inner div (not
+              inside it), tracked in container-relative coordinates already (see `cropRect`), so
+              it stays exactly where the mouse is dragging regardless of the current zoom/pan
+              transform, with no ref reads needed here during render. */}
+          {cropMode && cropRect && (
+            <div
+              className="pointer-events-none absolute z-20 border-2 border-dashed border-yellow-400 bg-yellow-400/10"
+              style={{
+                left: Math.min(cropRect.x1, cropRect.x2),
+                top: Math.min(cropRect.y1, cropRect.y2),
+                width: Math.abs(cropRect.x2 - cropRect.x1),
+                height: Math.abs(cropRect.y2 - cropRect.y1),
+              }}
+            />
+          )}
+
+          {cropMode && (
+            <div className="absolute right-3 top-3 z-20 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-xl">
+              <p className="mb-2 text-xs font-semibold text-gray-900">ครอบตัดรูปภาพ</p>
+              <p className="mb-3 text-xs text-gray-500">
+                ลากบนรูปเพื่อเลือกพื้นที่ที่ต้องการครอบตัด
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={exitCropMode}
+                  disabled={cropSaving}
+                  className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCropConfirm}
+                  disabled={cropSaving || !cropRect}
+                  className="flex-1 rounded-md bg-indigo-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {cropSaving ? "กำลังบันทึก..." : "ยืนยันครอบตัด"}
+                </button>
+              </div>
+            </div>
+          )}
+
           {!loaded && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <div className="flex items-center gap-3 rounded-lg bg-white px-5 py-4 shadow-xl">
@@ -1141,7 +1302,7 @@ export function TagCanvas({
             </>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-md border border-gray-300 px-2 py-1">
             <label
               className="flex items-center gap-1.5 text-gray-600"
               title="อ่านตัวเลขจากป้ายอัตโนมัติตอนเพิ่มคนใหม่/ตรวจจับใบหน้า — ปิดถ้าไม่อยากเสียเวลา/ค่าใช้จ่าย OCR"
@@ -1174,6 +1335,24 @@ export function TagCanvas({
                 : hasDetected
                   ? "ตรวจจับแล้ว"
                   : "ตรวจจับใบหน้า"}
+            </button>
+
+            <button
+              type="button"
+              disabled={!loaded || bulkAdjustMode}
+              onClick={() => {
+                setSelectedTagId(null);
+                setDialogInitial(null);
+                setCropMode(true);
+              }}
+              title="เลือกพื้นที่บนรูปเพื่อครอบตัดแล้วบันทึกแทนที่รูปเดิม"
+              className={`rounded-md border px-3 py-1.5 font-medium disabled:opacity-50 ${
+                cropMode
+                  ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                  : "border-gray-300 text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              ครอบตัดรูป
             </button>
           </div>
 

@@ -55,3 +55,22 @@ export async function extractCrop(
 export function pixelDistance(ax: number, ay: number, bx: number, by: number): number {
   return Math.hypot(ax - bx, ay - by);
 }
+
+/**
+ * Crops an arbitrary full-resolution rectangle out of the decoded bitmap, at that rectangle's own
+ * native resolution (unlike `extractCrop`, which always outputs a fixed-size square for OCR) —
+ * for replacing the whole photo with a user-selected region via the tagging canvas's crop tool.
+ */
+export async function extractRectCrop(
+  fullBitmap: ImageBitmap,
+  sx: number,
+  sy: number,
+  sw: number,
+  sh: number,
+): Promise<Blob> {
+  const canvas = new OffscreenCanvas(Math.round(sw), Math.round(sh));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("2D canvas context unavailable");
+  ctx.drawImage(fullBitmap, sx, sy, sw, sh, 0, 0, Math.round(sw), Math.round(sh));
+  return canvas.convertToBlob({ type: "image/jpeg", quality: 0.92 });
+}
