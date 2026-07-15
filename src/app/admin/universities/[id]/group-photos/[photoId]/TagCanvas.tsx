@@ -25,7 +25,6 @@ import {
   extractRectCrop,
   pixelDistance,
 } from "./coordinateMapping";
-import { useFaceDetection, type FaceCandidate } from "./useFaceDetection";
 import { useBulkCardOcr } from "./useBulkCardOcr";
 import {
   TagEditDialog,
@@ -48,7 +47,6 @@ import { ZoomButtons } from "@/lib/groupPhoto/ZoomButtons";
 
 const DISPLAY_MAX_WIDTH = 3500;
 const OCR_CROP_SIZE = 360;
-const OCR_BATCH_CONCURRENCY = 6;
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 6;
 const ZOOM_STEP = 1.25;
@@ -61,38 +59,6 @@ function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
   return (
     el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable
-  );
-}
-
-/** Concurrency-limited OCR pass over every detected face candidate, so results stream in as they
- * resolve rather than waiting for the whole (possibly 300+ person) batch to finish. */
-async function runOcrBatch(
-  bitmap: ImageBitmap,
-  points: FaceCandidate[],
-  universityId: string,
-  onResult: (id: string, code: string | null) => void,
-) {
-  let next = 0;
-  async function worker() {
-    while (next < points.length) {
-      const point = points[next++];
-      try {
-        const crop = await extractCrop(bitmap, point.x, point.y, OCR_CROP_SIZE);
-        const fd = new FormData();
-        fd.set("crop", crop, "crop.jpg");
-        const result = await ocrCardCrop(universityId, fd);
-        onResult(point.id, result.code ?? null);
-      } catch (err) {
-        console.error("Batch OCR failed for a face candidate:", err);
-        onResult(point.id, null);
-      }
-    }
-  }
-  await Promise.all(
-    Array.from(
-      { length: Math.min(OCR_BATCH_CONCURRENCY, points.length) },
-      worker,
-    ),
   );
 }
 
@@ -381,17 +347,10 @@ export function TagCanvas({
   );
   const [ocrEnabled, setOcrEnabled] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
-  const [candidateCodes, setCandidateCodes] = useState<
-    Record<string, string | null>
-  >({});
-  const [candidateOcrPending, setCandidateOcrPending] = useState<Set<string>>(
-    new Set(),
-  );
   const [displayFields, setDisplayFields] = useState<Set<TagDisplayField>>(
     () => new Set<TagDisplayField>(["code", "name", "line"]),
   );
   const [labelAngle, setLabelAngle] = useState(-30);
-  const [hasDetected, setHasDetected] = useState(false);
   const [spacePressed, setSpacePressed] = useState(false);
   const [bulkAdjustMode, setBulkAdjustMode] = useState(false);
   const [bulkDx, setBulkDx] = useState(0);
@@ -426,13 +385,6 @@ export function TagCanvas({
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const fullBitmapRef = useRef<ImageBitmap | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const {
-    candidates: faceCandidates,
-    isDetecting,
-    detect: runFaceDetection,
-    dismiss: dismissCandidate,
-  } = useFaceDetection();
 
   const {
     candidates: bulkOcrCandidates,
@@ -613,36 +565,6 @@ export function TagCanvas({
     };
   }, [imageUrl]);
 
-  // Every time a face-detection pass adds candidates, OCR them all right away — the recognized
-  // number shows up on the marker itself (no dialog needed) and gets reused, not re-fetched, if
-  // the candidate is later promoted into a real tag.
-  useEffect(() => {
-    if (!ocrEnabled) return;
-    const bitmap = fullBitmapRef.current;
-    if (!bitmap) return;
-    const todo = faceCandidates.filter(
-      (c) => !(c.id in candidateCodes) && !candidateOcrPending.has(c.id),
-    );
-    if (todo.length === 0) return;
-
-    (async () => {
-      setCandidateOcrPending((prev) => {
-        const next = new Set(prev);
-        for (const c of todo) next.add(c.id);
-        return next;
-      });
-      await runOcrBatch(bitmap, todo, universityId, (id, code) => {
-        setCandidateCodes((prev) => ({ ...prev, [id]: code }));
-        setCandidateOcrPending((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      });
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- candidateCodes/candidateOcrPending are read for the "already handled" check, not for re-triggering
-  }, [faceCandidates, universityId, ocrEnabled]);
-
   // Suggests where a new point probably belongs, so adding a missed person doesn't always start
   // from a blank "row 0" guess — both fields stay manually editable in the dialog either way,
   // same as the legacy tool where a human always picked the row themselves.
@@ -793,12 +715,6 @@ export function TagCanvas({
     if (!nearest) return;
     setSelectedTagId(null);
     setDialogInitial(nearest);
-  }
-
-  function handlePromoteCandidate(candidateId: string, x: number, y: number) {
-    const knownCode = candidateCodes[candidateId];
-    dismissCandidate(candidateId);
-    void openNewTagDialog(x, y, knownCode ?? undefined);
   }
 
   // Saves a bulk-OCR candidate straight to a real tag (no dialog) — code and position are already
@@ -1430,41 +1346,6 @@ export function TagCanvas({
                   </div>
                 );
               })}
-              {faceCandidates.map((c) => {
-                const { xFrac, yFrac } = fullResToFraction(
-                  c.x,
-                  c.y,
-                  imageWidth,
-                  imageHeight,
-                );
-                const code = candidateCodes[c.id];
-                const pending = candidateOcrPending.has(c.id);
-                return (
-                  <div
-                    key={c.id}
-                    className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2"
-                    style={{ left: `${xFrac * 100}%`, top: `${yFrac * 100}%` }}
-                  >
-                    <button
-                      type="button"
-                      className="rounded-full border-2 border-dashed border-sky-400 bg-sky-400/10 hover:bg-sky-400/30"
-                      style={{ width: 16, height: 16 }}
-                      onClick={() => handlePromoteCandidate(c.id, c.x, c.y)}
-                      title="คลิกเพื่อเพิ่มคนนี้"
-                    />
-                    {code && (
-                      <div className="pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-sky-700/80 px-1 text-[10px] leading-tight text-white">
-                        {code}
-                      </div>
-                    )}
-                    {pending && !code && (
-                      <div className="pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap text-[10px] text-sky-200">
-                        …
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
               {newBulkOcrCandidates.map((c) => {
                 const { xFrac, yFrac } = fullResToFraction(
                   c.x,
@@ -1690,7 +1571,7 @@ export function TagCanvas({
           <div className="flex items-center gap-2 rounded-md border border-gray-300 px-2 py-1">
             <label
               className="flex items-center gap-1.5 text-gray-600"
-              title="อ่านตัวเลขจากป้ายอัตโนมัติตอนเพิ่มคนใหม่/ตรวจจับใบหน้า — ปิดถ้าไม่อยากเสียเวลา/ค่าใช้จ่าย OCR"
+              title="อ่านตัวเลขจากป้ายอัตโนมัติตอนเพิ่มคนใหม่ — ปิดถ้าไม่อยากเสียเวลา/ค่าใช้จ่าย OCR"
             >
               <input
                 type="checkbox"
@@ -1702,34 +1583,12 @@ export function TagCanvas({
 
             <button
               type="button"
-              disabled={!loaded || isDetecting || hasDetected}
-              onClick={() => {
-                if (!fullBitmapRef.current) return;
-                setHasDetected(true);
-                runFaceDetection(fullBitmapRef.current);
-              }}
-              title={
-                hasDetected
-                  ? "ตรวจจับไปแล้วในรูปนี้ — กดซ้ำจะได้ผลลัพธ์เดิม"
-                  : "ช่วยแนะนำตำแหน่งคนที่ยังไม่ได้แท็ก"
-              }
-              className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              {isDetecting
-                ? "กำลังตรวจจับ..."
-                : hasDetected
-                  ? "ตรวจจับแล้ว"
-                  : "ตรวจจับใบหน้า"}
-            </button>
-
-            <button
-              type="button"
               disabled={!loaded || isBulkOcrRunning}
               onClick={() => {
                 if (!fullBitmapRef.current) return;
                 void runBulkOcr(fullBitmapRef.current, universityId);
               }}
-              title="อ่านตัวเลขบนป้ายทั้งภาพโดยตรง (ไม่ต้องพึ่งการตรวจจับใบหน้าก่อน) — ตำแหน่งที่ได้เป็นค่าประมาณ ควรตรวจสอบก่อนบันทึกจริง"
+              title="อ่านตัวเลขบนป้ายทั้งภาพโดยตรง — ตำแหน่งที่ได้เป็นค่าประมาณ ควรตรวจสอบก่อนบันทึกจริง"
               className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
               {isBulkOcrRunning
