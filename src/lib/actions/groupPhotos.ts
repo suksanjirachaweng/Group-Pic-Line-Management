@@ -80,6 +80,30 @@ export async function bulkAdjustTagPositions(
   revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
 }
 
+/**
+ * Overwrites row/order for many tags at once from a freshly-computed, already collision-free
+ * layout (see clusterIntoRows/handleFixAllRowsAndOrder in TagCanvas.tsx) — unlike saveGroupPhotoTag,
+ * which shifts everyone else's order to make room for inserting *one* new/moved tag, this assumes
+ * the caller has already assigned every tag a distinct (row, order) pair, so it's a plain bulk
+ * overwrite rather than anything collision-aware.
+ */
+export async function bulkUpdateTagRowOrder(
+  universityId: string,
+  groupPhotoId: string,
+  updates: { id: string; row: number; order: number }[],
+): Promise<void> {
+  await requireUniversityAccess(universityId);
+  await prisma.$transaction(
+    updates.map((u) =>
+      prisma.groupPhotoTag.update({
+        where: { id: u.id, groupPhotoId },
+        data: { row: u.row, order: u.order },
+      }),
+    ),
+  );
+  revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
+}
+
 export type SaveTagInput = {
   id?: string; // present = update an existing tag, absent = create a new one
   code: string;

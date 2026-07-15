@@ -11,6 +11,7 @@ import {
   saveGroupPhotoTag,
   deleteGroupPhotoTag,
   bulkAdjustTagPositions,
+  bulkUpdateTagRowOrder,
   moveGroupPhotoTag,
   updateGroupPhotoImage,
 } from "@/lib/actions/groupPhotos";
@@ -442,6 +443,7 @@ export function TagCanvas({
     dismiss: dismissBulkOcrCandidate,
   } = useBulkCardOcr();
   const [bulkOcrAccepting, setBulkOcrAccepting] = useState(false);
+  const [fixingRowsOrder, setFixingRowsOrder] = useState(false);
 
   // Skip suggesting a candidate for someone who already has a tag — bulk OCR re-reads the whole
   // photo from scratch each run, so on a partially-tagged photo most of its hits are already-
@@ -891,6 +893,63 @@ export function TagCanvas({
       }
     } finally {
       setBulkOcrAccepting(false);
+    }
+  }
+
+  // Re-clusters every already-saved tag on this photo into rows from scratch (see
+  // clusterIntoRows) and overwrites row/order to match — for fixing a photo whose row/order
+  // assignments came out wrong (e.g. tags saved before the row-clustering fix, or tags imported
+  // from elsewhere with no row/order at all), without re-running OCR at all since every tag's
+  // code and position are already correct and untouched.
+  async function handleFixAllRowsAndOrder() {
+    if (tags.length === 0) return;
+    if (
+      !window.confirm(
+        `จัดเรียงแถวและลำดับใหม่ทั้งหมดจากตำแหน่งจุดที่มีอยู่ (${tags.length} คน) โดยไม่แตะรหัส/ชื่อ/ตำแหน่งจุดเลย ต้องการดำเนินการต่อหรือไม่?`,
+      )
+    ) {
+      return;
+    }
+    setFixingRowsOrder(true);
+    try {
+      // Row 0 = sitting front row, which sits LOWER in the frame (larger Y) than the standing
+      // rows behind it — same convention confirmed against real sample data in
+      // resolveRowsForNewPoints. There's nothing else to infer a direction from here, since this
+      // recomputes every tag's row at once rather than adding a few new ones to what's already
+      // correctly numbered.
+      const clusters = clusterIntoRows(tags);
+      const ordered = [...clusters].sort(
+        (a, b) =>
+          b.reduce((s, t) => s + t.y, 0) / b.length -
+          a.reduce((s, t) => s + t.y, 0) / a.length,
+      );
+
+      const updates: { id: string; row: number; order: number }[] = [];
+      const byId = new Map<string, TagRecord>();
+      ordered.forEach((cluster, row) => {
+        const sorted = [...cluster].sort((a, b) => a.x - b.x);
+        sorted.forEach((tag, order) => {
+          byId.set(tag.id, { ...tag, row, order });
+          if (tag.row !== row || tag.order !== order) {
+            updates.push({ id: tag.id, row, order });
+          }
+        });
+      });
+
+      if (updates.length > 0) {
+        await bulkUpdateTagRowOrder(universityId, groupPhotoId, updates);
+        setTags((prev) => prev.map((t) => byId.get(t.id) ?? t));
+      }
+      window.alert(
+        updates.length > 0
+          ? `จัดเรียงใหม่แล้ว ${updates.length} คน เป็น ${ordered.length} แถว`
+          : "แถวและลำดับที่มีอยู่ถูกต้องอยู่แล้ว ไม่มีอะไรต้องแก้",
+      );
+    } catch (err) {
+      console.error("Failed to fix row/order:", err);
+      window.alert("จัดเรียงแถวและลำดับไม่สำเร็จ ลองใหม่อีกครั้ง");
+    } finally {
+      setFixingRowsOrder(false);
     }
   }
 
@@ -1700,6 +1759,16 @@ export function TagCanvas({
                   : `ยืนยันทั้งหมด (${newBulkOcrCandidates.length})`}
               </button>
             )}
+
+            <button
+              type="button"
+              disabled={tags.length === 0 || fixingRowsOrder}
+              onClick={() => void handleFixAllRowsAndOrder()}
+              title="จัดเรียงแถวและลำดับของทุกคนที่แท็กไว้แล้วใหม่ จากตำแหน่งจุดที่มีอยู่ ไม่เรียก OCR ซ้ำ ไม่แตะรหัส/ชื่อ/ตำแหน่งจุด"
+              className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {fixingRowsOrder ? "กำลังจัดเรียง..." : "แก้แถวและลำดับ"}
+            </button>
 
             <button
               type="button"
