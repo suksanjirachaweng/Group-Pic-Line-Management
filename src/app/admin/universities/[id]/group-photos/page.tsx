@@ -58,18 +58,40 @@ const ACTIVE_PHOTOS_TAB_CLASS = "border-b-2 border-emerald-500 px-1 py-3 text-sm
 const INACTIVE_PHOTOS_TAB_CLASS =
   "border-b-2 border-transparent px-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700";
 
+type PhotoSortKey = "upload" | "name";
+
 export default async function GroupPhotosPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ q?: string; page?: string; tab?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    page?: string;
+    tab?: string;
+    sort?: string;
+    dir?: string;
+    psort?: string;
+    pdir?: string;
+  }>;
 }) {
   const { id: universityId } = await params;
-  const { q, page: pageParam, tab: tabParam, sort: sortParam, dir: dirParam } = await searchParams;
+  const {
+    q,
+    page: pageParam,
+    tab: tabParam,
+    sort: sortParam,
+    dir: dirParam,
+    psort: psortParam,
+    pdir: pdirParam,
+  } = await searchParams;
   const tab: "data" | "photos" = tabParam === "data" ? "data" : "photos";
   const sort = SORT_COLUMNS.some((c) => c.key === sortParam) ? (sortParam as SortKey) : undefined;
   const dir: "asc" | "desc" = dirParam === "desc" ? "desc" : "asc";
+  // Separate `psort`/`pdir` query params (not `sort`/`dir`) so switching tabs never carries the
+  // other tab's sort state along by accident.
+  const photoSort: PhotoSortKey = psortParam === "name" ? "name" : "upload";
+  const photoDir: "asc" | "desc" = pdirParam === "desc" ? "desc" : "asc";
 
   const session = await getServerSession(authOptions);
   const user = session!.user;
@@ -120,7 +142,7 @@ export default async function GroupPhotosPage({
       {tab === "data" ? (
         <DataTab universityId={universityId} q={q} pageParam={pageParam} sort={sort} dir={dir} />
       ) : (
-        <PhotosTab universityId={universityId} />
+        <PhotosTab universityId={universityId} photoSort={photoSort} photoDir={photoDir} />
       )}
     </div>
   );
@@ -311,21 +333,60 @@ async function DataTab({
   );
 }
 
-async function PhotosTab({ universityId }: { universityId: string }) {
+async function PhotosTab({
+  universityId,
+  photoSort,
+  photoDir,
+}: {
+  universityId: string;
+  photoSort: PhotoSortKey;
+  photoDir: "asc" | "desc";
+}) {
   const photos = await prisma.groupPhoto.findMany({
     where: { universityId },
-    orderBy: { sortOrder: "asc" },
+    orderBy: photoSort === "name" ? { name: photoDir } : { sortOrder: photoDir },
     include: { _count: { select: { tags: true } } },
   });
 
+  function photoSortHref(key: PhotoSortKey) {
+    const sp = new URLSearchParams();
+    sp.set("tab", "photos");
+    sp.set("psort", key);
+    sp.set("pdir", photoSort === key && photoDir === "asc" ? "desc" : "asc");
+    return `?${sp.toString()}`;
+  }
+
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <SharePhotoLinksButton
           selectFormId={PHOTO_SELECT_FORM_ID}
           photos={photos.map((p) => ({ id: p.id, name: p.name }))}
         />
-        <UploadGroupPhotoButton universityId={universityId} />
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-500">เรียงตาม:</span>
+          <div className="flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
+            <Link
+              href={photoSortHref("upload")}
+              className={`flex items-center gap-1 rounded px-2 py-1 font-medium ${
+                photoSort === "upload" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              ลำดับอัปโหลด
+              {photoSort === "upload" && <span aria-hidden>{photoDir === "asc" ? "▲" : "▼"}</span>}
+            </Link>
+            <Link
+              href={photoSortHref("name")}
+              className={`flex items-center gap-1 rounded px-2 py-1 font-medium ${
+                photoSort === "name" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              ชื่อ
+              {photoSort === "name" && <span aria-hidden>{photoDir === "asc" ? "▲" : "▼"}</span>}
+            </Link>
+          </div>
+          <UploadGroupPhotoButton universityId={universityId} />
+        </div>
       </div>
 
       {photos.length === 0 ? (
