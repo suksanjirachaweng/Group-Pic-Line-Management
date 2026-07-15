@@ -212,6 +212,129 @@ function suggestRowOrderAgainst(
   return { row: nearest.row, order };
 }
 
+// A row in one of these photos has a gentle side-to-side tilt (camera angle, curved staging) but
+// never anything close to vertical — so two points are "the same row" if the line between them is
+// shallow (a real Y-jump of more than ~35% of the X distance between them, plus a small constant
+// floor for near-vertical short hops, isn't a row tilt, it's a different row).
+const ROW_SLOPE_ALPHA = 0.35;
+const ROW_SLOPE_BETA = 40;
+
+/**
+ * Groups points into physical rows by growing each row left-to-right: a point joins whichever
+ * in-progress row it's most nearly level with its rightmost member so far (within the slope
+ * tolerance above), rather than whichever single point anywhere is closest in raw distance —
+ * plain nearest-point breaks down once a photo has many rows close together, since a point
+ * directly above/below in the NEXT row over is very often nearer in raw distance than its own
+ * row-mate two people away.
+ */
+function clusterIntoRows<T extends { x: number; y: number }>(points: T[]): T[][] {
+  const byX = [...points].sort((a, b) => a.x - b.x);
+  const clusters: T[][] = [];
+  for (const p of byX) {
+    let bestCluster = -1;
+    let bestDy = Infinity;
+    for (let i = 0; i < clusters.length; i++) {
+      const tail = clusters[i][clusters[i].length - 1];
+      const dx = Math.abs(p.x - tail.x);
+      const dy = Math.abs(p.y - tail.y);
+      if (dy <= ROW_SLOPE_ALPHA * dx + ROW_SLOPE_BETA && dy < bestDy) {
+        bestDy = dy;
+        bestCluster = i;
+      }
+    }
+    if (bestCluster >= 0) clusters[bestCluster].push(p);
+    else clusters.push([p]);
+  }
+  return clusters;
+}
+
+/** Least-squares line y = a + b*x through a set of points — a single point gives a flat (b=0) line
+ * through it, since that's the least-committal guess for a row we've only seen one member of. */
+function fitLine(points: { x: number; y: number }[]): { a: number; b: number } {
+  if (points.length === 1) return { a: points[0].y, b: 0 };
+  const meanX = points.reduce((s, p) => s + p.x, 0) / points.length;
+  const meanY = points.reduce((s, p) => s + p.y, 0) / points.length;
+  let num = 0;
+  let den = 0;
+  for (const p of points) {
+    num += (p.x - meanX) * (p.y - meanY);
+    den += (p.x - meanX) ** 2;
+  }
+  const b = den === 0 ? 0 : num / den;
+  return { a: meanY - b * meanX, b };
+}
+
+/**
+ * Decides which existing row (if any) each of a batch of new points belongs to.
+ *
+ * Tried clustering every point (existing tags + new candidates) together by raw adjacency first —
+ * it works well when the whole batch is dense (most of a row gets read at once, e.g. the very
+ * first OCR pass on a blank photo), but falls apart the moment there are gaps: on a
+ * mostly-already-tagged photo, bulk OCR mainly turns up scattered stragglers, and one missing
+ * point is enough for the adjacency chain to jump into a neighboring row and drag the rest of the
+ * chain with it (verified with synthetic tests — accuracy collapsed well below 50% with realistic
+ * gaps, even at 90% density).
+ *
+ * Fixed by leaning on the existing tags directly instead of adjacency: fit a line through each
+ * already-tagged row (robust to missing points, unlike a chain — a row's overall trend barely
+ * moves when a few members are absent) and match each new point against whichever row's line
+ * predicts it best, only accepting a match that's clearly better than the next-best row's guess.
+ * Only candidates that don't confidently match any existing row (including everything, on a
+ * completely blank photo) fall back to clustering among themselves.
+ */
+function resolveRowsForNewPoints(
+  existingTags: TagRecord[],
+  newPoints: { key: string; x: number; y: number }[],
+): Map<string, number> {
+  const byRow = new Map<number, { x: number; y: number }[]>();
+  for (const t of existingTags) {
+    if (!byRow.has(t.row)) byRow.set(t.row, []);
+    byRow.get(t.row)!.push({ x: t.x, y: t.y });
+  }
+  const lines = new Map<number, { a: number; b: number }>();
+  for (const [row, pts] of byRow) lines.set(row, fitLine(pts));
+
+  const resolved = new Map<string, number>();
+  const unmatched: { key: string; x: number; y: number }[] = [];
+
+  for (const p of newPoints) {
+    const residuals = [...lines.entries()]
+      .map(([row, line]) => ({ row, resid: Math.abs(p.y - (line.a + line.b * p.x)) }))
+      .sort((a, b) => a.resid - b.resid);
+    if (residuals.length === 0) {
+      unmatched.push(p);
+    } else if (residuals.length === 1) {
+      // Only one row tagged on the whole photo so far — no alternative to compare against, so
+      // it's the best available guess.
+      resolved.set(p.key, residuals[0].row);
+    } else if (residuals[0].resid < 0.5 * residuals[1].resid) {
+      resolved.set(p.key, residuals[0].row);
+    } else {
+      unmatched.push(p);
+    }
+  }
+
+  if (unmatched.length > 0) {
+    const clusters = clusterIntoRows(unmatched);
+    let rowsIncreaseDownward = true;
+    if (existingTags.length >= 2) {
+      const sorted = [...existingTags].sort((a, b) => a.row - b.row);
+      rowsIncreaseDownward = sorted[sorted.length - 1].y >= sorted[0].y;
+    }
+    const maxExistingRow =
+      existingTags.length > 0 ? Math.max(...existingTags.map((t) => t.row)) : -1;
+    const order = clusters
+      .map((c, i) => ({ i, avgY: c.reduce((s, p) => s + p.y, 0) / c.length }))
+      .sort((a, b) => (rowsIncreaseDownward ? a.avgY - b.avgY : b.avgY - a.avgY));
+    order.forEach(({ i }, rank) => {
+      const row = maxExistingRow + 1 + rank;
+      for (const p of clusters[i]) resolved.set(p.key, row);
+    });
+  }
+
+  return resolved;
+}
+
 export function TagCanvas({
   universityId,
   groupPhotoId,
@@ -315,14 +438,23 @@ export function TagCanvas({
   } = useBulkCardOcr();
   const [bulkOcrAccepting, setBulkOcrAccepting] = useState(false);
 
-  // Skip suggesting a candidate for someone who already has a tag near that position — bulk OCR
-  // re-reads the whole photo from scratch each run, so on a partially-tagged photo most of its
-  // hits are already-tagged people, not new ones.
-  const ALREADY_TAGGED_THRESHOLD = 100;
+  // Skip suggesting a candidate for someone who already has a tag — bulk OCR re-reads the whole
+  // photo from scratch each run, so on a partially-tagged photo most of its hits are already-
+  // tagged people, not new ones. Matching by CODE (exact, scale-independent) catches this far more
+  // reliably than a position-distance cutoff would: a fixed pixel threshold has to somehow account
+  // for OCR's own position noise (which scales with how big the cards are in a given photo, not a
+  // constant), whereas the same physical card reads the same digits whether the estimated position
+  // drifted 20px or 200px. Distance is kept only as a fallback for the rare case a code was
+  // misread differently between the original tagging and this OCR pass.
+  const ALREADY_TAGGED_DISTANCE_FALLBACK = 100;
   const newBulkOcrCandidates = useMemo(() => {
-    return bulkOcrCandidates.filter((c) =>
-      tags.every((t) => pixelDistance(c.x, c.y, t.x, t.y) >= ALREADY_TAGGED_THRESHOLD),
-    );
+    const existingCodes = new Set(tags.map((t) => t.normalizedCode));
+    return bulkOcrCandidates.filter((c) => {
+      if (existingCodes.has(c.code)) return false;
+      return tags.every(
+        (t) => pixelDistance(c.x, c.y, t.x, t.y) >= ALREADY_TAGGED_DISTANCE_FALLBACK,
+      );
+    });
   }, [bulkOcrCandidates, tags]);
 
   const registrantByCode = useMemo(() => {
@@ -664,13 +796,14 @@ export function TagCanvas({
 
   // Saves a bulk-OCR candidate straight to a real tag (no dialog) — code and position are already
   // known from the OCR pass, so the only things left to fill in are name/registrant match (same
-  // code lookup TagEditDialog does when typing a code) and row/order (same nearest-neighbor
-  // heuristic as adding a person manually). Takes an explicit tag list rather than reading `tags`
-  // directly so a sequential batch save (see handleAcceptAllBulkOcrCandidates) can chain each
-  // suggestion off its own running list instead of possibly-stale component state.
+  // code lookup TagEditDialog does when typing a code) and order within its (already-decided —
+  // see resolveRowsForNewPoints) row. Takes an explicit tag list rather than reading `tags`
+  // directly so a sequential batch save (see handleAcceptAllBulkOcrCandidates) computes each
+  // order off its own running list instead of possibly-stale component state.
   async function saveBulkOcrCandidate(
     against: TagRecord[],
     candidate: { code: string; x: number; y: number },
+    row: number,
   ): Promise<TagRecord> {
     const normalizedCode = candidate.code.replace(/\D+/g, "");
     const reg = registrantByCode.get(normalizedCode);
@@ -682,7 +815,7 @@ export function TagCanvas({
       : ref
         ? TagMatchSource.LEGACY_REFERENCE
         : TagMatchSource.MANUAL;
-    const { row, order } = suggestRowOrderAgainst(against, candidate.x, candidate.y);
+    const order = against.filter((t) => t.row === row && t.x < candidate.x).length;
 
     const result = await saveGroupPhotoTag(universityId, groupPhotoId, {
       id: undefined,
@@ -718,7 +851,8 @@ export function TagCanvas({
     code: string,
   ) {
     dismissBulkOcrCandidate(candidateId);
-    const saved = await saveBulkOcrCandidate(tags, { code, x, y });
+    const row = resolveRowsForNewPoints(tags, [{ key: candidateId, x, y }]).get(candidateId)!;
+    const saved = await saveBulkOcrCandidate(tags, { code, x, y }, row);
     setTags((prev) => [
       ...applyRowOrderShift(prev, undefined, saved.row, saved.order),
       saved,
@@ -730,14 +864,20 @@ export function TagCanvas({
     if (toSave.length === 0) return;
     setBulkOcrAccepting(true);
     try {
-      // Sequential, not concurrent — each save's row/order suggestion depends on the previous
-      // one already being reflected in `running`, since two candidates in the same new row need
-      // to land at consecutive orders, not both guess order 0.
+      // Rows for the whole batch are decided together upfront (clustering candidates against
+      // each other, not just against what's already tagged) — only the per-row insertion order
+      // has to be computed one at a time as `running` grows, since two candidates landing in the
+      // same new row need consecutive orders, not both guessing order 0.
+      const rows = resolveRowsForNewPoints(
+        tags,
+        toSave.map((c) => ({ key: c.id, x: c.x, y: c.y })),
+      );
       let running = tags;
       for (const candidate of toSave) {
         dismissBulkOcrCandidate(candidate.id);
         try {
-          const saved = await saveBulkOcrCandidate(running, candidate);
+          const row = rows.get(candidate.id)!;
+          const saved = await saveBulkOcrCandidate(running, candidate, row);
           running = [...applyRowOrderShift(running, undefined, saved.row, saved.order), saved];
           setTags(running);
         } catch (err) {
