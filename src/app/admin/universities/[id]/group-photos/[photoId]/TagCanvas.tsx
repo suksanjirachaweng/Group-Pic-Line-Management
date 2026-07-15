@@ -1137,7 +1137,16 @@ export function TagCanvas({
           )}
 
           {cropMode && (
-            <div className="absolute right-3 top-3 z-20 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-xl">
+            <div
+              className="absolute right-3 top-3 z-20 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-xl"
+              // This panel sits inside the same container that has onMouseDown={handleMouseDown}
+              // for drawing the selection — without stopping propagation here, clicking either
+              // button first bubbles a mousedown into that handler, which (still in cropMode)
+              // resets cropRect to a zero-size rect at the button's own position, so
+              // handleCropConfirm's onClick then reads a corrupted, always-too-small selection
+              // instead of the one just drawn.
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               <p className="mb-2 text-xs font-semibold text-gray-900">ครอบตัดรูปภาพ</p>
               <p className="mb-3 text-xs text-gray-500">
                 ลากบนรูปเพื่อเลือกพื้นที่ที่ต้องการครอบตัด
