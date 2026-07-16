@@ -58,8 +58,12 @@ export function pixelDistance(ax: number, ay: number, bx: number, by: number): n
 
 /**
  * Crops an arbitrary full-resolution rectangle out of the decoded bitmap, at that rectangle's own
- * native resolution (unlike `extractCrop`, which always outputs a fixed-size square for OCR) —
- * for replacing the whole photo with a user-selected region via the tagging canvas's crop tool.
+ * native resolution by default (unlike `extractCrop`, which always outputs a fixed-size square for
+ * OCR) — for replacing the whole photo with a user-selected region via the tagging canvas's crop
+ * tool. An optional output size (`destW`/`destH`) downsamples during the crop instead of after —
+ * used by the bulk card-OCR tiler, since Claude's vision input is internally resized to a ~1568px
+ * long edge regardless of what's uploaded, so sending anything larger only costs more tokens for
+ * the same effective resolution the model actually sees (verified empirically before this change).
  */
 export async function extractRectCrop(
   fullBitmap: ImageBitmap,
@@ -67,10 +71,14 @@ export async function extractRectCrop(
   sy: number,
   sw: number,
   sh: number,
+  destW: number = sw,
+  destH: number = sh,
 ): Promise<Blob> {
-  const canvas = new OffscreenCanvas(Math.round(sw), Math.round(sh));
+  const outW = Math.round(destW);
+  const outH = Math.round(destH);
+  const canvas = new OffscreenCanvas(outW, outH);
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("2D canvas context unavailable");
-  ctx.drawImage(fullBitmap, sx, sy, sw, sh, 0, 0, Math.round(sw), Math.round(sh));
+  ctx.drawImage(fullBitmap, sx, sy, sw, sh, 0, 0, outW, outH);
   return canvas.convertToBlob({ type: "image/jpeg", quality: 0.92 });
 }

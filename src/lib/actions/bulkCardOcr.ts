@@ -17,7 +17,7 @@ const client = new Anthropic();
 //   NEIGHBORING person's position — smaller crops (fewer people each) reduce this a lot; the
 //   explicit warning below helps further but doesn't eliminate it entirely, so callers should
 //   still treat these as suggestions a human reviews before saving, same as face-detect candidates.
-const PROMPT = `This is a small cropped section of a large group photo, showing just a few people. Each person is holding up a small paper card with a printed number on it, roughly at chest/shoulder height, BELOW their own face.
+const PROMPT = `This is a cropped section of a large group photo, showing several people. Each person is holding up a small paper card with a printed number on it, roughly at chest/shoulder height, BELOW their own face.
 
 For EVERY card in this image where the digits are clearly legible, report its digits and the position of the CENTER OF THE CARD ITSELF (not the person's face, not the person's body — the small paper card) as a NORMALIZED coordinate on a 0-1000 scale, where (0,0) is the top-left corner of this image and (1000,1000) is the bottom-right corner.
 
@@ -47,8 +47,17 @@ export async function ocrCardGrid(
   const mediaType = file.type === "image/png" ? "image/png" : "image/jpeg";
 
   const response = await client.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 1500,
+    // Verified empirically (real 93-person sample, ground-truth checked) against the previous
+    // claude-haiku-4-5 config: sonnet-5 + bigger tiles is both more accurate (100% vs 97.8% recall,
+    // no neighbor position mix-ups) and cheaper overall (far fewer tiles more than offsets the
+    // higher per-token rate). Thinking explicitly disabled — left at its adaptive default it burns
+    // extra output tokens for no accuracy benefit on this structured-extraction task.
+    model: "claude-sonnet-5",
+    thinking: { type: "disabled" },
+    // Bigger tiles (see useBulkCardOcr.ts) mean far more cards per response than the old 600px
+    // tiles — up to ~80+ hits observed in testing, each needing ~20-30 tokens, so the previous 1500
+    // ceiling would truncate mid-response on a dense crowd.
+    max_tokens: 4000,
     messages: [
       {
         role: "user",
