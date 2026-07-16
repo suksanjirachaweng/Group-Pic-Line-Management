@@ -32,8 +32,10 @@ export function AdminChrome({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-6">
             <span className="flex items-center gap-2 font-semibold text-white">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto rounded-full" />
+              <span className="flex items-center rounded-md bg-white px-1.5 py-1 shadow-sm">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/nsl-logo.png" alt="Newsalon" className="h-6 w-auto" />
+              </span>
               Group Pic Registration <span className="text-indigo-200">— Admin</span>
             </span>
             <nav className="flex gap-4 text-sm">
