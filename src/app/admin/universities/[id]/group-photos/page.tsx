@@ -82,6 +82,7 @@ export default async function GroupPhotosPage({
     q?: string;
     page?: string;
     tab?: string;
+    dtab?: string;
     sort?: string;
     dir?: string;
     psort?: string;
@@ -93,12 +94,14 @@ export default async function GroupPhotosPage({
     q,
     page: pageParam,
     tab: tabParam,
+    dtab: dtabParam,
     sort: sortParam,
     dir: dirParam,
     psort: psortParam,
     pdir: pdirParam,
   } = await searchParams;
   const tab: "data" | "photos" = tabParam === "data" ? "data" : "photos";
+  const dataSubTab: "list" | "alerts" = dtabParam === "alerts" ? "alerts" : "list";
   const sort = SORT_COLUMNS.some((c) => c.key === sortParam) ? (sortParam as SortKey) : undefined;
   const dir: "asc" | "desc" = dirParam === "desc" ? "desc" : "asc";
   // Separate `psort`/`pdir` query params (not `sort`/`dir`) so switching tabs never carries the
@@ -153,7 +156,14 @@ export default async function GroupPhotosPage({
       </div>
 
       {tab === "data" ? (
-        <DataTab universityId={universityId} q={q} pageParam={pageParam} sort={sort} dir={dir} />
+        <DataTab
+          universityId={universityId}
+          q={q}
+          pageParam={pageParam}
+          sort={sort}
+          dir={dir}
+          dataSubTab={dataSubTab}
+        />
       ) : (
         <PhotosTab universityId={universityId} photoSort={photoSort} photoDir={photoDir} />
       )}
@@ -167,12 +177,14 @@ async function DataTab({
   pageParam,
   sort,
   dir,
+  dataSubTab,
 }: {
   universityId: string;
   q: string | undefined;
   pageParam: string | undefined;
   sort: SortKey | undefined;
   dir: "asc" | "desc";
+  dataSubTab: "list" | "alerts";
 }) {
   const formFields = await prisma.formFieldDefinition.findMany({ where: { universityId } });
   const phoneFieldKey = formFields.find((f) => f.fieldType === "PHONE")?.key;
@@ -289,97 +301,144 @@ async function DataTab({
     return `?${sp.toString()}`;
   }
 
+  // "list"-only params (search/sort/page) never carry over onto the alerts sub-tab, since it has
+  // neither — switching back to "list" restores them from the current values.
+  function dataSubTabHref(next: "list" | "alerts") {
+    const sp = new URLSearchParams();
+    sp.set("tab", "data");
+    if (next === "alerts") {
+      sp.set("dtab", "alerts");
+    } else {
+      if (q) sp.set("q", q);
+      if (sort) {
+        sp.set("sort", sort);
+        sp.set("dir", dir);
+      }
+    }
+    return `?${sp.toString()}`;
+  }
+
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
       <LegacyReferenceUploadForm universityId={universityId} registrantCount={registrantRows.length} />
 
-      <CrossPhotoDuplicateAlerts groups={mergedDuplicateGroups} />
-
       <div className="mt-5 border-t border-gray-100 pt-4">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-gray-900">
-            รายชื่อทั้งหมด (รวมทุกแหล่งข้อมูล)
-            <span className="ml-2 text-xs font-normal text-gray-400">{filtered.length} รายการ</span>
-          </h3>
-          <div className="flex flex-wrap items-center gap-2">
-            <StripNameTitlesButton universityId={universityId} />
-            <form method="get" className="flex gap-2">
-              <input type="hidden" name="tab" value="data" />
-              {sort && <input type="hidden" name="sort" value={sort} />}
-              {sort && <input type="hidden" name="dir" value={dir} />}
-              <input
-                type="text"
-                name="q"
-                defaultValue={q}
-                placeholder="ค้นหาชื่อหรือ CODE"
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-              />
-              <button
-                type="submit"
-                className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
-              >
-                ค้นหา
-              </button>
-            </form>
-          </div>
+        <div className="mb-4 flex w-fit items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
+          <Link
+            href={dataSubTabHref("list")}
+            className={`rounded px-3 py-1.5 font-medium ${
+              dataSubTab === "list" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            รายชื่อทั้งหมด <span className="text-xs opacity-80">({filtered.length})</span>
+          </Link>
+          <Link
+            href={dataSubTabHref("alerts")}
+            className={`rounded px-3 py-1.5 font-medium ${
+              dataSubTab === "alerts" ? "bg-amber-500 text-white" : "text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            รายการแจ้งเตือน{" "}
+            {mergedDuplicateGroups.length > 0 && (
+              <span className="text-xs opacity-80">({mergedDuplicateGroups.length})</span>
+            )}
+          </Link>
         </div>
 
-        <div className="overflow-x-auto rounded-md border border-gray-200">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50 text-left text-gray-500">
-              <tr>
-                {SORT_COLUMNS.map(({ key, label }) => (
-                  <th key={key} className="whitespace-nowrap px-3 py-2">
-                    <Link href={sortHref(key)} className="flex items-center gap-1 hover:text-gray-900">
-                      {label}
-                      <span className="w-3 text-gray-400">{sort === key ? (dir === "asc" ? "▲" : "▼") : ""}</span>
-                    </Link>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {pageRows.map((r) => (
-                <tr key={r.key}>
-                  <td className="px-3 py-1.5">{r.name}</td>
-                  <td className="px-3 py-1.5 font-mono">{r.code}</td>
-                  <td className="px-3 py-1.5">{r.phone}</td>
-                  <td className="px-3 py-1.5">
-                    <span className={`rounded px-1.5 py-0.5 text-xs ${COMBINED_ROW_SOURCE_CLASS[r.source]}`}>
-                      {r.source}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {pageRows.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-3 text-gray-400">
-                    ไม่พบข้อมูลที่ตรงกับการค้นหา
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {dataSubTab === "alerts" ? (
+          <CrossPhotoDuplicateAlerts groups={mergedDuplicateGroups} />
+        ) : (
+          <>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-gray-900">
+                รายชื่อทั้งหมด (รวมทุกแหล่งข้อมูล)
+                <span className="ml-2 text-xs font-normal text-gray-400">{filtered.length} รายการ</span>
+              </h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <StripNameTitlesButton universityId={universityId} />
+                <form method="get" className="flex gap-2">
+                  <input type="hidden" name="tab" value="data" />
+                  {sort && <input type="hidden" name="sort" value={sort} />}
+                  {sort && <input type="hidden" name="dir" value={dir} />}
+                  <input
+                    type="text"
+                    name="q"
+                    defaultValue={q}
+                    placeholder="ค้นหาชื่อหรือ CODE"
+                    className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
+                  >
+                    ค้นหา
+                  </button>
+                </form>
+              </div>
+            </div>
 
-        {totalPages > 1 && (
-          <div className="mt-3 flex items-center gap-3 text-sm">
-            <Link
-              href={pageHref(Math.max(1, page - 1))}
-              className={page <= 1 ? "pointer-events-none text-gray-300" : "text-gray-600 hover:underline"}
-            >
-              ก่อนหน้า
-            </Link>
-            <span className="text-gray-500">
-              หน้า {page} จาก {totalPages}
-            </span>
-            <Link
-              href={pageHref(Math.min(totalPages, page + 1))}
-              className={page >= totalPages ? "pointer-events-none text-gray-300" : "text-gray-600 hover:underline"}
-            >
-              ถัดไป
-            </Link>
-          </div>
+            <div className="overflow-x-auto rounded-md border border-gray-200">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 text-left text-gray-500">
+                  <tr>
+                    {SORT_COLUMNS.map(({ key, label }) => (
+                      <th key={key} className="whitespace-nowrap px-3 py-2">
+                        <Link href={sortHref(key)} className="flex items-center gap-1 hover:text-gray-900">
+                          {label}
+                          <span className="w-3 text-gray-400">
+                            {sort === key ? (dir === "asc" ? "▲" : "▼") : ""}
+                          </span>
+                        </Link>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {pageRows.map((r) => (
+                    <tr key={r.key}>
+                      <td className="px-3 py-1.5">{r.name}</td>
+                      <td className="px-3 py-1.5 font-mono">{r.code}</td>
+                      <td className="px-3 py-1.5">{r.phone}</td>
+                      <td className="px-3 py-1.5">
+                        <span className={`rounded px-1.5 py-0.5 text-xs ${COMBINED_ROW_SOURCE_CLASS[r.source]}`}>
+                          {r.source}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {pageRows.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-3 text-gray-400">
+                        ไม่พบข้อมูลที่ตรงกับการค้นหา
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="mt-3 flex items-center gap-3 text-sm">
+                <Link
+                  href={pageHref(Math.max(1, page - 1))}
+                  className={page <= 1 ? "pointer-events-none text-gray-300" : "text-gray-600 hover:underline"}
+                >
+                  ก่อนหน้า
+                </Link>
+                <span className="text-gray-500">
+                  หน้า {page} จาก {totalPages}
+                </span>
+                <Link
+                  href={pageHref(Math.min(totalPages, page + 1))}
+                  className={
+                    page >= totalPages ? "pointer-events-none text-gray-300" : "text-gray-600 hover:underline"
+                  }
+                >
+                  ถัดไป
+                </Link>
+              </div>
+            )}
+          </>
         )}
       </div>
     </section>
@@ -396,10 +455,16 @@ const DUPLICATE_KIND_LABEL: Record<"code" | "name", string> = { code: "CODE", na
  * group) so a long list of duplicates stays scannable instead of stacking into many small boxes.
  */
 function CrossPhotoDuplicateAlerts({ groups }: { groups: MergedDuplicateGroup[] }) {
-  if (groups.length === 0) return null;
+  if (groups.length === 0) {
+    return (
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        ไม่พบ CODE หรือชื่อที่ซ้ำกันคนละภาพ
+      </div>
+    );
+  }
 
   return (
-    <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
       <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-amber-800">
         <span aria-hidden>⚠️</span>
         รายการแจ้งเตือน — พบ CODE หรือชื่อซ้ำกันคนละภาพ
