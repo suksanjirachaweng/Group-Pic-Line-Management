@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { uploadLargePhoto } from "@/lib/groupPhoto/uploadLargePhoto";
 import { createGroupPhoto } from "@/lib/actions/groupPhotos";
@@ -10,6 +10,24 @@ import { MobileCropTool } from "./MobileCropTool";
 type University = { id: string; name: string };
 
 type Step = "select-university" | "upload" | "crop" | "saving" | "done";
+
+const STEP_COLORS: Record<string, { bg: string; text: string }> = {
+  "1": { bg: "bg-indigo-600", text: "text-indigo-600" },
+  "2": { bg: "bg-emerald-600", text: "text-emerald-600" },
+  "3": { bg: "bg-amber-500", text: "text-amber-600" },
+};
+
+function StepHeading({ step, children }: { step: "1" | "2" | "3"; children: ReactNode }) {
+  const colors = STEP_COLORS[step];
+  return (
+    <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-gray-900">
+      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${colors.bg}`}>
+        {step}
+      </span>
+      {children}
+    </h2>
+  );
+}
 
 export function QuickTagWizard({ universities }: { universities: University[] }) {
   const [step, setStep] = useState<Step>(universities.length === 1 ? "upload" : "select-university");
@@ -68,12 +86,27 @@ export function QuickTagWizard({ universities }: { universities: University[] })
 
   return (
     <div className="flex h-dvh flex-col bg-gray-50">
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
-        <Link href="/admin/universities" className="text-sm text-gray-500 hover:text-gray-700">
-          ← กลับ
-        </Link>
-        <span className="text-sm font-semibold text-gray-900">อัปโหลดด่วน</span>
-        <span className="w-10" aria-hidden />
+      <header className="border-b-2 border-indigo-500 bg-white px-4 py-3">
+        <div className="flex items-center justify-between">
+          <Link href="/admin/universities" className="text-sm text-gray-500 hover:text-gray-700">
+            ← กลับ
+          </Link>
+          <div className="flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/nsl-logo.png" alt="Newsalon" className="h-6 w-auto" />
+            <span className="text-sm font-semibold text-gray-900">อัปโหลดด่วน</span>
+          </div>
+          <span className="w-10" aria-hidden />
+        </div>
+        <div className="mt-3 flex h-1.5 gap-1 overflow-hidden rounded-full bg-gray-100">
+          <div className="flex-1 rounded-full bg-indigo-600" />
+          <div className={`flex-1 rounded-full ${step === "select-university" ? "bg-gray-100" : "bg-emerald-600"}`} />
+          <div
+            className={`flex-1 rounded-full ${
+              step === "crop" || step === "saving" || step === "done" ? "bg-amber-500" : "bg-gray-100"
+            }`}
+          />
+        </div>
       </header>
 
       <main className="flex-1 overflow-y-auto">
@@ -85,7 +118,7 @@ export function QuickTagWizard({ universities }: { universities: University[] })
 
         {step === "select-university" && (
           <div className="p-4">
-            <h2 className="mb-3 text-base font-semibold text-gray-900">1. เลือกมหาวิทยาลัย</h2>
+            <StepHeading step="1">เลือกมหาวิทยาลัย</StepHeading>
             <ul className="space-y-2">
               {universities.map((u) => (
                 <li key={u.id}>
@@ -110,9 +143,7 @@ export function QuickTagWizard({ universities }: { universities: University[] })
 
         {step === "upload" && (
           <div className="p-4">
-            <h2 className="mb-3 text-base font-semibold text-gray-900">
-              2. อัปโหลดรูป{university ? ` — ${university.name}` : ""}
-            </h2>
+            <StepHeading step="2">อัปโหลดรูป{university ? ` — ${university.name}` : ""}</StepHeading>
             {universities.length > 1 && (
               <button
                 type="button"
@@ -136,7 +167,6 @@ export function QuickTagWizard({ universities }: { universities: University[] })
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
