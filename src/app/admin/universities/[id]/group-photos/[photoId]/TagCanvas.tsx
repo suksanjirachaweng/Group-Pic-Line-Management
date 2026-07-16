@@ -14,6 +14,7 @@ import {
   bulkUpdateTagRowOrder,
   moveGroupPhotoTag,
   updateGroupPhotoImage,
+  resetGroupPhotoTagHistory,
 } from "@/lib/actions/groupPhotos";
 import { ocrCardCrop } from "@/lib/actions/ocr";
 import { TagMatchSource } from "@/generated/prisma/enums";
@@ -787,6 +788,10 @@ export function TagCanvas({
     if (toSave.length === 0) return;
     setBulkOcrAccepting(true);
     try {
+      // A bulk-OCR run redefines a big chunk of the photo's tagging state at once — the prior
+      // per-tag edit history no longer reads as a meaningful audit trail against that new
+      // baseline, so it's cleared rather than kept alongside it.
+      await resetGroupPhotoTagHistory(universityId, groupPhotoId);
       // Rows for the whole batch are decided together upfront (clustering candidates against
       // each other, not just against what's already tagged) — only the per-row insertion order
       // has to be computed one at a time as `running` grows, since two candidates landing in the
@@ -853,6 +858,10 @@ export function TagCanvas({
       });
 
       if (updates.length > 0) {
+        // Same reasoning as the bulk-OCR accept-all path: re-clustering every tag's row/order at
+        // once redefines the photo's layout wholesale, so the prior edit history no longer reads
+        // as a meaningful audit trail against it.
+        await resetGroupPhotoTagHistory(universityId, groupPhotoId);
         await bulkUpdateTagRowOrder(universityId, groupPhotoId, updates);
         setTags((prev) => prev.map((t) => byId.get(t.id) ?? t));
       }

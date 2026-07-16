@@ -30,6 +30,10 @@ export async function updateTagViaPublicLink(
   const code = String(formData.get("code") ?? "").trim();
   if (!code) return { error: "กรุณากรอกหมายเลข" };
 
+  // Only worth a history entry when the code or name actually changed — a resave of the same
+  // values isn't a correction anyone needs a before/after record of.
+  const changed = code !== tag.code || name !== tag.name;
+
   await prisma.$transaction([
     prisma.groupPhotoTag.update({
       where: { id: tagId },
@@ -41,9 +45,13 @@ export async function updateTagViaPublicLink(
         publicLinkEditedAt: new Date(),
       },
     }),
-    prisma.groupPhotoTagHistory.create({
-      data: { tagId, code, name, row: tag.row, order: tag.order, source: "PUBLIC_LINK" },
-    }),
+    ...(changed
+      ? [
+          prisma.groupPhotoTagHistory.create({
+            data: { tagId, code, name, row: tag.row, order: tag.order, source: "PUBLIC_LINK" as const },
+          }),
+        ]
+      : []),
   ]);
 
   revalidatePath(`/photo-review/${token}`);
@@ -72,10 +80,12 @@ export async function updateGroupPhotoTagViaValidatePage(
   const code = String(formData.get("code") ?? "").trim();
   if (!code) return { error: "กรุณากรอกหมายเลข" };
 
-  // A save where the name is unchanged from what's already on file is a confirmation, not an
-  // edit — recorded on a separate flag so the sidebar badge can say "ยืนยัน" instead of "แก้ไข",
-  // and skipped from history (nothing actually changed to show a before/after for).
-  const nameChanged = name !== tag.name.trim();
+  // A save where neither the name nor the code changed from what's already on file is a
+  // confirmation, not an edit — recorded on a separate flag so the sidebar badge can say
+  // "ยืนยัน" instead of "แก้ไข", and skipped from history (nothing actually changed to show a
+  // before/after for). Code changes count too, not just name — a code-only fix is still a real
+  // correction.
+  const changed = name !== tag.name.trim() || code !== tag.code;
 
   await prisma.$transaction([
     prisma.groupPhotoTag.update({
@@ -84,12 +94,12 @@ export async function updateGroupPhotoTagViaValidatePage(
         name,
         code,
         normalizedCode: normalizeCode(code),
-        ...(nameChanged
+        ...(changed
           ? { editedViaPublicLink: true, publicLinkEditedAt: new Date() }
           : { confirmedViaPublicLink: true, confirmedAt: new Date() }),
       },
     }),
-    ...(nameChanged
+    ...(changed
       ? [
           prisma.groupPhotoTagHistory.create({
             data: { tagId, code, name, row: tag.row, order: tag.order, source: "PUBLIC_LINK" as const },

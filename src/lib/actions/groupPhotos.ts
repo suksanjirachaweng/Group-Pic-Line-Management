@@ -146,7 +146,7 @@ export async function saveGroupPhotoTag(
     if (input.id) {
       const existing = await tx.groupPhotoTag.findUniqueOrThrow({
         where: { id: input.id, groupPhotoId },
-        select: { row: true, order: true },
+        select: { row: true, order: true, code: true, name: true },
       });
       if (existing.row === input.row) {
         if (input.order > existing.order) {
@@ -180,7 +180,16 @@ export async function saveGroupPhotoTag(
           data: { order: { increment: 1 } },
         });
       }
-      return tx.groupPhotoTag.update({ where: { id: input.id, groupPhotoId }, data });
+      const updated = await tx.groupPhotoTag.update({ where: { id: input.id, groupPhotoId }, data });
+      // Only worth a history entry when the code or name actually changed — a pure row/order
+      // move (or a no-op resave) isn't a correction anyone needs a before/after record of, and
+      // spamming identical-looking entries buried the ones that mattered.
+      if (existing.code !== input.code || existing.name !== input.name) {
+        await tx.groupPhotoTagHistory.create({
+          data: { tagId: updated.id, code: updated.code, name: updated.name, row: updated.row, order: updated.order, source: "ADMIN" },
+        });
+      }
+      return updated;
     }
 
     await tx.groupPhotoTag.updateMany({
@@ -224,8 +233,10 @@ export async function updateGroupPhotoTitle(
 
 /**
  * Direct drag-to-reposition on the admin canvas — a plain click selects the nearest tag, dragging
- * it (without holding Space, which is reserved for panning) moves just its x/y. Logs to
- * GroupPhotoTagHistory like every other position/data change so the audit trail stays complete.
+ * it (without holding Space, which is reserved for panning) moves just its x/y. GroupPhotoTagHistory
+ * only tracks code/name/row/order (not position), and a drag never touches any of those — logging
+ * one here was always a pure duplicate of whatever the tag's current values already were, which is
+ * exactly what was spamming the history log with identical-looking entries on every nudge.
  */
 export async function moveGroupPhotoTag(
   universityId: string,
@@ -235,18 +246,7 @@ export async function moveGroupPhotoTag(
   y: number,
 ): Promise<void> {
   await requireUniversityAccess(universityId);
-  const tag = await prisma.groupPhotoTag.findUnique({
-    where: { id: tagId, groupPhotoId },
-    select: { code: true, name: true, row: true, order: true },
-  });
-  if (!tag) throw new Error("ไม่พบข้อมูลนี้ในรูปนี้");
-
-  await prisma.$transaction([
-    prisma.groupPhotoTag.update({ where: { id: tagId }, data: { x, y } }),
-    prisma.groupPhotoTagHistory.create({
-      data: { tagId, code: tag.code, name: tag.name, row: tag.row, order: tag.order, source: "ADMIN" },
-    }),
-  ]);
+  await prisma.groupPhotoTag.update({ where: { id: tagId, groupPhotoId }, data: { x, y } });
   revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
 }
 
@@ -278,6 +278,19 @@ export async function getGroupPhotoTagHistory(universityId: string, tagId: strin
     orderBy: { createdAt: "desc" },
   });
   return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+}
+
+/**
+ * Wipes every tag's edit history for a photo — called before a bulk operation that redefines the
+ * whole photo's tagging state at once (accepting a batch of bulk-OCR candidates, or re-clustering
+ * every tag's row/order from scratch). After either of those, the prior per-tag history no longer
+ * reads as a meaningful audit trail against the new baseline, so it's cleared rather than kept
+ * alongside it.
+ */
+export async function resetGroupPhotoTagHistory(universityId: string, groupPhotoId: string): Promise<void> {
+  await requireUniversityAccess(universityId);
+  await prisma.groupPhotoTagHistory.deleteMany({ where: { tag: { groupPhotoId } } });
+  revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
 }
 
 export type TitleHistoryEntry = {
