@@ -26,13 +26,23 @@ const OCR_UPLOAD_SIZE = 1568;
 // once, not total wall time the way it did with hundreds of tiny tiles.
 const CONCURRENCY = 8;
 
+// Steps forward by (tile - overlap) each time, but SNAPS the final tile flush against the far
+// edge instead of letting it fall wherever the fixed step lands — otherwise, whenever `size` isn't
+// an exact multiple of the step, the last tile gets clipped to whatever remainder is left (observed
+// as low as ~28% of a normal tile's width/height on real photo dimensions), which is a badly
+// squashed, unusually-shaped crop that measurably degrades Claude's position-within-tile estimate
+// (reported as systematic downward drift, worst for whichever rows land in that undersized tile).
+// The snap means the last tile overlaps its neighbor by more than the nominal `overlap`, which is
+// harmless — de-duplication already assumes multiple tiles will often see the same card.
 function tileStarts(size: number, tile: number, overlap: number): number[] {
+  if (size <= tile) return [0];
   const starts: number[] = [];
   let s = 0;
-  while (s < size) {
+  while (true) {
     starts.push(s);
     if (s + tile >= size) break;
-    s += tile - overlap;
+    const next = s + tile - overlap;
+    s = next + tile > size ? size - tile : next;
   }
   return starts;
 }
