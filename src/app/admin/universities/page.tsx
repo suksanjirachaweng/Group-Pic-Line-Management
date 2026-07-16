@@ -19,16 +19,24 @@ export default async function UniversitiesPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between gap-2">
         <h1 className="text-lg font-semibold text-gray-900">Universities</h1>
-        {isSuperadmin && (
+        <div className="flex items-center gap-2">
           <Link
-            href="/admin/universities/new"
-            className="rounded-md bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white"
+            href="/admin/quick-tag"
+            className="rounded-md bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white"
           >
-            New university
+            📱 อัปโหลดด่วน
           </Link>
-        )}
+          {isSuperadmin && (
+            <Link
+              href="/admin/universities/new"
+              className="rounded-md bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white"
+            >
+              New university
+            </Link>
+          )}
+        </div>
       </div>
 
       {universities.length === 0 ? (
