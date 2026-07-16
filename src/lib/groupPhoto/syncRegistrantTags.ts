@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { normalizeCode } from "./normalizeCode";
+import { resolveRegistrantGroupPhotoName } from "./registrantDisplayName";
 import { TagMatchSource, GroupPhotoStatus, TagHistorySource } from "@/generated/prisma/enums";
 
 /**
@@ -22,7 +23,7 @@ export async function syncRegistrantGroupPhotoTags(universityId: string, registr
   const data = (registrant.data ?? {}) as Record<string, unknown>;
   const rawCode = data.group_photo_index;
   const currentCode = typeof rawCode === "string" ? normalizeCode(rawCode) : "";
-  const name = registrant.displayName?.trim() || "(ไม่มีชื่อ)";
+  const name = resolveRegistrantGroupPhotoName(registrant);
 
   // Any tag either currently claimed by this registrant (may need releasing, if their code moved
   // on) or matching their current code (may need claiming) — never touches a photo an admin has

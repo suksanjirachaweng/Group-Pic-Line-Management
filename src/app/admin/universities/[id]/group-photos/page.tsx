@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
+import { resolveRegistrantGroupPhotoName } from "@/lib/groupPhoto/registrantDisplayName";
 import {
   findCrossPhotoDuplicatesByCode,
   findCrossPhotoDuplicatesByName,
@@ -270,7 +271,7 @@ async function DataTab({
       const code = typeof rawCode === "string" && rawCode.trim() ? rawCode : "—";
       return {
         key: `registrant-${r.id}`,
-        name: r.displayName ?? "(ไม่มีชื่อ)",
+        name: resolveRegistrantGroupPhotoName(r),
         code,
         phone: typeof phoneValue === "string" && phoneValue.trim() ? phoneValue : "—",
         source: "LINE" as const,

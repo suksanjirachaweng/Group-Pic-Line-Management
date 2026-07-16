@@ -10,6 +10,7 @@ import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { interpolateTemplate } from "@/lib/rules/evaluate";
 import { TagMatchSource, GroupPhotoStatus, TagHistorySource } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
+import { resolveRegistrantGroupPhotoName } from "@/lib/groupPhoto/registrantDisplayName";
 
 export async function createGroupPhoto(
   universityId: string,
@@ -375,7 +376,7 @@ export async function autoSyncGroupPhotoTags(universityId: string, groupPhotoId:
     if (typeof rawCode !== "string" || !rawCode.trim()) continue;
     const normalized = normalizeCode(rawCode);
     if (!normalized) continue;
-    registrantByCode.set(normalized, { id: r.id, name: r.displayName ?? "(ไม่มีชื่อ)" });
+    registrantByCode.set(normalized, { id: r.id, name: resolveRegistrantGroupPhotoName(r) });
   }
   const referenceByCode = new Map(referenceRows.map((r) => [r.normalizedCode, r]));
 

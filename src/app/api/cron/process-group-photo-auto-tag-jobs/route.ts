@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { isAuthorizedCronRequest } from "@/lib/cronAuth";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
+import { resolveRegistrantGroupPhotoName } from "@/lib/groupPhoto/registrantDisplayName";
 import { OCR_UPLOAD_SIZE, CONCURRENCY, computeTiles } from "@/lib/groupPhoto/tileGeometry";
 import { resolveRowsForNewPoints, applyRowOrderShift, clusterIntoRows } from "@/lib/groupPhoto/rowClustering";
 import { runCardGridOcr } from "@/lib/actions/bulkCardOcr";
@@ -136,7 +137,7 @@ async function processAcceptingStage(job: ClaimedJob) {
       if (typeof rawCode !== "string" || !rawCode.trim()) continue;
       const normalized = normalizeCode(rawCode);
       if (!normalized) continue;
-      registrantByCode.set(normalized, { id: r.id, name: r.displayName ?? "(ไม่มีชื่อ)" });
+      registrantByCode.set(normalized, { id: r.id, name: resolveRegistrantGroupPhotoName(r) });
     }
     const referenceByCode = new Map<string, { name: string }>();
     for (const r of referenceRows) referenceByCode.set(r.normalizedCode, { name: r.name });
