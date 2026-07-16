@@ -47,6 +47,57 @@ import { TagListSidebar } from "@/lib/groupPhoto/TagListSidebar";
 import { colorForRow } from "@/lib/groupPhoto/rowColor";
 import { ZoomButtons } from "@/lib/groupPhoto/ZoomButtons";
 
+// Small inline glyphs for the toolbar buttons below — `stroke="currentColor"` so each one
+// picks up its button's own text color (gray by default, indigo when crop mode is active, etc.)
+// instead of needing a separate colored badge like the export buttons use.
+function CropGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <path d="M4 1v10a1 1 0 0 0 1 1h10" />
+      <path d="M12 15V5a1 1 0 0 0-1-1H1" />
+    </svg>
+  );
+}
+
+function ScanTextGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.5 4.5v-2a1 1 0 0 1 1-1h2" />
+      <path d="M14.5 4.5v-2a1 1 0 0 1-1-1h-2" />
+      <path d="M1.5 11.5v2a1 1 0 0 0 1 1h2" />
+      <path d="M14.5 11.5v2a1 1 0 0 1-1 1h-2" />
+      <path d="M4 6.5h8M4 9.5h5" />
+    </svg>
+  );
+}
+
+function MagnifierGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <circle cx="7" cy="7" r="5" />
+      <path d="M14.5 14.5 11 11" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ReorderGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <path d="M6 3H2M9 8H2M6 13H2" />
+      <path d="M12 2.5v11M12 2.5 9.5 5M12 2.5 14.5 5M12 13.5 9.5 11M12 13.5 14.5 11" />
+    </svg>
+  );
+}
+
+function MoveAllGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 1.5v13M1.5 8h13" />
+      <path d="M8 1.5 6 3.5M8 1.5 10 3.5M8 14.5 6 12.5M8 14.5 10 12.5M1.5 8l2-2M1.5 8l2 2M14.5 8l-2-2M14.5 8l-2 2" />
+    </svg>
+  );
+}
+
 const DISPLAY_MAX_WIDTH = 3500;
 const OCR_CROP_SIZE = 360;
 const MIN_SCALE = 0.05;
@@ -357,7 +408,9 @@ export function TagCanvas({
   const [dialogInitial, setDialogInitial] = useState<DialogInitial | null>(
     null,
   );
-  const [ocrEnabled, setOcrEnabled] = useState(false);
+  // Per-tag OCR-on-add is no longer offered as a toggle in the toolbar (bulk OCR covers the
+  // whole photo instead) — kept as a plain constant rather than deleting the gated code path below.
+  const ocrEnabled = false;
   const [ocrLoading, setOcrLoading] = useState(false);
   const [displayFields, setDisplayFields] = useState<Set<TagDisplayField>>(
     () => new Set<TagDisplayField>(["code", "name", "line"]),
@@ -1611,17 +1664,24 @@ export function TagCanvas({
           )}
 
           <div className="flex items-center gap-2 rounded-md border border-gray-300 px-2 py-1">
-            <label
-              className="flex items-center gap-1.5 text-gray-600"
-              title="อ่านตัวเลขจากป้ายอัตโนมัติตอนเพิ่มคนใหม่ — ปิดถ้าไม่อยากเสียเวลา/ค่าใช้จ่าย OCR"
+            <button
+              type="button"
+              disabled={!loaded || bulkAdjustMode}
+              onClick={() => {
+                setSelectedTagId(null);
+                setDialogInitial(null);
+                setCropMode(true);
+              }}
+              title="เลือกพื้นที่บนรูปเพื่อครอบตัดแล้วบันทึกแทนที่รูปเดิม"
+              className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 font-medium disabled:opacity-50 ${
+                cropMode
+                  ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                  : "border-gray-300 text-gray-700 hover:bg-gray-50"
+              }`}
             >
-              <input
-                type="checkbox"
-                checked={ocrEnabled}
-                onChange={(e) => setOcrEnabled(e.target.checked)}
-              />
-              OCR
-            </label>
+              <CropGlyph />
+              ครอบตัดรูป
+            </button>
 
             <button
               type="button"
@@ -1631,8 +1691,9 @@ export function TagCanvas({
                 void runBulkOcr(fullBitmapRef.current, universityId);
               }}
               title="อ่านตัวเลขบนป้ายทั้งภาพโดยตรง — ตำแหน่งที่ได้เป็นค่าประมาณ ควรตรวจสอบก่อนบันทึกจริง"
-              className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
+              <ScanTextGlyph />
               {isBulkOcrRunning
                 ? `กำลังอ่านป้าย... ${bulkOcrProgress.done}/${bulkOcrProgress.total}`
                 : "อ่านป้ายอัตโนมัติ"}
@@ -1652,8 +1713,9 @@ export function TagCanvas({
                 type="button"
                 onClick={() => setShowOcrDebug(true)}
                 title="ดูภาพและตำแหน่งที่ OCR อ่านได้ของแต่ละ tile ทีละใบ เพื่อตรวจสอบว่าจุดไหนอ่านผิด/ตำแหน่งเพี้ยนมาจาก tile ไหน"
-                className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
+                className="flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
               >
+                <MagnifierGlyph />
                 ตรวจสอบผล OCR ({bulkOcrTileDebug.length} tile)
               </button>
             )}
@@ -1677,27 +1739,10 @@ export function TagCanvas({
               disabled={tags.length === 0 || fixingRowsOrder}
               onClick={() => void handleFixAllRowsAndOrder()}
               title="จัดเรียงแถวและลำดับของทุกคนที่แท็กไว้แล้วใหม่ จากตำแหน่งจุดที่มีอยู่ ไม่เรียก OCR ซ้ำ ไม่แตะรหัส/ชื่อ/ตำแหน่งจุด"
-              className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
+              <ReorderGlyph />
               {fixingRowsOrder ? "กำลังจัดเรียง..." : "แก้แถวและลำดับ"}
-            </button>
-
-            <button
-              type="button"
-              disabled={!loaded || bulkAdjustMode}
-              onClick={() => {
-                setSelectedTagId(null);
-                setDialogInitial(null);
-                setCropMode(true);
-              }}
-              title="เลือกพื้นที่บนรูปเพื่อครอบตัดแล้วบันทึกแทนที่รูปเดิม"
-              className={`rounded-md border px-3 py-1.5 font-medium disabled:opacity-50 ${
-                cropMode
-                  ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                  : "border-gray-300 text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              ครอบตัดรูป
             </button>
           </div>
 
@@ -1707,8 +1752,9 @@ export function TagCanvas({
               disabled={tags.length === 0 || bulkAdjustMode}
               onClick={() => setBulkAdjustMode(true)}
               title="เลื่อน/ย่อขยายจุดที่แท็กไว้ทั้งหมดพร้อมกัน — ใช้เมื่ออัปเดตรูปแล้วตำแหน่งเพี้ยน"
-              className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
+              <MoveAllGlyph />
               ปรับตำแหน่งทุกจุด
             </button>
             <label className="flex items-center gap-1 text-gray-600">
