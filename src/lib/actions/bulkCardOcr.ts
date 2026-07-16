@@ -1,6 +1,7 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
+import sharp from "sharp";
 import { requireUniversityAccess } from "@/lib/authz";
 
 const client = new Anthropic();
@@ -8,24 +9,32 @@ const client = new Anthropic();
 // Reading multiple cards per crop (instead of one crop per person, see ocr.ts) needs a very
 // different prompt than the single-card case — verified empirically against a real dense sample
 // photo before shipping this:
-// - Raw pixel coordinates come back wrong (the model appears to report positions against its own
-//   internally-resized view of the image, not the actual crop dimensions sent) — normalized
-//   0-1000 coordinates fix that, since they're scale-invariant.
+// - Asking for a 0-1000 NORMALIZED coordinate (an earlier version of this prompt) turned out to
+//   be unreliable on real, dense/complex photos: checked against a real 93-person tile, 77% of
+//   returned hits fell outside the instructed [0,1000] range entirely (values up to ~1550), with
+//   values suspiciously close to the tile's actual uploaded pixel size — i.e. the model was
+//   silently reporting real pixel coordinates instead of normalizing, for a majority of hits.
+//   Switching to explicitly telling the model the image's real pixel dimensions and asking for
+//   real pixel coordinates within them (below) eliminated the problem on that same tile (0/51
+//   hits out of range) — grounding the request in what the model can directly observe (the
+//   image it's looking at) beats asking it to silently rescale to an abstract convention.
 // - Without being told explicitly, the model anchors the position to the person's FACE rather
 //   than the card itself.
 // - When several people stand close together, a correctly-read number can get reported at a
 //   NEIGHBORING person's position — smaller crops (fewer people each) reduce this a lot; the
 //   explicit warning below helps further but doesn't eliminate it entirely, so callers should
 //   still treat these as suggestions a human reviews before saving, same as face-detect candidates.
-const PROMPT = `This is a cropped section of a large group photo, showing several people. Each person is holding up a small paper card with a printed number on it, roughly at chest/shoulder height, BELOW their own face.
+function buildPrompt(width: number, height: number): string {
+  return `This is a cropped section of a large group photo, showing several people. Each person is holding up a small paper card with a printed number on it, roughly at chest/shoulder height, BELOW their own face.
 
-For EVERY card in this image where the digits are clearly legible, report its digits and the position of the CENTER OF THE CARD ITSELF (not the person's face, not the person's body — the small paper card) as a NORMALIZED coordinate on a 0-1000 scale, where (0,0) is the top-left corner of this image and (1000,1000) is the bottom-right corner.
+This image is exactly ${width}x${height} pixels. For EVERY card in this image where the digits are clearly legible, report its digits and the position of the CENTER OF THE CARD ITSELF (not the person's face, not the person's body — the small paper card) as PIXEL coordinates within THIS image, where (0,0) is the top-left corner and (${width},${height}) is the bottom-right corner.
 
 Each card belongs to exactly one person, the one physically holding it. Double check you are not reporting a number using a neighboring person's card position.
 
-Reply with ONLY a JSON array, no other text, no markdown fences. Format: [{"code":"1234","x":500,"y":900}, ...]
+Reply with ONLY a JSON array, no other text, no markdown fences. Format: [{"code":"1234","x":783,"y":1230}, ...]
 
 If a card is cut off at the edge of the crop or its digits are not clearly legible, skip it entirely rather than guessing.`;
+}
 
 export type CardOcrHit = { code: string; x: number; y: number };
 
@@ -37,14 +46,20 @@ export type CardOcrHit = { code: string; x: number; y: number };
 export async function ocrCardGrid(
   universityId: string,
   formData: FormData,
-): Promise<{ hits: CardOcrHit[] }> {
+): Promise<{ hits: CardOcrHit[]; width: number; height: number }> {
   await requireUniversityAccess(universityId);
 
   const file = formData.get("crop");
-  if (!(file instanceof File) || file.size === 0) return { hits: [] };
+  if (!(file instanceof File) || file.size === 0) return { hits: [], width: 0, height: 0 };
 
   const buf = Buffer.from(await file.arrayBuffer());
   const mediaType = file.type === "image/png" ? "image/png" : "image/jpeg";
+
+  // Read the ACTUAL dimensions of what was uploaded (rather than trusting the caller to pass them
+  // separately) so the prompt's stated size can never drift from the real image bytes the model sees.
+  const meta = await sharp(buf).metadata();
+  const width = meta.width ?? 0;
+  const height = meta.height ?? 0;
 
   const response = await client.messages.create({
     // Verified empirically (real 93-person sample, ground-truth checked) against the previous
@@ -66,7 +81,7 @@ export async function ocrCardGrid(
             type: "image",
             source: { type: "base64", media_type: mediaType, data: buf.toString("base64") },
           },
-          { type: "text", text: PROMPT },
+          { type: "text", text: buildPrompt(width, height) },
         ],
       },
     ],
@@ -83,9 +98,9 @@ export async function ocrCardGrid(
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    return { hits: [] };
+    return { hits: [], width, height };
   }
-  if (!Array.isArray(parsed)) return { hits: [] };
+  if (!Array.isArray(parsed)) return { hits: [], width, height };
 
   const hits: CardOcrHit[] = [];
   for (const entry of parsed) {
@@ -98,5 +113,5 @@ export async function ocrCardGrid(
     if (!Number.isFinite(nx) || !Number.isFinite(ny)) continue;
     hits.push({ code: digits, x: nx, y: ny });
   }
-  return { hits };
+  return { hits, width, height };
 }

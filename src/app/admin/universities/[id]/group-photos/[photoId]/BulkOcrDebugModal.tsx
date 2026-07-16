@@ -68,7 +68,10 @@ export function BulkOcrDebugModal({
                     <div
                       key={i}
                       className="absolute -translate-x-1/2 -translate-y-1/2"
-                      style={{ left: `${hit.x / 10}%`, top: `${hit.y / 10}%` }}
+                      style={{
+                        left: `${(hit.x / tile.uploadWidth) * 100}%`,
+                        top: `${(hit.y / tile.uploadHeight) * 100}%`,
+                      }}
                     >
                       <div className="h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-lime-400 bg-lime-400/30" />
                       <span className="absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap rounded bg-lime-600 px-1 py-0.5 text-[10px] font-medium text-white">

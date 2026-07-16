@@ -9,14 +9,18 @@ export type BulkOcrCandidate = { id: string; code: string; x: number; y: number 
 // One entry per tile actually sent to Claude, kept around purely so an admin can open the
 // "ตรวจสอบผล OCR" debug view and see exactly what image + raw hits each tile produced — the same
 // evidence a developer would otherwise only get by adding console.logs. `hits` are the raw,
-// per-tile-normalized (0-1000) values as returned by the model, not yet mapped to full-photo
-// coordinates, since the debug view draws them directly over the tile image itself.
+// still-tile-local pixel values as returned by the model (relative to `uploadWidth`/`uploadHeight`,
+// the actual image the model was shown — NOT `width`/`height`, which are this tile's full-resolution
+// size before downsampling), not yet mapped to full-photo coordinates, since the debug view draws
+// them directly over the (downsampled) tile image itself.
 export type TileDebugInfo = {
   tileIndex: number;
   left: number;
   top: number;
   width: number;
   height: number;
+  uploadWidth: number;
+  uploadHeight: number;
   imageUrl: string;
   hits: { code: string; x: number; y: number }[];
   failed: boolean;
@@ -125,13 +129,27 @@ export function useBulkCardOcr() {
             );
             const fd = new FormData();
             fd.set("crop", blob, "tile.jpg");
-            const { hits } = await ocrCardGrid(universityId, fd);
+            const { hits, width: uploadWidth, height: uploadHeight } = await ocrCardGrid(
+              universityId,
+              fd,
+            );
             // Kept for the "ตรวจสอบผล OCR" debug view — the exact image sent plus the raw,
             // still-tile-local hits, so an admin can see precisely what the model was shown and
             // what it reported, independent of whatever de-dup/mapping happens below.
             setTileDebug((prev) => [
               ...prev,
-              { tileIndex, left: tile.left, top: tile.top, width: tile.width, height: tile.height, imageUrl: URL.createObjectURL(blob), hits, failed: false },
+              {
+                tileIndex,
+                left: tile.left,
+                top: tile.top,
+                width: tile.width,
+                height: tile.height,
+                uploadWidth,
+                uploadHeight,
+                imageUrl: URL.createObjectURL(blob),
+                hits,
+                failed: false,
+              },
             ]);
             for (const hit of hits) {
               // First tile to read a given code wins — with 200px overlap, most cards get read
@@ -142,8 +160,11 @@ export function useBulkCardOcr() {
               found.push({
                 id: `bulk-ocr-${hit.code}`,
                 code: hit.code,
-                x: tile.left + (hit.x / 1000) * tile.width,
-                y: tile.top + (hit.y / 1000) * tile.height,
+                // hit.x/hit.y are real pixel coordinates within the uploaded (downsampled) image
+                // (see bulkCardOcr.ts) — map back to this tile's own full-resolution size first,
+                // then place within the full photo.
+                x: tile.left + (hit.x / uploadWidth) * tile.width,
+                y: tile.top + (hit.y / uploadHeight) * tile.height,
               });
             }
           } catch (err) {
@@ -151,7 +172,18 @@ export function useBulkCardOcr() {
             setFailedTiles((n) => n + 1);
             setTileDebug((prev) => [
               ...prev,
-              { tileIndex, left: tile.left, top: tile.top, width: tile.width, height: tile.height, imageUrl: "", hits: [], failed: true },
+              {
+                tileIndex,
+                left: tile.left,
+                top: tile.top,
+                width: tile.width,
+                height: tile.height,
+                uploadWidth: 0,
+                uploadHeight: 0,
+                imageUrl: "",
+                hits: [],
+                failed: true,
+              },
             ]);
           }
           done++;
