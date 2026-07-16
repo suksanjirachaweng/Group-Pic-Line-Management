@@ -1,9 +1,17 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
+import {
+  findCrossPhotoDuplicatesByCode,
+  findCrossPhotoDuplicatesByName,
+  type CrossPhotoDuplicateEntry,
+  type TagForCrossPhotoCheck,
+  type TagSourceLabel,
+} from "@/lib/groupPhoto/crossPhotoDuplicates";
 import type { GroupPhotoStatus } from "@/generated/prisma/enums";
 import { LegacyReferenceUploadForm } from "./LegacyReferenceUploadForm";
 import { StripNameTitlesButton } from "./StripNameTitlesButton";
@@ -41,6 +49,11 @@ const COMBINED_ROW_SOURCE_CLASS: Record<CombinedRowSource, string> = {
   Excel: "bg-amber-100 text-amber-700",
   "Google Sheet": "bg-orange-100 text-orange-700",
   LINE: "bg-green-100 text-green-700",
+};
+
+const TAG_SOURCE_CLASS: Record<TagSourceLabel, string> = {
+  ...COMBINED_ROW_SOURCE_CLASS,
+  กรอกเอง: "bg-gray-100 text-gray-600",
 };
 
 type SortKey = "name" | "code" | "phone" | "source";
@@ -164,14 +177,51 @@ async function DataTab({
   const formFields = await prisma.formFieldDefinition.findMany({ where: { universityId } });
   const phoneFieldKey = formFields.find((f) => f.fieldType === "PHONE")?.key;
 
-  const [legacyRows, registrantRows] = await Promise.all([
+  const [legacyRows, registrantRows, tagRows] = await Promise.all([
     prisma.groupPhotoLegacyReference.findMany({ where: { universityId }, orderBy: { createdAt: "asc" } }),
     prisma.registrant.findMany({
       where: { universityId },
       select: { id: true, displayName: true, data: true },
       orderBy: { registeredAt: "asc" },
     }),
+    prisma.groupPhotoTag.findMany({
+      where: { groupPhoto: { universityId } },
+      select: {
+        id: true,
+        groupPhotoId: true,
+        code: true,
+        normalizedCode: true,
+        name: true,
+        matchSource: true,
+        groupPhoto: { select: { name: true } },
+      },
+    }),
   ]);
+
+  // Resolves each tag's underlying reference source for the cross-photo alert panel below —
+  // reuses the same LINE/Excel/Google Sheet convention as the combined list's own "แหล่งข้อมูล"
+  // column, rather than inventing a separate labeling scheme.
+  const legacySourceByCode = new Map<string, "Excel" | "Google Sheet">();
+  for (const r of legacyRows) {
+    const normalized = normalizeCode(r.code);
+    if (normalized) legacySourceByCode.set(normalized, r.source === "GOOGLE_SHEET" ? "Google Sheet" : "Excel");
+  }
+  function resolveTagSource(matchSource: string, normalizedCode: string): TagSourceLabel {
+    if (matchSource === "REGISTRANT") return "LINE";
+    if (matchSource === "LEGACY_REFERENCE") return legacySourceByCode.get(normalizedCode) ?? "Excel";
+    return "กรอกเอง";
+  }
+  const tagsForCrossPhotoCheck: TagForCrossPhotoCheck[] = tagRows.map((t) => ({
+    id: t.id,
+    groupPhotoId: t.groupPhotoId,
+    groupPhotoName: t.groupPhoto.name,
+    code: t.code,
+    name: t.name,
+    normalizedCode: t.normalizedCode,
+    source: resolveTagSource(t.matchSource, t.normalizedCode),
+  }));
+  const codeDuplicates = findCrossPhotoDuplicatesByCode(tagsForCrossPhotoCheck);
+  const nameDuplicates = findCrossPhotoDuplicatesByName(tagsForCrossPhotoCheck);
 
   const combined: CombinedRow[] = [
     ...legacyRows.map((r) => ({
@@ -241,6 +291,8 @@ async function DataTab({
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
       <LegacyReferenceUploadForm universityId={universityId} registrantCount={registrantRows.length} />
+
+      <CrossPhotoDuplicateAlerts codeDuplicates={codeDuplicates} nameDuplicates={nameDuplicates} />
 
       <div className="mt-5 border-t border-gray-100 pt-4">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -330,6 +382,83 @@ async function DataTab({
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Cross-photo duplicate check — different from validateTags.ts's per-photo duplicate-code check
+ * (which only looks within one photo). Here the same code or name legitimately CAN show up in
+ * more than one of the university's photos, so this is a heads-up list for an admin to double-
+ * check, not a hard error blocking anything.
+ */
+function CrossPhotoDuplicateAlerts({
+  codeDuplicates,
+  nameDuplicates,
+}: {
+  codeDuplicates: CrossPhotoDuplicateEntry[];
+  nameDuplicates: CrossPhotoDuplicateEntry[];
+}) {
+  if (codeDuplicates.length === 0 && nameDuplicates.length === 0) return null;
+
+  return (
+    <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
+      <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-amber-800">
+        <span aria-hidden>⚠️</span>
+        รายการแจ้งเตือน — พบ CODE หรือชื่อซ้ำกันคนละภาพ
+      </h3>
+      <div className="space-y-4">
+        {codeDuplicates.length > 0 && (
+          <CrossPhotoDuplicateGroup
+            title={`CODE ซ้ำกันคนละภาพ (${codeDuplicates.length} รหัส)`}
+            entries={codeDuplicates}
+            renderKey={(entry) => (
+              <span className="font-mono font-semibold text-gray-900">รหัส {entry.key}</span>
+            )}
+          />
+        )}
+        {nameDuplicates.length > 0 && (
+          <CrossPhotoDuplicateGroup
+            title={`ชื่อ-นามสกุลซ้ำกันคนละภาพ (${nameDuplicates.length} ชื่อ)`}
+            entries={nameDuplicates}
+            renderKey={(entry) => (
+              <span className="font-semibold text-gray-900">{entry.matches[0].name}</span>
+            )}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CrossPhotoDuplicateGroup({
+  title,
+  entries,
+  renderKey,
+}: {
+  title: string;
+  entries: CrossPhotoDuplicateEntry[];
+  renderKey: (entry: CrossPhotoDuplicateEntry) => ReactNode;
+}) {
+  return (
+    <div>
+      <p className="mb-1.5 text-xs font-medium text-amber-700">{title}</p>
+      <ul className="space-y-2">
+        {entries.map((entry) => (
+          <li key={entry.key} className="rounded-md border border-amber-200 bg-white px-3 py-2 text-xs">
+            {renderKey(entry)}
+            <ul className="mt-1 space-y-0.5 text-gray-600">
+              {entry.matches.map((m) => (
+                <li key={m.id}>
+                  ปรากฏในภาพ <span className="font-medium text-gray-900">{m.groupPhotoName}</span> — CODE{" "}
+                  <span className="font-mono">{m.code}</span>, ชื่อ &quot;{m.name}&quot;{" "}
+                  <span className={`ml-1 rounded px-1.5 py-0.5 ${TAG_SOURCE_CLASS[m.source]}`}>{m.source}</span>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
