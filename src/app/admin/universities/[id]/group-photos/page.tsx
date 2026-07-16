@@ -57,13 +57,20 @@ const TAG_SOURCE_CLASS: Record<TagSourceLabel, string> = {
   กรอกเอง: "bg-gray-100 text-gray-600",
 };
 
-type SortKey = "name" | "code" | "phone" | "source";
+type SortKey = "name" | "code" | "phone" | "source" | "photos";
 const SORT_COLUMNS: { key: SortKey; label: string }[] = [
   { key: "name", label: "ชื่อ" },
   { key: "code", label: "CODE" },
   { key: "phone", label: "เบอร์โทร" },
   { key: "source", label: "แหล่งข้อมูล" },
+  { key: "photos", label: "ปรากฏในภาพ" },
 ];
+
+/** `photos` is an array, not a plain string like the other CombinedRow fields — joins it into one
+ * comparable string (empty string, and so always first ascending, when a row has no photos yet). */
+function combinedRowSortValue(row: CombinedRow, key: SortKey): string {
+  return key === "photos" ? row.photos.join(", ") : row[key];
+}
 
 const ACTIVE_DATA_TAB_CLASS = "border-b-2 border-rose-500 px-1 py-3 text-sm font-medium text-rose-600";
 const INACTIVE_DATA_TAB_CLASS =
@@ -285,7 +292,10 @@ async function DataTab({
 
   const sorted = sort
     ? [...filtered].sort((a, b) => {
-        const cmp = a[sort].localeCompare(b[sort], "th", { numeric: true, sensitivity: "base" });
+        const cmp = combinedRowSortValue(a, sort).localeCompare(combinedRowSortValue(b, sort), "th", {
+          numeric: true,
+          sensitivity: "base",
+        });
         return dir === "desc" ? -cmp : cmp;
       })
     : filtered;
@@ -405,7 +415,6 @@ async function DataTab({
                         </Link>
                       </th>
                     ))}
-                    <th className="whitespace-nowrap px-3 py-2">ปรากฏในภาพ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
