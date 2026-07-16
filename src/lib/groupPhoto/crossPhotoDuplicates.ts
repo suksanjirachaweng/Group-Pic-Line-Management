@@ -55,3 +55,40 @@ export function findCrossPhotoDuplicatesByName(tags: TagForCrossPhotoCheck[]): C
   }
   return result;
 }
+
+export type DuplicateKind = "code" | "name";
+
+export type MergedDuplicateGroup = {
+  key: string;
+  kinds: DuplicateKind[];
+  matches: TagForCrossPhotoCheck[];
+};
+
+/**
+ * A code-duplicate group and a name-duplicate group are usually the exact same set of tags (the
+ * same real person, code and name both consistent everywhere they were tagged) — merges those
+ * into one row instead of showing the same set of photos twice in two separate tables.
+ */
+export function mergeCrossPhotoDuplicates(
+  codeDuplicates: CrossPhotoDuplicateEntry[],
+  nameDuplicates: CrossPhotoDuplicateEntry[],
+): MergedDuplicateGroup[] {
+  function tagSetKey(entry: CrossPhotoDuplicateEntry): string {
+    return entry.matches
+      .map((m) => m.id)
+      .sort()
+      .join(",");
+  }
+
+  const byTagSetKey = new Map<string, MergedDuplicateGroup>();
+  for (const entry of codeDuplicates) {
+    byTagSetKey.set(tagSetKey(entry), { key: entry.key, kinds: ["code"], matches: entry.matches });
+  }
+  for (const entry of nameDuplicates) {
+    const setKey = tagSetKey(entry);
+    const existing = byTagSetKey.get(setKey);
+    if (existing) existing.kinds.push("name");
+    else byTagSetKey.set(setKey, { key: entry.key, kinds: ["name"], matches: entry.matches });
+  }
+  return [...byTagSetKey.values()];
+}

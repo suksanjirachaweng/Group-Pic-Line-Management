@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
@@ -8,7 +7,8 @@ import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import {
   findCrossPhotoDuplicatesByCode,
   findCrossPhotoDuplicatesByName,
-  type CrossPhotoDuplicateEntry,
+  mergeCrossPhotoDuplicates,
+  type MergedDuplicateGroup,
   type TagForCrossPhotoCheck,
   type TagSourceLabel,
 } from "@/lib/groupPhoto/crossPhotoDuplicates";
@@ -222,6 +222,7 @@ async function DataTab({
   }));
   const codeDuplicates = findCrossPhotoDuplicatesByCode(tagsForCrossPhotoCheck);
   const nameDuplicates = findCrossPhotoDuplicatesByName(tagsForCrossPhotoCheck);
+  const mergedDuplicateGroups = mergeCrossPhotoDuplicates(codeDuplicates, nameDuplicates);
 
   const combined: CombinedRow[] = [
     ...legacyRows.map((r) => ({
@@ -292,7 +293,7 @@ async function DataTab({
     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
       <LegacyReferenceUploadForm universityId={universityId} registrantCount={registrantRows.length} />
 
-      <CrossPhotoDuplicateAlerts codeDuplicates={codeDuplicates} nameDuplicates={nameDuplicates} />
+      <CrossPhotoDuplicateAlerts groups={mergedDuplicateGroups} />
 
       <div className="mt-5 border-t border-gray-100 pt-4">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -385,79 +386,60 @@ async function DataTab({
   );
 }
 
+const DUPLICATE_KIND_LABEL: Record<"code" | "name", string> = { code: "CODE", name: "ชื่อ" };
+
 /**
  * Cross-photo duplicate check — different from validateTags.ts's per-photo duplicate-code check
  * (which only looks within one photo). Here the same code or name legitimately CAN show up in
  * more than one of the university's photos, so this is a heads-up list for an admin to double-
- * check, not a hard error blocking anything.
+ * check, not a hard error blocking anything. One flat table (grouped visually, not one card per
+ * group) so a long list of duplicates stays scannable instead of stacking into many small boxes.
  */
-function CrossPhotoDuplicateAlerts({
-  codeDuplicates,
-  nameDuplicates,
-}: {
-  codeDuplicates: CrossPhotoDuplicateEntry[];
-  nameDuplicates: CrossPhotoDuplicateEntry[];
-}) {
-  if (codeDuplicates.length === 0 && nameDuplicates.length === 0) return null;
+function CrossPhotoDuplicateAlerts({ groups }: { groups: MergedDuplicateGroup[] }) {
+  if (groups.length === 0) return null;
 
   return (
     <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
       <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-amber-800">
         <span aria-hidden>⚠️</span>
         รายการแจ้งเตือน — พบ CODE หรือชื่อซ้ำกันคนละภาพ
+        <span className="text-xs font-normal text-amber-600">({groups.length} รายการ)</span>
       </h3>
-      <div className="space-y-4">
-        {codeDuplicates.length > 0 && (
-          <CrossPhotoDuplicateGroup
-            title={`CODE ซ้ำกันคนละภาพ (${codeDuplicates.length} รหัส)`}
-            entries={codeDuplicates}
-            renderKey={(entry) => (
-              <span className="font-mono font-semibold text-gray-900">รหัส {entry.key}</span>
+      <div className="overflow-x-auto rounded-md border border-amber-200">
+        <table className="w-full text-xs">
+          <thead className="bg-amber-100/60 text-left text-amber-800">
+            <tr>
+              <th className="whitespace-nowrap px-3 py-2">ชื่อ-นามสกุล</th>
+              <th className="whitespace-nowrap px-3 py-2">CODE</th>
+              <th className="whitespace-nowrap px-3 py-2">ปรากฏในภาพ</th>
+              <th className="whitespace-nowrap px-3 py-2">แหล่งข้อมูล</th>
+              <th className="whitespace-nowrap px-3 py-2">ประเภทที่ซ้ำ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map((group, gi) =>
+              group.matches.map((m, mi) => (
+                <tr
+                  key={m.id}
+                  className={`${gi % 2 === 0 ? "bg-white" : "bg-amber-50/50"} ${
+                    mi === 0 ? "border-t-2 border-amber-200" : "border-t border-amber-100/70"
+                  }`}
+                >
+                  <td className="whitespace-nowrap px-3 py-1.5">{m.name}</td>
+                  <td className="whitespace-nowrap px-3 py-1.5 font-mono">{m.code}</td>
+                  <td className="whitespace-nowrap px-3 py-1.5">{m.groupPhotoName}</td>
+                  <td className="whitespace-nowrap px-3 py-1.5">
+                    <span className={`rounded px-1.5 py-0.5 ${TAG_SOURCE_CLASS[m.source]}`}>{m.source}</span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-1.5">
+                    {mi === 0 ? group.kinds.map((k) => DUPLICATE_KIND_LABEL[k]).join(" + ") : ""}
+                  </td>
+                </tr>
+              )),
             )}
-          />
-        )}
-        {nameDuplicates.length > 0 && (
-          <CrossPhotoDuplicateGroup
-            title={`ชื่อ-นามสกุลซ้ำกันคนละภาพ (${nameDuplicates.length} ชื่อ)`}
-            entries={nameDuplicates}
-            renderKey={(entry) => (
-              <span className="font-semibold text-gray-900">{entry.matches[0].name}</span>
-            )}
-          />
-        )}
+          </tbody>
+        </table>
       </div>
-    </div>
-  );
-}
-
-function CrossPhotoDuplicateGroup({
-  title,
-  entries,
-  renderKey,
-}: {
-  title: string;
-  entries: CrossPhotoDuplicateEntry[];
-  renderKey: (entry: CrossPhotoDuplicateEntry) => ReactNode;
-}) {
-  return (
-    <div>
-      <p className="mb-1.5 text-xs font-medium text-amber-700">{title}</p>
-      <ul className="space-y-2">
-        {entries.map((entry) => (
-          <li key={entry.key} className="rounded-md border border-amber-200 bg-white px-3 py-2 text-xs">
-            {renderKey(entry)}
-            <ul className="mt-1 space-y-0.5 text-gray-600">
-              {entry.matches.map((m) => (
-                <li key={m.id}>
-                  ปรากฏในภาพ <span className="font-medium text-gray-900">{m.groupPhotoName}</span> — CODE{" "}
-                  <span className="font-mono">{m.code}</span>, ชื่อ &quot;{m.name}&quot;{" "}
-                  <span className={`ml-1 rounded px-1.5 py-0.5 ${TAG_SOURCE_CLASS[m.source]}`}>{m.source}</span>
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
