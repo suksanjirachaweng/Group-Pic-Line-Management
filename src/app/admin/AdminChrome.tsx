@@ -28,31 +28,31 @@ export function AdminChrome({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="border-b-2 border-indigo-500 bg-white px-6 py-3 shadow-sm">
+      <header className="bg-indigo-600 px-6 py-3 shadow-md">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <span className="flex items-center gap-2 font-semibold text-gray-900">
+            <span className="flex items-center gap-2 font-semibold text-white">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto" />
-              Group Pic Registration <span className="text-indigo-600">— Admin</span>
+              <img src="/nsl-logo.png" alt="Newsalon" className="h-7 w-auto rounded-full" />
+              Group Pic Registration <span className="text-indigo-200">— Admin</span>
             </span>
             <nav className="flex gap-4 text-sm">
-              <Link href="/admin/universities" className="text-gray-600 transition-colors hover:text-indigo-600">
+              <Link href="/admin/universities" className="text-indigo-100 transition-colors hover:text-white">
                 Universities
               </Link>
               {isSuperadmin && (
-                <Link href="/admin/channels" className="text-gray-600 transition-colors hover:text-[#06C755]">
+                <Link href="/admin/channels" className="text-indigo-100 transition-colors hover:text-white">
                   LINE Channels
                 </Link>
               )}
             </nav>
           </div>
-          <span className="flex items-center gap-2 text-sm text-gray-500">
+          <span className="flex items-center gap-2 text-sm text-indigo-100">
             {email}
             <span
               className={
                 isSuperadmin
-                  ? "rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700"
+                  ? "rounded-full bg-white/90 px-2 py-0.5 text-xs font-medium text-indigo-700"
                   : "rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700"
               }
             >
