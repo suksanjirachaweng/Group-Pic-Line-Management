@@ -33,7 +33,9 @@ export type TileDebugInfo = {
 // faster overall — fewer, bigger tiles means far fewer API calls, which outweighs Sonnet's higher
 // per-token cost. 150px overlap is intentionally smaller (both absolutely and relatively) than the
 // old 200px, since fewer/bigger tiles need less redundancy to avoid edge cutoffs.
-const TILE_SIZE = 2560;
+// Exported so TagCanvas.tsx's crop tool can downsample a tall crop to this same height up front —
+// one source of truth for the tiling math both places depend on.
+export const TILE_SIZE = 2560;
 const TILE_OVERLAP = 150;
 // Claude's vision input gets resized internally to a ~1568px long edge regardless of the upload
 // size — verified that downsampling each tile to 1568px before sending is a free win (identical

@@ -26,7 +26,7 @@ import {
   extractRectCrop,
   pixelDistance,
 } from "./coordinateMapping";
-import { useBulkCardOcr } from "./useBulkCardOcr";
+import { useBulkCardOcr, TILE_SIZE } from "./useBulkCardOcr";
 import { BulkOcrDebugModal } from "./BulkOcrDebugModal";
 import {
   TagEditDialog,
@@ -1277,13 +1277,20 @@ export function TagCanvas({
 
     setCropSaving(true);
     try {
-      const blob = await extractRectCrop(bitmap, sx, sy, sw, sh);
+      // If the cropped area is taller than a single bulk-OCR tile (TILE_SIZE), downscale the whole
+      // crop uniformly so its height fits exactly one tile — otherwise bulk OCR would tile the
+      // saved photo into extra rows purely because of height, costing more tiles for no benefit
+      // (Claude's vision input already gets resized to ~1568px internally regardless of upload size).
+      const scale = sh > TILE_SIZE ? TILE_SIZE / sh : 1;
+      const destW = sw * scale;
+      const destH = sh * scale;
+      const blob = await extractRectCrop(bitmap, sx, sy, sw, sh, destW, destH);
       const file = new File([blob], "cropped.jpg", { type: "image/jpeg" });
       const { url } = await uploadLargePhoto(universityId, file);
       await updateGroupPhotoImage(universityId, groupPhotoId, {
         imageUrl: url,
-        imageWidth: Math.round(sw),
-        imageHeight: Math.round(sh),
+        imageWidth: Math.round(destW),
+        imageHeight: Math.round(destH),
       });
       // A full reload, not router.refresh() — confirmed router.refresh() alone doesn't get the
       // already-mounted canvas to actually redraw the new image (new props arrive, but nothing
