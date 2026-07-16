@@ -3,6 +3,10 @@
  * export exactly). The canvas may be displayed at any size/zoom via CSS transform — rather than
  * tracking transform state manually, we read the canvas's actual rendered box
  * (getBoundingClientRect already reflects any CSS transform) and convert through that.
+ *
+ * Shared between the desktop tagging canvas (`TagCanvas.tsx`) and the mobile quick-tag crop tool
+ * (`QuickTagWizard.tsx`'s `MobileCropTool`) — both draw a bitmap into a `<canvas>` and need the
+ * exact same display-pixel ↔ full-resolution-pixel conversion.
  */
 export function clientPointToFullRes(
   clientX: number,

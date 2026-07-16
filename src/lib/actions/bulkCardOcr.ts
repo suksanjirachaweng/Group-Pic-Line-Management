@@ -42,6 +42,11 @@ export type CardOcrHit = { code: string; x: number; y: number };
  * Runs OCR on one tile crop of a group photo (not the whole image — see useBulkCardOcr, which
  * tiles the full photo into small overlapping crops), reading every legible card number and its
  * position within that crop at once, rather than one card per call like ocrCardCrop.
+ *
+ * `"use server"` wrapper only — `requireUniversityAccess` needs a real session, which the
+ * background auto-tag cron job doesn't have (it's authenticated at the request level via
+ * CRON_SECRET instead). The actual Claude call lives in `runCardGridOcr` below so the cron route
+ * can call it directly, without going through a user-facing action.
  */
 export async function ocrCardGrid(
   universityId: string,
@@ -54,7 +59,14 @@ export async function ocrCardGrid(
 
   const buf = Buffer.from(await file.arrayBuffer());
   const mediaType = file.type === "image/png" ? "image/png" : "image/jpeg";
+  return runCardGridOcr(buf, mediaType);
+}
 
+/** Core OCR call, with no auth check — see `ocrCardGrid`'s comment for why this is separate. */
+export async function runCardGridOcr(
+  buf: Buffer,
+  mediaType: "image/jpeg" | "image/png",
+): Promise<{ hits: CardOcrHit[]; width: number; height: number }> {
   // Read the ACTUAL dimensions of what was uploaded (rather than trusting the caller to pass them
   // separately) so the prompt's stated size can never drift from the real image bytes the model sees.
   const meta = await sharp(buf).metadata();

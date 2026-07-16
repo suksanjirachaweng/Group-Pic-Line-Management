@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-// The tagging canvas wants the entire viewport — it already has its own back link and toolbar,
-// so the shared admin header/nav is redundant chrome eating into space on what's effectively a
-// full-screen editor, not a normal padded admin page.
-const FULLSCREEN_PATTERN = /^\/admin\/universities\/[^/]+\/group-photos\/[^/]+$/;
+// The tagging canvas and the mobile quick-tag wizard both want the entire viewport — each already
+// has its own back link/header, so the shared admin header/nav is redundant chrome eating into
+// space on what's effectively a full-screen editor, not a normal padded admin page.
+const FULLSCREEN_PATTERN = /^(\/admin\/universities\/[^/]+\/group-photos\/[^/]+|\/admin\/quick-tag)$/;
 
 export function AdminChrome({
   email,

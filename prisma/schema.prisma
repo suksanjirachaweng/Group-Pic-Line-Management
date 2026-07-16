@@ -404,9 +404,60 @@ model GroupPhoto {
   tags         GroupPhotoTag[]
   shareLinks   GroupPhotoShareLink[]
   titleHistory GroupPhotoTitleHistory[]
+  autoTagJobs  GroupPhotoAutoTagJob[]
 
   @@index([universityId])
   @@map("group_photos")
+}
+
+enum GroupPhotoAutoTagStage {
+  OCR
+  ACCEPTING
+  FIXING_ORDER
+  DONE
+  FAILED
+}
+
+/// Background job for the mobile "express upload" flow: after a photo is uploaded+cropped, bulk
+/// OCR + accept-all + fix-row-order run here instead of client-side, so the admin can close the
+/// app/lock their phone and the pipeline keeps going — processed a bit at a time by
+/// api/cron/process-group-photo-auto-tag-jobs (no session, no browser tab required). FAILED is a
+/// terminal state for v1 (no auto-retry) — the photo's own tagging page still has the same manual
+/// buttons as a fallback if a job fails.
+model GroupPhotoAutoTagJob {
+  id           String                 @id @default(cuid())
+  groupPhotoId String
+  stage        GroupPhotoAutoTagStage @default(OCR)
+  tilesTotal   Int
+  tilesDone    Int                    @default(0)
+  errorMessage String?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  completedAt  DateTime?
+
+  groupPhoto GroupPhoto             @relation(fields: [groupPhotoId], references: [id], onDelete: Cascade)
+  hits       GroupPhotoAutoTagHit[]
+
+  @@index([stage])
+  @@index([groupPhotoId])
+  @@map("group_photo_auto_tag_jobs")
+}
+
+/// One row per OCR hit accumulated across cron ticks during a job's OCR stage — coordinates are
+/// already mapped to full-photo pixel space (not tile-local) so the ACCEPTING stage doesn't need
+/// to remember each hit's originating tile geometry.
+model GroupPhotoAutoTagHit {
+  id        String @id @default(cuid())
+  jobId     String
+  tileIndex Int
+  code      String
+  x         Float
+  y         Float
+
+  job GroupPhotoAutoTagJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@map("group_photo_auto_tag_hits")
 }
 
 /// One entry per title change (admin tagging page or the public /validate page) — mirrors

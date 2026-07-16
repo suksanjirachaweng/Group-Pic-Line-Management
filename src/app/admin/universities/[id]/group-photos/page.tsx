@@ -564,6 +564,19 @@ async function PhotosTab({
     include: { _count: { select: { tags: true } } },
   });
 
+  // Only the mobile quick-tag flow's background pipeline creates these — a small badge here
+  // closes the loop on "the admin doesn't need to watch it", since they can check back on any
+  // device without opening the photo itself.
+  const activeAutoTagJobs = await prisma.groupPhotoAutoTagJob.findMany({
+    where: { groupPhoto: { universityId }, stage: { in: ["OCR", "ACCEPTING", "FIXING_ORDER"] } },
+    orderBy: { createdAt: "desc" },
+    select: { groupPhotoId: true, stage: true, tilesDone: true, tilesTotal: true },
+  });
+  const activeAutoTagByPhoto = new Map<string, (typeof activeAutoTagJobs)[number]>();
+  for (const job of activeAutoTagJobs) {
+    if (!activeAutoTagByPhoto.has(job.groupPhotoId)) activeAutoTagByPhoto.set(job.groupPhotoId, job);
+  }
+
   function photoSortHref(key: PhotoSortKey) {
     const sp = new URLSearchParams();
     sp.set("tab", "photos");
@@ -627,6 +640,12 @@ async function PhotosTab({
                   <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-xs ${PHOTO_STATUS_CLASS[p.status]}`}>
                     {PHOTO_STATUS_LABEL[p.status]}
                   </span>
+                  {activeAutoTagByPhoto.has(p.id) && (
+                    <span className="whitespace-nowrap rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-700">
+                      ⏳ กำลังประมวลผลอัตโนมัติ ({activeAutoTagByPhoto.get(p.id)!.tilesDone}/
+                      {activeAutoTagByPhoto.get(p.id)!.tilesTotal} tile)
+                    </span>
+                  )}
                 </div>
                 <div className="flex flex-none items-center gap-3">
                   <span className="text-xs text-gray-400">{p._count.tags} คน</span>

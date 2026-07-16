@@ -9,6 +9,7 @@ import { getAppBaseUrl } from "@/lib/appUrl";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { interpolateTemplate } from "@/lib/rules/evaluate";
 import { TagMatchSource, GroupPhotoStatus, TagHistorySource } from "@/generated/prisma/enums";
+import type { Prisma } from "@/generated/prisma/client";
 
 export async function createGroupPhoto(
   universityId: string,
@@ -116,6 +117,47 @@ export type SaveTagInput = {
   matchSource: TagMatchSource;
 };
 
+/**
+ * The CREATE half of saveGroupPhotoTag's collision-shifting logic, factored out so the background
+ * auto-tag cron job (no session, can't call the auth-gated action below) can create tags with
+ * identical row/order behavior to the interactive "accept all" flow. Takes an already-open `tx`
+ * so the caller controls the transaction boundary (e.g. wrapping a whole batch of tags in one).
+ */
+export async function createGroupPhotoTagCore(
+  tx: Prisma.TransactionClient,
+  groupPhotoId: string,
+  input: Omit<SaveTagInput, "id">,
+) {
+  const data = {
+    groupPhotoId,
+    code: input.code,
+    normalizedCode: normalizeCode(input.code),
+    name: input.name,
+    row: input.row,
+    order: input.order,
+    x: input.x,
+    y: input.y,
+    registrantId: input.registrantId,
+    matchSource: input.matchSource,
+  };
+  await tx.groupPhotoTag.updateMany({
+    where: { groupPhotoId, row: input.row, order: { gte: input.order } },
+    data: { order: { increment: 1 } },
+  });
+  const created = await tx.groupPhotoTag.create({ data });
+  await tx.groupPhotoTagHistory.create({
+    data: {
+      tagId: created.id,
+      code: created.code,
+      name: created.name,
+      row: created.row,
+      order: created.order,
+      source: "ADMIN",
+    },
+  });
+  return created;
+}
+
 export async function saveGroupPhotoTag(
   universityId: string,
   groupPhotoId: string,
@@ -192,15 +234,7 @@ export async function saveGroupPhotoTag(
       return updated;
     }
 
-    await tx.groupPhotoTag.updateMany({
-      where: { groupPhotoId, row: input.row, order: { gte: input.order } },
-      data: { order: { increment: 1 } },
-    });
-    const created = await tx.groupPhotoTag.create({ data });
-    await tx.groupPhotoTagHistory.create({
-      data: { tagId: created.id, code: created.code, name: created.name, row: created.row, order: created.order, source: "ADMIN" },
-    });
-    return created;
+    return createGroupPhotoTagCore(tx, groupPhotoId, input);
   });
 
   revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
