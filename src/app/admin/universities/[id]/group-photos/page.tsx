@@ -43,6 +43,7 @@ type CombinedRow = {
   code: string;
   phone: string;
   source: CombinedRowSource;
+  photos: string[];
 };
 
 const COMBINED_ROW_SOURCE_CLASS: Record<CombinedRowSource, string> = {
@@ -236,6 +237,16 @@ async function DataTab({
   const nameDuplicates = findCrossPhotoDuplicatesByName(tagsForCrossPhotoCheck);
   const mergedDuplicateGroups = mergeCrossPhotoDuplicates(codeDuplicates, nameDuplicates);
 
+  // Which photo(s) each reference-data code has actually been tagged in, for the combined list's
+  // "ปรากฏในภาพ" column — a code with no entry here just hasn't been tagged (or read) anywhere yet.
+  const photoNamesByCode = new Map<string, string[]>();
+  for (const t of tagRows) {
+    if (!t.normalizedCode) continue;
+    const names = photoNamesByCode.get(t.normalizedCode) ?? [];
+    if (!names.includes(t.groupPhoto.name)) names.push(t.groupPhoto.name);
+    photoNamesByCode.set(t.normalizedCode, names);
+  }
+
   const combined: CombinedRow[] = [
     ...legacyRows.map((r) => ({
       key: `legacy-${r.id}`,
@@ -243,17 +254,20 @@ async function DataTab({
       code: r.code,
       phone: r.phone ?? "—",
       source: (r.source === "GOOGLE_SHEET" ? "Google Sheet" : "Excel") as CombinedRowSource,
+      photos: photoNamesByCode.get(normalizeCode(r.code)) ?? [],
     })),
     ...registrantRows.map((r) => {
       const data = (r.data ?? {}) as Record<string, unknown>;
       const rawCode = data.group_photo_index;
       const phoneValue = phoneFieldKey ? data[phoneFieldKey] : undefined;
+      const code = typeof rawCode === "string" && rawCode.trim() ? rawCode : "—";
       return {
         key: `registrant-${r.id}`,
         name: r.displayName ?? "(ไม่มีชื่อ)",
-        code: typeof rawCode === "string" && rawCode.trim() ? rawCode : "—",
+        code,
         phone: typeof phoneValue === "string" && phoneValue.trim() ? phoneValue : "—",
         source: "LINE" as const,
+        photos: photoNamesByCode.get(normalizeCode(code)) ?? [],
       };
     }),
   ];
@@ -391,6 +405,7 @@ async function DataTab({
                         </Link>
                       </th>
                     ))}
+                    <th className="whitespace-nowrap px-3 py-2">ปรากฏในภาพ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -404,11 +419,27 @@ async function DataTab({
                           {r.source}
                         </span>
                       </td>
+                      <td className="px-3 py-1.5">
+                        {r.photos.length === 0 ? (
+                          <span className="text-gray-300">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {r.photos.map((photoName) => (
+                              <span
+                                key={photoName}
+                                className="whitespace-nowrap rounded bg-gray-100 px-1.5 py-0.5 text-gray-600"
+                              >
+                                {photoName}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {pageRows.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-3 py-3 text-gray-400">
+                      <td colSpan={5} className="px-3 py-3 text-gray-400">
                         ไม่พบข้อมูลที่ตรงกับการค้นหา
                       </td>
                     </tr>
