@@ -6,6 +6,22 @@ import { extractRectCrop } from "./coordinateMapping";
 
 export type BulkOcrCandidate = { id: string; code: string; x: number; y: number };
 
+// One entry per tile actually sent to Claude, kept around purely so an admin can open the
+// "ตรวจสอบผล OCR" debug view and see exactly what image + raw hits each tile produced — the same
+// evidence a developer would otherwise only get by adding console.logs. `hits` are the raw,
+// per-tile-normalized (0-1000) values as returned by the model, not yet mapped to full-photo
+// coordinates, since the debug view draws them directly over the tile image itself.
+export type TileDebugInfo = {
+  tileIndex: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  imageUrl: string;
+  hits: { code: string; x: number; y: number }[];
+  failed: boolean;
+};
+
 // Tile size + model verified together empirically against a real dense sample photo (93 people,
 // ground-truth checked): claude-sonnet-5 with 2560px tiles (just under its ~2576px native-detail
 // ceiling) reads MORE reliably than the previous claude-haiku-4-5 + 600px config (100% vs 97.8%
@@ -58,11 +74,18 @@ export function useBulkCardOcr() {
   // rate limits) rather than the photo genuinely having fewer readable cards than expected — the
   // per-tile catch below used to only log to the console, invisible in normal use.
   const [failedTiles, setFailedTiles] = useState(0);
+  const [tileDebug, setTileDebug] = useState<TileDebugInfo[]>([]);
 
   const detect = useCallback(async (fullBitmap: ImageBitmap, universityId: string) => {
     setIsDetecting(true);
     setCandidates([]);
     setFailedTiles(0);
+    // Revoke the previous run's object URLs before dropping the references, or they leak for the
+    // life of the tab (createObjectURL blobs aren't garbage-collected on their own).
+    setTileDebug((prev) => {
+      for (const t of prev) URL.revokeObjectURL(t.imageUrl);
+      return [];
+    });
     try {
       const { width, height } = fullBitmap;
       const xStarts = tileStarts(width, TILE_SIZE, TILE_OVERLAP);
@@ -87,7 +110,8 @@ export function useBulkCardOcr() {
 
       async function worker() {
         while (next < tiles.length) {
-          const tile = tiles[next++];
+          const tileIndex = next++;
+          const tile = tiles[tileIndex];
           try {
             const scale = Math.min(1, OCR_UPLOAD_SIZE / Math.max(tile.width, tile.height));
             const blob = await extractRectCrop(
@@ -102,6 +126,13 @@ export function useBulkCardOcr() {
             const fd = new FormData();
             fd.set("crop", blob, "tile.jpg");
             const { hits } = await ocrCardGrid(universityId, fd);
+            // Kept for the "ตรวจสอบผล OCR" debug view — the exact image sent plus the raw,
+            // still-tile-local hits, so an admin can see precisely what the model was shown and
+            // what it reported, independent of whatever de-dup/mapping happens below.
+            setTileDebug((prev) => [
+              ...prev,
+              { tileIndex, left: tile.left, top: tile.top, width: tile.width, height: tile.height, imageUrl: URL.createObjectURL(blob), hits, failed: false },
+            ]);
             for (const hit of hits) {
               // First tile to read a given code wins — with 200px overlap, most cards get read
               // by 2+ neighboring tiles, so this is mainly de-duplication rather than a real
@@ -118,6 +149,10 @@ export function useBulkCardOcr() {
           } catch (err) {
             console.error("Bulk card OCR failed for a tile:", err);
             setFailedTiles((n) => n + 1);
+            setTileDebug((prev) => [
+              ...prev,
+              { tileIndex, left: tile.left, top: tile.top, width: tile.width, height: tile.height, imageUrl: "", hits: [], failed: true },
+            ]);
           }
           done++;
           setProgress({ done, total: tiles.length });
@@ -140,7 +175,11 @@ export function useBulkCardOcr() {
     setCandidates([]);
     setProgress({ done: 0, total: 0 });
     setFailedTiles(0);
+    setTileDebug((prev) => {
+      for (const t of prev) URL.revokeObjectURL(t.imageUrl);
+      return [];
+    });
   }, []);
 
-  return { candidates, isDetecting, progress, failedTiles, detect, dismiss, reset };
+  return { candidates, isDetecting, progress, failedTiles, tileDebug, detect, dismiss, reset };
 }

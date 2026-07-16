@@ -27,6 +27,7 @@ import {
   pixelDistance,
 } from "./coordinateMapping";
 import { useBulkCardOcr } from "./useBulkCardOcr";
+import { BulkOcrDebugModal } from "./BulkOcrDebugModal";
 import {
   TagEditDialog,
   type DialogInitial,
@@ -165,7 +166,8 @@ function suggestRowOrderAgainst(
   let unit = best;
   if (sameRow.length >= 2) {
     const gaps: number[] = [];
-    for (let i = 1; i < sameRow.length; i++) gaps.push(sameRow[i].x - sameRow[i - 1].x);
+    for (let i = 1; i < sameRow.length; i++)
+      gaps.push(sameRow[i].x - sameRow[i - 1].x);
     gaps.sort((a, b) => a - b);
     unit = gaps[Math.floor(gaps.length / 2)];
   }
@@ -195,7 +197,9 @@ const ROW_SLOPE_BETA = 40;
  * directly above/below in the NEXT row over is very often nearer in raw distance than its own
  * row-mate two people away.
  */
-function clusterIntoRows<T extends { x: number; y: number }>(points: T[]): T[][] {
+function clusterIntoRows<T extends { x: number; y: number }>(
+  points: T[],
+): T[][] {
   const byX = [...points].sort((a, b) => a.x - b.x);
   const clusters: T[][] = [];
   for (const p of byX) {
@@ -267,7 +271,10 @@ function resolveRowsForNewPoints(
 
   for (const p of newPoints) {
     const residuals = [...lines.entries()]
-      .map(([row, line]) => ({ row, resid: Math.abs(p.y - (line.a + line.b * p.x)) }))
+      .map(([row, line]) => ({
+        row,
+        resid: Math.abs(p.y - (line.a + line.b * p.x)),
+      }))
       .sort((a, b) => a.resid - b.resid);
     if (residuals.length === 0) {
       unmatched.push(p);
@@ -294,10 +301,14 @@ function resolveRowsForNewPoints(
       rowsIncreaseDownward = sorted[sorted.length - 1].y >= sorted[0].y;
     }
     const maxExistingRow =
-      existingTags.length > 0 ? Math.max(...existingTags.map((t) => t.row)) : -1;
+      existingTags.length > 0
+        ? Math.max(...existingTags.map((t) => t.row))
+        : -1;
     const order = clusters
       .map((c, i) => ({ i, avgY: c.reduce((s, p) => s + p.y, 0) / c.length }))
-      .sort((a, b) => (rowsIncreaseDownward ? a.avgY - b.avgY : b.avgY - a.avgY));
+      .sort((a, b) =>
+        rowsIncreaseDownward ? a.avgY - b.avgY : b.avgY - a.avgY,
+      );
     order.forEach(({ i }, rank) => {
       const row = maxExistingRow + 1 + rank;
       for (const p of clusters[i]) resolved.set(p.key, row);
@@ -392,11 +403,13 @@ export function TagCanvas({
     isDetecting: isBulkOcrRunning,
     progress: bulkOcrProgress,
     failedTiles: bulkOcrFailedTiles,
+    tileDebug: bulkOcrTileDebug,
     detect: runBulkOcr,
     dismiss: dismissBulkOcrCandidate,
   } = useBulkCardOcr();
   const [bulkOcrAccepting, setBulkOcrAccepting] = useState(false);
   const [fixingRowsOrder, setFixingRowsOrder] = useState(false);
+  const [showOcrDebug, setShowOcrDebug] = useState(false);
 
   // Skip suggesting a candidate for someone who already has a tag — bulk OCR re-reads the whole
   // photo from scratch each run, so on a partially-tagged photo most of its hits are already-
@@ -412,7 +425,8 @@ export function TagCanvas({
     return bulkOcrCandidates.filter((c) => {
       if (existingCodes.has(c.code)) return false;
       return tags.every(
-        (t) => pixelDistance(c.x, c.y, t.x, t.y) >= ALREADY_TAGGED_DISTANCE_FALLBACK,
+        (t) =>
+          pixelDistance(c.x, c.y, t.x, t.y) >= ALREADY_TAGGED_DISTANCE_FALLBACK,
       );
     });
   }, [bulkOcrCandidates, tags]);
@@ -575,7 +589,10 @@ export function TagCanvas({
   // of an already-tagged row lands between their real neighbors — saving then shifts everyone from
   // that slot onward over by one automatically (server + local state both apply the same shift,
   // see applyRowOrderShift).
-  function suggestRowOrder(x: number, y: number): { row: number; order: number } {
+  function suggestRowOrder(
+    x: number,
+    y: number,
+  ): { row: number; order: number } {
     return suggestRowOrderAgainst(tags, x, y);
   }
 
@@ -739,7 +756,9 @@ export function TagCanvas({
       : ref
         ? TagMatchSource.LEGACY_REFERENCE
         : TagMatchSource.MANUAL;
-    const order = against.filter((t) => t.row === row && t.x < candidate.x).length;
+    const order = against.filter(
+      (t) => t.row === row && t.x < candidate.x,
+    ).length;
 
     const result = await saveGroupPhotoTag(universityId, groupPhotoId, {
       id: undefined,
@@ -775,7 +794,9 @@ export function TagCanvas({
     code: string,
   ) {
     dismissBulkOcrCandidate(candidateId);
-    const row = resolveRowsForNewPoints(tags, [{ key: candidateId, x, y }]).get(candidateId)!;
+    const row = resolveRowsForNewPoints(tags, [{ key: candidateId, x, y }]).get(
+      candidateId,
+    )!;
     const saved = await saveBulkOcrCandidate(tags, { code, x, y }, row);
     setTags((prev) => [
       ...applyRowOrderShift(prev, undefined, saved.row, saved.order),
@@ -806,7 +827,10 @@ export function TagCanvas({
         try {
           const row = rows.get(candidate.id)!;
           const saved = await saveBulkOcrCandidate(running, candidate, row);
-          running = [...applyRowOrderShift(running, undefined, saved.row, saved.order), saved];
+          running = [
+            ...applyRowOrderShift(running, undefined, saved.row, saved.order),
+            saved,
+          ];
           setTags(running);
         } catch (err) {
           console.error("Failed to save a bulk OCR candidate:", err);
@@ -861,7 +885,7 @@ export function TagCanvas({
         // Same reasoning as the bulk-OCR accept-all path: re-clustering every tag's row/order at
         // once redefines the photo's layout wholesale, so the prior edit history no longer reads
         // as a meaningful audit trail against it.
-        await resetGroupPhotoTagHistory(universityId, groupPhotoId);
+        // await resetGroupPhotoTagHistory(universityId, groupPhotoId);
         await bulkUpdateTagRowOrder(universityId, groupPhotoId, updates);
         setTags((prev) => prev.map((t) => byId.get(t.id) ?? t));
       }
@@ -1192,7 +1216,7 @@ export function TagCanvas({
     }
     if (
       !window.confirm(
-        "ครอบตัดรูปแล้ว ต้องการบันทึกอัปเดตรูปภาพเลยหรือไม่? แท็กที่มีอยู่จะยังอยู่เหมือนเดิม แต่ตำแหน่งอาจเพี้ยนถ้าพื้นที่ที่ครอบตัดตัดคนที่แท็กไว้ออกไป (ปรับได้ทีหลังด้วยปุ่ม \"ปรับตำแหน่งทุกจุด\")",
+        'ครอบตัดรูปแล้ว ต้องการบันทึกอัปเดตรูปภาพเลยหรือไม่? แท็กที่มีอยู่จะยังอยู่เหมือนเดิม แต่ตำแหน่งอาจเพี้ยนถ้าพื้นที่ที่ครอบตัดตัดคนที่แท็กไว้ออกไป (ปรับได้ทีหลังด้วยปุ่ม "ปรับตำแหน่งทุกจุด")',
       )
     ) {
       return;
@@ -1214,7 +1238,9 @@ export function TagCanvas({
       // effect looks like it should re-run. A reload guarantees the new image is what loads.
       window.location.reload();
     } catch (err) {
-      window.alert(`บันทึกรูปที่ครอบตัดไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`);
+      window.alert(
+        `บันทึกรูปที่ครอบตัดไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`,
+      );
     } finally {
       setCropSaving(false);
       exitCropMode();
@@ -1373,7 +1399,12 @@ export function TagCanvas({
                       className="rounded-full border-2 border-dashed border-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/30"
                       style={{ width: 16, height: 16 }}
                       onClick={() =>
-                        void handleQuickSaveBulkOcrCandidate(c.id, c.x, c.y, c.code)
+                        void handleQuickSaveBulkOcrCandidate(
+                          c.id,
+                          c.x,
+                          c.y,
+                          c.code,
+                        )
                       }
                       title="อ่านได้จากป้ายอัตโนมัติ — คลิกเพื่อบันทึกคนนี้ทันที"
                     />
@@ -1413,7 +1444,9 @@ export function TagCanvas({
               // instead of the one just drawn.
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <p className="mb-2 text-xs font-semibold text-gray-900">ครอบตัดรูปภาพ</p>
+              <p className="mb-2 text-xs font-semibold text-gray-900">
+                ครอบตัดรูปภาพ
+              </p>
               <p className="mb-3 text-xs text-gray-500">
                 ลากบนรูปเพื่อเลือกพื้นที่ที่ต้องการครอบตัด
               </p>
@@ -1614,6 +1647,17 @@ export function TagCanvas({
               </span>
             )}
 
+            {!isBulkOcrRunning && bulkOcrTileDebug.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowOcrDebug(true)}
+                title="ดูภาพและตำแหน่งที่ OCR อ่านได้ของแต่ละ tile ทีละใบ เพื่อตรวจสอบว่าจุดไหนอ่านผิด/ตำแหน่งเพี้ยนมาจาก tile ไหน"
+                className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50"
+              >
+                ตรวจสอบผล OCR ({bulkOcrTileDebug.length} tile)
+              </button>
+            )}
+
             {newBulkOcrCandidates.length > 0 && (
               <button
                 type="button"
@@ -1741,6 +1785,10 @@ export function TagCanvas({
         onDelete={dialogInitial?.id ? handleDelete : undefined}
         onClose={() => setDialogInitial(null)}
       />
+
+      {showOcrDebug && (
+        <BulkOcrDebugModal tiles={bulkOcrTileDebug} onClose={() => setShowOcrDebug(false)} />
+      )}
     </div>
   );
 }
