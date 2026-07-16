@@ -882,10 +882,10 @@ export function TagCanvas({
       });
 
       if (updates.length > 0) {
-        // Same reasoning as the bulk-OCR accept-all path: re-clustering every tag's row/order at
-        // once redefines the photo's layout wholesale, so the prior edit history no longer reads
-        // as a meaningful audit trail against it.
-        // await resetGroupPhotoTagHistory(universityId, groupPhotoId);
+        // Unlike the bulk-OCR accept-all path, this never touches code/name — only row/order,
+        // which GroupPhotoTagHistory doesn't track at all — so there's nothing for this to make
+        // stale. Resetting history here would only destroy real prior code/name corrections for
+        // no reason.
         await bulkUpdateTagRowOrder(universityId, groupPhotoId, updates);
         setTags((prev) => prev.map((t) => byId.get(t.id) ?? t));
       }
