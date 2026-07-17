@@ -51,13 +51,17 @@ export async function syncRegistrantGroupPhotoTags(universityId: string, registr
     let next: { name: string; registrantId: string | null; matchSource: TagMatchSource } | null = null;
 
     if (isCurrentMatch) {
-      if (tag.registrantId !== registrantId || tag.name !== name || tag.matchSource !== TagMatchSource.REGISTRANT) {
-        next = { name, registrantId, matchSource: TagMatchSource.REGISTRANT };
+      // A human-overridden name is never reverted, even as registrantId/matchSource stay synced
+      // to whichever registrant now actually owns this code — "แก้เอง = เด็ดขาด".
+      const nextName = tag.nameOverridden ? tag.name : name;
+      if (tag.registrantId !== registrantId || tag.name !== nextName || tag.matchSource !== TagMatchSource.REGISTRANT) {
+        next = { name: nextName, registrantId, matchSource: TagMatchSource.REGISTRANT };
       }
     } else if (tag.registrantId === registrantId) {
       const ref = referenceByCode.get(tag.normalizedCode);
+      const nextName = tag.nameOverridden ? tag.name : ref?.name;
       next = ref
-        ? { name: ref.name, registrantId: null, matchSource: TagMatchSource.LEGACY_REFERENCE }
+        ? { name: nextName ?? ref.name, registrantId: null, matchSource: TagMatchSource.LEGACY_REFERENCE }
         : { name: tag.name, registrantId: null, matchSource: TagMatchSource.MANUAL };
     }
     if (!next) continue;

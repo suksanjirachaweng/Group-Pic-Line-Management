@@ -181,6 +181,9 @@ async function processAcceptingStage(job: ClaimedJob) {
             : ref
               ? TagMatchSource.LEGACY_REFERENCE
               : TagMatchSource.MANUAL,
+          // Bulk-accepted hits always use the freshly-resolved match's own name verbatim — never
+          // a human deviation, so never sticky.
+          nameOverridden: false,
         }),
       );
       running = [

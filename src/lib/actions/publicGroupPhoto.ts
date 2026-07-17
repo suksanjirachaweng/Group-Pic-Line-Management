@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
-import { RegistrantStatus } from "@/generated/prisma/enums";
+import { buildTagMatchMaps, resolveTagMatch } from "@/lib/groupPhoto/resolveTagMatch";
+import { RegistrantStatus, TagMatchSource } from "@/generated/prisma/enums";
 import type { TagHistoryEntry, TitleHistoryEntry } from "@/lib/actions/groupPhotos";
 
 export type PublicUpdateState = { error: string } | { success: true } | null;
@@ -21,7 +22,10 @@ export async function updateTagViaPublicLink(
   const link = await prisma.groupPhotoShareLink.findUnique({ where: { token } });
   if (!link || !link.isActive) return { error: "ลิงก์นี้ไม่ถูกต้องหรือถูกปิดใช้งานแล้ว" };
 
-  const tag = await prisma.groupPhotoTag.findUnique({ where: { id: tagId } });
+  const tag = await prisma.groupPhotoTag.findUnique({
+    where: { id: tagId },
+    include: { groupPhoto: { select: { universityId: true } } },
+  });
   if (!tag || tag.groupPhotoId !== link.groupPhotoId) {
     return { error: "ไม่พบข้อมูลนี้ในรูปที่ลิงก์นี้เกี่ยวข้อง" };
   }
@@ -34,13 +38,27 @@ export async function updateTagViaPublicLink(
   // values isn't a correction anyone needs a before/after record of.
   const changed = code !== tag.code || name !== tag.name;
 
+  // Re-resolve registrantId/matchSource against the *new* code — this UI lets the code itself be
+  // edited (unlike the validate page), so a code change here can silently orphan/re-link a
+  // registrant match if not recomputed. nameOverridden marks the saved name sticky against later
+  // auto-sync when it deviates from what that fresh match would itself supply.
+  const normalizedCode = normalizeCode(code);
+  const maps = await buildTagMatchMaps(tag.groupPhoto.universityId);
+  const match = resolveTagMatch(normalizedCode, maps);
+  const registrantId = match?.registrantId ?? null;
+  const matchSource = match?.matchSource ?? TagMatchSource.MANUAL;
+  const nameOverridden = match ? name !== match.name.trim() : false;
+
   await prisma.$transaction([
     prisma.groupPhotoTag.update({
       where: { id: tagId },
       data: {
         name,
         code,
-        normalizedCode: normalizeCode(code),
+        normalizedCode,
+        registrantId,
+        matchSource,
+        nameOverridden,
         editedViaPublicLink: true,
         publicLinkEditedAt: new Date(),
       },
@@ -71,7 +89,10 @@ export async function updateGroupPhotoTagViaValidatePage(
   _prevState: PublicUpdateState,
   formData: FormData,
 ): Promise<PublicUpdateState> {
-  const tag = await prisma.groupPhotoTag.findUnique({ where: { id: tagId } });
+  const tag = await prisma.groupPhotoTag.findUnique({
+    where: { id: tagId },
+    include: { groupPhoto: { select: { universityId: true } } },
+  });
   if (!tag || tag.groupPhotoId !== photoId) {
     return { error: "ไม่พบข้อมูลนี้ในรูปนี้" };
   }
@@ -84,8 +105,19 @@ export async function updateGroupPhotoTagViaValidatePage(
   // confirmation, not an edit — recorded on a separate flag so the sidebar badge can say
   // "ยืนยัน" instead of "แก้ไข", and skipped from history (nothing actually changed to show a
   // before/after for). Code changes count too, not just name — a code-only fix is still a real
-  // correction.
+  // correction (this page's own form always submits the code unchanged, but the action doesn't
+  // assume that).
   const changed = name !== tag.name.trim() || code !== tag.code;
+
+  // This page never lets the code itself change, but still re-resolves the match against it (not
+  // just trusting the tag's existing registrantId/matchSource) so a name correction here is marked
+  // sticky against later auto-sync using an up-to-date comparison, same as every other save path.
+  const normalizedCode = normalizeCode(code);
+  const maps = await buildTagMatchMaps(tag.groupPhoto.universityId);
+  const match = resolveTagMatch(normalizedCode, maps);
+  const registrantId = match?.registrantId ?? null;
+  const matchSource = match?.matchSource ?? TagMatchSource.MANUAL;
+  const nameOverridden = match ? name !== match.name.trim() : false;
 
   await prisma.$transaction([
     prisma.groupPhotoTag.update({
@@ -93,7 +125,10 @@ export async function updateGroupPhotoTagViaValidatePage(
       data: {
         name,
         code,
-        normalizedCode: normalizeCode(code),
+        normalizedCode,
+        registrantId,
+        matchSource,
+        nameOverridden,
         ...(changed
           ? { editedViaPublicLink: true, publicLinkEditedAt: new Date() }
           : { confirmedViaPublicLink: true, confirmedAt: new Date() }),

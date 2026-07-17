@@ -508,6 +508,7 @@ model GroupPhotoTag {
   y                      Float
   registrantId           String? // set when matched against a live Phase-1 Registrant (enables direct LINE send)
   matchSource            TagMatchSource @default(MANUAL)
+  nameOverridden         Boolean        @default(false) // a human explicitly saved a name different from what the current registrant/legacy-reference match would auto-fill — auto-sync (autoSyncGroupPhotoTags/syncRegistrantGroupPhotoTags) must never silently revert it back, even though it keeps registrantId/matchSource itself in sync with whichever code the tag currently has
   editedViaPublicLink    Boolean        @default(false)
   publicLinkEditedAt     DateTime?
   confirmedViaPublicLink Boolean        @default(false) // reviewer opened the /validate name-edit dialog and confirmed the name as-is (no change) — distinct from editedViaPublicLink so the sidebar badge can tell "confirmed correct" apart from "actually changed"

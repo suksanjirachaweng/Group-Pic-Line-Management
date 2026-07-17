@@ -10,7 +10,7 @@ import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { interpolateTemplate } from "@/lib/rules/evaluate";
 import { TagMatchSource, GroupPhotoStatus, TagHistorySource } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
-import { resolveRegistrantGroupPhotoName } from "@/lib/groupPhoto/registrantDisplayName";
+import { buildTagMatchMaps, resolveTagMatch } from "@/lib/groupPhoto/resolveTagMatch";
 
 export async function createGroupPhoto(
   universityId: string,
@@ -119,15 +119,29 @@ export type SaveTagInput = {
 };
 
 /**
+ * Whether `name` deviates from what the code's current registrant/legacy-reference match would
+ * itself supply — computed server-side (never trusting a client-sent flag) so a save can mark a
+ * tag "sticky" against later auto-sync overwrites. No match (unmatched code, or a MANUAL entry
+ * with nothing to deviate from) is never considered an override.
+ */
+async function computeNameOverridden(universityId: string, normalizedCode: string, name: string): Promise<boolean> {
+  const maps = await buildTagMatchMaps(universityId);
+  const match = resolveTagMatch(normalizedCode, maps);
+  return match ? name.trim() !== match.name.trim() : false;
+}
+
+/**
  * The CREATE half of saveGroupPhotoTag's collision-shifting logic, factored out so the background
  * auto-tag cron job (no session, can't call the auth-gated action below) can create tags with
  * identical row/order behavior to the interactive "accept all" flow. Takes an already-open `tx`
  * so the caller controls the transaction boundary (e.g. wrapping a whole batch of tags in one).
+ * `nameOverridden` is always explicit here (not re-derived) since the cron job's bulk-accept path
+ * always uses the freshly-resolved match's own name verbatim (never a human deviation).
  */
 export async function createGroupPhotoTagCore(
   tx: Prisma.TransactionClient,
   groupPhotoId: string,
-  input: Omit<SaveTagInput, "id">,
+  input: Omit<SaveTagInput, "id"> & { nameOverridden: boolean },
 ) {
   const data = {
     groupPhotoId,
@@ -140,6 +154,7 @@ export async function createGroupPhotoTagCore(
     y: input.y,
     registrantId: input.registrantId,
     matchSource: input.matchSource,
+    nameOverridden: input.nameOverridden,
   };
   await tx.groupPhotoTag.updateMany({
     where: { groupPhotoId, row: input.row, order: { gte: input.order } },
@@ -166,10 +181,13 @@ export async function saveGroupPhotoTag(
 ): Promise<{ id: string }> {
   await requireUniversityAccess(universityId);
 
+  const normalizedCode = normalizeCode(input.code);
+  const nameOverridden = await computeNameOverridden(universityId, normalizedCode, input.name);
+
   const data = {
     groupPhotoId,
     code: input.code,
-    normalizedCode: normalizeCode(input.code),
+    normalizedCode,
     name: input.name,
     row: input.row,
     order: input.order,
@@ -177,6 +195,7 @@ export async function saveGroupPhotoTag(
     y: input.y,
     registrantId: input.registrantId,
     matchSource: input.matchSource,
+    nameOverridden,
   };
 
   // `row`/`order` are meant to stay a dense 0..N sequence per row (drives the row-line drawing
@@ -235,7 +254,7 @@ export async function saveGroupPhotoTag(
       return updated;
     }
 
-    return createGroupPhotoTagCore(tx, groupPhotoId, input);
+    return createGroupPhotoTagCore(tx, groupPhotoId, { ...input, nameOverridden });
   });
 
   revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
@@ -364,32 +383,31 @@ export async function autoSyncGroupPhotoTags(universityId: string, groupPhotoId:
   const tags = await prisma.groupPhotoTag.findMany({ where: { groupPhotoId } });
   if (tags.length === 0) return;
 
-  const [registrantRows, referenceRows] = await Promise.all([
-    prisma.registrant.findMany({ where: { universityId }, select: { id: true, displayName: true, data: true } }),
-    prisma.groupPhotoLegacyReference.findMany({ where: { universityId }, select: { name: true, normalizedCode: true } }),
-  ]);
-
-  const registrantByCode = new Map<string, { id: string; name: string }>();
-  for (const r of registrantRows) {
-    const data = (r.data ?? {}) as Record<string, unknown>;
-    const rawCode = data.group_photo_index;
-    if (typeof rawCode !== "string" || !rawCode.trim()) continue;
-    const normalized = normalizeCode(rawCode);
-    if (!normalized) continue;
-    registrantByCode.set(normalized, { id: r.id, name: resolveRegistrantGroupPhotoName(r) });
-  }
-  const referenceByCode = new Map(referenceRows.map((r) => [r.normalizedCode, r]));
+  const maps = await buildTagMatchMaps(universityId);
 
   for (const tag of tags) {
-    if (!tag.normalizedCode) continue;
-    const reg = registrantByCode.get(tag.normalizedCode);
-    const ref = !reg ? referenceByCode.get(tag.normalizedCode) : undefined;
+    const match = tag.normalizedCode ? resolveTagMatch(tag.normalizedCode, maps) : null;
 
     let next: { name: string; registrantId: string | null; matchSource: TagMatchSource } | null = null;
-    if (reg && (tag.registrantId !== reg.id || tag.name !== reg.name || tag.matchSource !== TagMatchSource.REGISTRANT)) {
-      next = { name: reg.name, registrantId: reg.id, matchSource: TagMatchSource.REGISTRANT };
-    } else if (ref && !reg && (tag.name !== ref.name || tag.matchSource !== TagMatchSource.LEGACY_REFERENCE || tag.registrantId)) {
-      next = { name: ref.name, registrantId: null, matchSource: TagMatchSource.LEGACY_REFERENCE };
+    if (match) {
+      // Keep registrantId/matchSource in sync with whichever code the tag currently has
+      // regardless of nameOverridden — only the displayed NAME is sticky once a human has
+      // explicitly chosen a different one than the live registrant/reference data.
+      const name = tag.nameOverridden ? tag.name : match.name;
+      if (
+        tag.registrantId !== match.registrantId ||
+        tag.matchSource !== match.matchSource ||
+        tag.name !== name
+      ) {
+        next = { name, registrantId: match.registrantId, matchSource: match.matchSource };
+      }
+    } else if (tag.registrantId || tag.matchSource !== TagMatchSource.MANUAL) {
+      // No registrant/reference matches this code anymore — e.g. the registrant this tag used to
+      // be linked to has since moved their own code elsewhere (syncRegistrantGroupPhotoTags
+      // handles that release immediately for the one registrant who just edited, but this bulk
+      // pass is what catches every other case). Releases to MANUAL; name is left untouched either
+      // way, there's nothing better to fall back to.
+      next = { name: tag.name, registrantId: null, matchSource: TagMatchSource.MANUAL };
     }
     if (!next) continue;
 
