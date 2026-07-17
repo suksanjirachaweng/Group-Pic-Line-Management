@@ -133,6 +133,9 @@ export type TagRecord = {
   registrantId: string | null;
   matchSource: TagMatchSource;
   reportedProblem: boolean;
+  editedViaPublicLink: boolean;
+  confirmedViaPublicLink: boolean;
+  problemAcknowledged: boolean;
 };
 
 /**
@@ -483,6 +486,7 @@ export function TagCanvas({
       y,
       registrantId: null,
       matchSource: TagMatchSource.MANUAL,
+      problemAcknowledged: false,
     });
 
     // A candidate already OCR'd during the batch face-detection pass — reuse that result instead
@@ -641,6 +645,7 @@ export function TagCanvas({
       y: candidate.y,
       registrantId,
       matchSource,
+      problemAcknowledged: false,
     });
 
     return {
@@ -655,6 +660,9 @@ export function TagCanvas({
       registrantId,
       matchSource,
       reportedProblem: false,
+      editedViaPublicLink: false,
+      confirmedViaPublicLink: false,
+      problemAcknowledged: false,
     };
   }
 
@@ -785,6 +793,7 @@ export function TagCanvas({
       y: dialogInitial.y,
       registrantId: input.registrantId,
       matchSource: input.matchSource,
+      problemAcknowledged: input.problemAcknowledged,
     });
     const normalizedCode = input.code.replace(/\D+/g, "");
     setTags((prev) => {
@@ -809,6 +818,8 @@ export function TagCanvas({
           ...input,
           normalizedCode,
           reportedProblem: false,
+          editedViaPublicLink: false,
+          confirmedViaPublicLink: false,
         },
       ];
     });
@@ -1151,6 +1162,17 @@ export function TagCanvas({
             setListMode(mode);
             setSelectedTagId(null);
           }}
+          renderBadges={(t) =>
+            t.editedViaPublicLink ? (
+              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                แก้ไข
+              </span>
+            ) : t.confirmedViaPublicLink ? (
+              <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
+                ยืนยัน
+              </span>
+            ) : null
+          }
         />
         <div
           ref={containerRef}

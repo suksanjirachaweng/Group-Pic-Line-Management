@@ -116,6 +116,10 @@ export type SaveTagInput = {
   y: number;
   registrantId: string | null;
   matchSource: TagMatchSource;
+  // Admin-only "dismiss this problem" toggle (see TagEditDialog's checkbox) — excludes the tag
+  // from validateTags()'s problem list entirely, on both this page and the public /validate page,
+  // without touching the underlying duplicate/unmatched condition itself.
+  problemAcknowledged: boolean;
 };
 
 /**
@@ -155,6 +159,7 @@ export async function createGroupPhotoTagCore(
     registrantId: input.registrantId,
     matchSource: input.matchSource,
     nameOverridden: input.nameOverridden,
+    problemAcknowledged: input.problemAcknowledged,
   };
   await tx.groupPhotoTag.updateMany({
     where: { groupPhotoId, row: input.row, order: { gte: input.order } },
@@ -196,6 +201,7 @@ export async function saveGroupPhotoTag(
     registrantId: input.registrantId,
     matchSource: input.matchSource,
     nameOverridden,
+    problemAcknowledged: input.problemAcknowledged,
   };
 
   // `row`/`order` are meant to stay a dense 0..N sequence per row (drives the row-line drawing

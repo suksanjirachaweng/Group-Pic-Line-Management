@@ -515,6 +515,7 @@ model GroupPhotoTag {
   confirmedAt            DateTime?
   reportedProblem        Boolean        @default(false) // graduate flagged this from their own /photo-view link (wrong photo/code, can't self-fix)
   reportedAt             DateTime?
+  problemAcknowledged    Boolean        @default(false) // admin explicitly reviewed this tag and confirmed it's fine — validateTags() excludes it from the problem list entirely (both DUPLICATE_CODE and UNMATCHED_CODE), on both the admin tag page and the public /validate page, even though the underlying duplicate/unmatched condition is still technically true in the data. Toggled via the admin edit dialog only — not exposed on any public page.
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
 

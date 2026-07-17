@@ -17,6 +17,7 @@ export type DialogInitial = {
   y: number;
   registrantId: string | null;
   matchSource: TagMatchSource;
+  problemAcknowledged: boolean;
 };
 
 export type SavePayload = {
@@ -26,6 +27,7 @@ export type SavePayload = {
   order: number;
   registrantId: string | null;
   matchSource: TagMatchSource;
+  problemAcknowledged: boolean;
 };
 
 const HISTORY_SOURCE_LABEL: Record<TagHistoryEntry["source"], string> = {
@@ -62,6 +64,7 @@ export function TagEditDialog({
   const [registrantId, setRegistrantId] = useState<string | null>(null);
   const [matchSource, setMatchSource] = useState<TagMatchSource>(TagMatchSource.MANUAL);
   const [referenceSource, setReferenceSource] = useState<LegacyReferenceSource | null>(null);
+  const [problemAcknowledged, setProblemAcknowledged] = useState(false);
   const [history, setHistory] = useState<TagHistoryEntry[] | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
@@ -82,6 +85,7 @@ export function TagEditDialog({
       setCode(initial.code);
       setRow(initial.row);
       setOrder(initial.order);
+      setProblemAcknowledged(initial.problemAcknowledged);
       const normalized = initial.code.replace(/\D+/g, "");
       const reg = normalized ? registrantByCode.get(normalized) : undefined;
       const ref = !reg && normalized ? referenceByCode.get(normalized) : undefined;
@@ -215,6 +219,20 @@ export function TagEditDialog({
         <p className="mt-1.5 text-xs text-gray-400">ถ้าลำดับซ้ำกับคนอื่นในแถวเดียวกัน คนที่เหลือจะขยับ +1 ให้อัตโนมัติ</p>
 
         {initial.id && (
+          <label className="mt-3 flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-2 text-xs text-gray-700">
+            <input
+              type="checkbox"
+              checked={problemAcknowledged}
+              onChange={(e) => setProblemAcknowledged(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              ตรวจสอบแล้วว่าถูกต้อง — ไม่ต้องแสดงในรายชื่อที่มีปัญหาอีก (ทั้งหน้านี้และหน้า validate)
+            </span>
+          </label>
+        )}
+
+        {initial.id && (
           <div className="mt-3 border-t border-gray-100 pt-2">
             <button
               type="button"
@@ -266,7 +284,7 @@ export function TagEditDialog({
             </button>
             <button
               type="button"
-              onClick={() => onSave({ code, name, row, order, registrantId, matchSource })}
+              onClick={() => onSave({ code, name, row, order, registrantId, matchSource, problemAcknowledged })}
               disabled={!code.trim()}
               className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
             >

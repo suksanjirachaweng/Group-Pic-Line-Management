@@ -184,6 +184,9 @@ async function processAcceptingStage(job: ClaimedJob) {
           // Bulk-accepted hits always use the freshly-resolved match's own name verbatim — never
           // a human deviation, so never sticky.
           nameOverridden: false,
+          // A bulk-created tag has never been reviewed by an admin, so it's never pre-dismissed
+          // from the problem list.
+          problemAcknowledged: false,
         }),
       );
       running = [

@@ -45,6 +45,7 @@ export type PublicValidateTagRecord = {
   matchSource: TagMatchSource;
   editedViaPublicLink: boolean;
   confirmedViaPublicLink: boolean;
+  problemAcknowledged: boolean;
 };
 
 /**
