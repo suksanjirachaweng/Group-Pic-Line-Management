@@ -1,4 +1,4 @@
-# Group Pic Registration — LINE Bot Management Webapp
+# NEWSALON Group Pic Registration — LINE Bot Management Webapp
 
 Admin webapp for managing LINE-based group-photo registration across multiple
 universities: a LIFF registration form (replacing Google Forms), a rule engine
@@ -6,7 +6,7 @@ that auto-sends LINE messages based on admin-defined conditions, multi-channel
 LINE support to spread message volume across several channels' free tiers, and
 a one-way export mirror to each university's Google Sheet.
 
-See the full architecture/plan this was built from for context on *why* things
+See the full architecture/plan this was built from for context on _why_ things
 are structured this way (channel-pool routing, idempotent rule engine, DB as
 source of truth vs. Sheets as a read-only mirror, etc.).
 
@@ -19,11 +19,13 @@ source of truth vs. Sheets as a read-only mirror, etc.).
 ## Local setup
 
 1. Install dependencies:
+
    ```bash
    npm install
    ```
 
 2. Set up a local Postgres database. If you don't already have one:
+
    ```bash
    brew install postgresql@16
    LC_ALL="en_US.UTF-8" /usr/local/opt/postgresql@16/bin/pg_ctl \
@@ -33,17 +35,20 @@ source of truth vs. Sheets as a read-only mirror, etc.).
 
 3. Copy `.env.example` to `.env` and fill in `DATABASE_URL` (and generate real
    values for `NEXTAUTH_SECRET` / `ENCRYPTION_KEY` — see comments in the file):
+
    ```bash
    cp .env.example .env
    ```
 
 4. Run migrations and generate the Prisma client:
+
    ```bash
    npx prisma migrate dev
    ```
 
 5. Seed a superadmin account (reads `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`
    from `.env`, defaults to `admin@example.com` / `changeme123`):
+
    ```bash
    npm run db:seed
    ```

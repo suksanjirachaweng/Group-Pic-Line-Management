@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 // The tagging canvas and the mobile quick-tag wizard both want the entire viewport — each already
 // has its own back link/header, so the shared admin header/nav is redundant chrome eating into
 // space on what's effectively a full-screen editor, not a normal padded admin page.
-const FULLSCREEN_PATTERN = /^(\/admin\/universities\/[^/]+\/group-photos\/[^/]+|\/admin\/quick-tag)$/;
+const FULLSCREEN_PATTERN =
+  /^(\/admin\/universities\/[^/]+\/group-photos\/[^/]+|\/admin\/quick-tag)$/;
 
 export function AdminChrome({
   email,
@@ -28,22 +29,34 @@ export function AdminChrome({
 
   return (
     <div className="min-h-screen bg-sky-50">
-      <header className="bg-indigo-600 px-8 py-3 shadow-md">
+      <header className="bg-indigo-600 px-8 py-1 shadow-md">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-8">
             <span className="flex items-center gap-3 font-semibold text-white">
-              <span className="flex items-center justify-center rounded-md bg-sky-100 px-2.5 py-1 shadow-sm">
+              <span className="flex items-center justify-center rounded-md bg-sky-50 px-3.5 py-2 shadow-sm">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/nsl-logo.png" alt="Newsalon" className="h-6 w-auto" />
+                <img
+                  src="/nsl-logo.png"
+                  alt="Newsalon"
+                  className="h-6 w-auto"
+                />
               </span>
-              Group Pic Registration <span className="text-indigo-200">— Admin</span>
+              <span className="text-orange-200"> NEWSALON</span>
+              Group Pic Registration{" "}
+              <span className="text-indigo-200">— Admin</span>
             </span>
             <nav className="flex gap-4 text-sm">
-              <Link href="/admin/universities" className="text-indigo-100 transition-colors hover:text-white">
+              <Link
+                href="/admin/universities"
+                className="text-indigo-100 transition-colors hover:text-white"
+              >
                 Universities
               </Link>
               {isSuperadmin && (
-                <Link href="/admin/channels" className="text-indigo-100 transition-colors hover:text-white">
+                <Link
+                  href="/admin/channels"
+                  className="text-indigo-100 transition-colors hover:text-white"
+                >
                   LINE Channels
                 </Link>
               )}

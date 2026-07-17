@@ -41,13 +41,19 @@ export default function LoginPage() {
       >
         <div className="mx-auto h-10 w-10 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500" />
 
-        <h1 className="text-center text-xl font-semibold text-gray-900">Admin Login</h1>
-        <p className="text-center text-sm text-gray-500">Group Pic Registration</p>
+        <h1 className="text-center text-xl font-semibold text-gray-900">
+          Admin Login
+        </h1>
+        <p className="text-center text-sm text-gray-500">
+          NEWSALON Group Pic Registration
+        </p>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Email</label>
+          <label className="block text-sm font-medium text-gray-700">
+            Email
+          </label>
           <input
             type="email"
             required
@@ -58,7 +64,9 @@ export default function LoginPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Password</label>
+          <label className="block text-sm font-medium text-gray-700">
+            Password
+          </label>
           <input
             type="password"
             required

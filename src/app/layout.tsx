@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Group Pic Registration",
+  title: "NEWSALON Group Pic Registration",
   description: "LINE bot management webapp for group photo registration",
 };
 
