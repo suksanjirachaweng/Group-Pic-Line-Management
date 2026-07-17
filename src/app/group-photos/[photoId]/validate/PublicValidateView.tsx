@@ -324,7 +324,7 @@ export function PublicValidateView({
           onClick={handleSaveEdit}
           disabled={editSaving}
           className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium text-white disabled:opacity-50 ${
-            editNameChanged ? "bg-orange-600 hover:bg-orange-700" : "bg-green-600 hover:bg-green-700"
+            editNameChanged ? "bg-indigo-600 hover:bg-indigo-700" : "bg-green-600 hover:bg-green-700"
           }`}
         >
           {editSaving ? "กำลังบันทึก..." : editNameChanged ? "บันทึก" : "ยืนยัน"}
@@ -394,7 +394,6 @@ export function PublicValidateView({
         onListModeChange={switchListMode}
         emptyMessage="ไม่พบปัญหา — ข้อมูลพร้อม export"
         landscapeMobile={isLandscapeMobile}
-        panelBgClassName="bg-yellow-50"
         renderBadges={(t) =>
           t.editedViaPublicLink ? (
             <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
@@ -435,7 +434,6 @@ export function PublicValidateView({
         fitHeightOnMobileOrientation
         editingTagId={isMobileWidth ? null : editingTagId}
         renderEditPopup={() => editFormNode}
-        viewportBgClassName="bg-amber-100"
       />
     </div>
   );
@@ -448,10 +446,7 @@ export function PublicValidateView({
           multiplies into many lines and eats most of the screen; putting it below the logo gives
           it the full width instead, and smaller fonts/gaps keep the whole block short. Desktop
           keeps the original side-by-side row, which already has plenty of width to spare. */}
-      {/* Orange/yellow theme (deliberately distinct from the admin tag page's blue theme and from
-          ReviewCanvas's default dark bg — this is the one caller that overrides
-          viewportBgClassName) — carried across the header, sidebar panel, and bottom toolbar. */}
-      <div className="flex flex-col items-center gap-1 border-b border-gray-200 bg-yellow-50 px-3 py-1.5 sm:px-4 md:flex-row md:gap-3 md:py-2">
+      <div className="flex flex-col items-center gap-1 border-b border-gray-200 bg-white px-3 py-1.5 sm:px-4 md:flex-row md:gap-3 md:py-2">
         <div className="flex shrink-0 flex-col items-center gap-0.5 md:gap-1">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/nsl-logo.png" alt="Newsalon" className="h-6 w-auto md:h-7" />
@@ -485,7 +480,7 @@ export function PublicValidateView({
                   type="button"
                   disabled={titleSaving}
                   onClick={saveTitle}
-                  className="rounded-md bg-orange-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-orange-700 disabled:opacity-50"
+                  className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {titleSaving ? "..." : "บันทึก"}
                 </button>
@@ -544,7 +539,7 @@ export function PublicValidateView({
                   setTitleHistory(null);
                   setTitleHistoryOpen(false);
                 }}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-300 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 hover:border-orange-400 hover:bg-orange-50 hover:text-orange-600 md:px-2 md:py-1 md:text-xs"
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-300 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 md:px-2 md:py-1 md:text-xs"
               >
                 <span aria-hidden>✎</span> แก้ไข
               </button>
@@ -585,7 +580,7 @@ export function PublicValidateView({
       {/* Hidden entirely on mobile — zoom is pinch/drag there already, and the hint text +
           display-field checkboxes are just clutter competing with the photo/list for the little
           screen space a phone (even in landscape) has. Desktop keeps the full toolbar. */}
-      <div className="hidden items-center gap-3 border-t border-gray-200 bg-yellow-50 px-3 py-2 text-xs md:flex md:flex-wrap">
+      <div className="hidden items-center gap-3 border-t border-gray-200 bg-white px-3 py-2 text-xs md:flex md:flex-wrap">
         <ZoomButtons
           onZoomOut={() => canvasRef.current?.zoomOut()}
           onZoomIn={() => canvasRef.current?.zoomIn()}
