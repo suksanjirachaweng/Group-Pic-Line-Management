@@ -31,7 +31,7 @@ export function StripNameTitlesButton({ universityId }: { universityId: string }
           router.refresh();
         });
       }}
-      className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-50"
+      className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-600 disabled:opacity-50"
     >
       {isPending ? "กำลังลบ..." : "ลบคำนำหน้าชื่อ"}
     </button>

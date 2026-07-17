@@ -70,7 +70,7 @@ export function PhotoTitleEditor({
               setHistoryOpen(false);
             }}
             title="แก้ไขหัวข้อรูป"
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-600"
           >
             <span aria-hidden>✎</span> แก้ไข
           </button>

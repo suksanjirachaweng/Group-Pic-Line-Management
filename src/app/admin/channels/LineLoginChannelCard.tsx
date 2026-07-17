@@ -23,7 +23,7 @@ export function LineLoginChannelCard({
   }, [state]);
 
   return (
-    <div className="mb-6 rounded-md border border-indigo-200 bg-indigo-50/40 p-4">
+    <div className="mb-6 rounded-md border border-sky-200 bg-sky-50/40 p-4">
       <h2 className="mb-1 text-sm font-semibold text-gray-900">LINE Login Channel (ใช้ร่วมกันสำหรับ LIFF)</h2>
       <p className="mb-3 text-xs text-gray-500">
         LINE ไม่อนุญาตให้สร้าง LIFF app บน Messaging API channel โดยตรง ต้องใช้ LINE Login channel แยกต่างหาก —

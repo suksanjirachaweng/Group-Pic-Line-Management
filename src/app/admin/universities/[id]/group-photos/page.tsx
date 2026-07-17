@@ -352,7 +352,7 @@ async function DataTab({
           <Link
             href={dataSubTabHref("list")}
             className={`rounded px-3 py-1.5 font-medium ${
-              dataSubTab === "list" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"
+              dataSubTab === "list" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-sky-50"
             }`}
           >
             รายชื่อทั้งหมด <span className="text-xs opacity-80">({filtered.length})</span>
@@ -360,7 +360,7 @@ async function DataTab({
           <Link
             href={dataSubTabHref("alerts")}
             className={`rounded px-3 py-1.5 font-medium ${
-              dataSubTab === "alerts" ? "bg-amber-500 text-white" : "text-gray-600 hover:bg-gray-50"
+              dataSubTab === "alerts" ? "bg-amber-500 text-white" : "text-gray-600 hover:bg-sky-50"
             }`}
           >
             รายการแจ้งเตือน{" "}
@@ -599,7 +599,7 @@ async function PhotosTab({
             <Link
               href={photoSortHref("upload")}
               className={`flex items-center gap-1 rounded px-2 py-1 font-medium ${
-                photoSort === "upload" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"
+                photoSort === "upload" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-sky-50"
               }`}
             >
               ลำดับอัปโหลด
@@ -608,7 +608,7 @@ async function PhotosTab({
             <Link
               href={photoSortHref("name")}
               className={`flex items-center gap-1 rounded px-2 py-1 font-medium ${
-                photoSort === "name" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"
+                photoSort === "name" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-sky-50"
               }`}
             >
               ชื่อ

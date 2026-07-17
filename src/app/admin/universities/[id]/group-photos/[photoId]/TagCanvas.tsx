@@ -1560,7 +1560,7 @@ export function TagCanvas({
               title="เลือกพื้นที่บนรูปเพื่อครอบตัดแล้วบันทึกแทนที่รูปเดิม"
               className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 font-medium disabled:opacity-50 ${
                 cropMode
-                  ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                  ? "border-sky-400 bg-sky-50 text-sky-700"
                   : "border-gray-300 text-gray-700 hover:bg-gray-50"
               }`}
             >
