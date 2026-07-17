@@ -33,15 +33,15 @@ export function AdminChrome({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-8">
             <span className="flex items-center gap-3 font-semibold text-white">
-              <span className="flex items-center justify-center rounded-md bg-sky-50 px-3.5 py-2 shadow-sm">
+              <span className="flex items-center justify-center rounded-md bg-sky-50 px-3 py-1 shadow-sm">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/nsl-logo.png"
                   alt="Newsalon"
                   className="h-6 w-auto"
                 />
+                <span className="px-1 py-0.1 text-orange-700"> NEWSALON</span>
               </span>
-              <span className="text-orange-200"> NEWSALON</span>
               Group Pic Registration{" "}
               <span className="text-indigo-200">— Admin</span>
             </span>

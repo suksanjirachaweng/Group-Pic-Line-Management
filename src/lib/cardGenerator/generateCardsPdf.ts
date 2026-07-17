@@ -49,6 +49,28 @@ function fitFontSize(doc: PDFKit.PDFDocument, text: string, maxWidth: number, ma
   return size;
 }
 
+/** Shrink-to-fit against BOTH a max width and a max height (using the font's real line-height
+ * metrics, not an assumed ratio) — for a block of text meant to fill a given box on the page,
+ * as opposed to fitFontSize's width-only fit against an arbitrary cap. Caller must have already
+ * set the intended font (e.g. `doc.font("Sarabun-Bold")`) before calling this, since bold glyphs
+ * are wider than regular at the same size and measuring with the wrong font under-fits. */
+function fitFontSizeBox(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  maxWidth: number,
+  maxHeight: number,
+  maxSize: number,
+  minSize = 10,
+): number {
+  let size = maxSize;
+  while (size > minSize) {
+    doc.fontSize(size);
+    if (doc.widthOfString(text) <= maxWidth && doc.currentLineHeight() <= maxHeight) break;
+    size -= 1;
+  }
+  return size;
+}
+
 function drawDottedLine(doc: PDFKit.PDFDocument, x1: number, y: number, x2: number) {
   doc.save();
   doc.dash(1, { space: 2 }).moveTo(x1, y).lineTo(x2, y).stroke("#666666");
@@ -185,13 +207,27 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
         .text(headerRight, MARGIN, MARGIN, { width: contentWidth, align: "right", lineBreak: false });
     }
 
+    // Fills the whole space between the header row and the fill-in/QR band, not a fixed
+    // (previously 150pt-capped) size — the fixed cap left a lot of unused vertical room, and
+    // fitFontSize's width-only check had also been measuring against the *regular* font (it ran
+    // before `.font("Sarabun-Bold")` was set below), which under-fits since bold glyphs are wider.
+    const numberTop = 40;
+    const numberBottom = bottomBandY - 14;
     const codeStr = String(code);
-    const codeSize = fitFontSize(doc, codeStr, contentWidth - 20, 150);
+    doc.font("Sarabun-Bold");
+    const codeSize = fitFontSizeBox(doc, codeStr, contentWidth - 16, numberBottom - numberTop, 400, 40);
+    const codeLineHeight = doc.fontSize(codeSize).currentLineHeight();
+    const codeY = numberTop + (numberBottom - numberTop - codeLineHeight) / 2;
     doc
       .font("Sarabun-Bold")
       .fontSize(codeSize)
       .fillColor("#000000")
-      .text(codeStr, MARGIN, 50, { width: contentWidth, align: "center" });
+      .strokeColor("#000000")
+      // A stroke reinforcement on top of the already-bold face — at this size TH Sarabun Bold's
+      // stroke weight alone still read as fairly light, per the user's own comparison against a
+      // hand-drawn reference box.
+      .lineWidth(Math.max(1, codeSize * 0.02))
+      .text(codeStr, MARGIN, codeY, { width: contentWidth, align: "center", fill: true, stroke: true });
 
     if (includeFillIn && includeQr) {
       // Leaves the arrow section (fillInWidth is the only free variable here — QR is a fixed
