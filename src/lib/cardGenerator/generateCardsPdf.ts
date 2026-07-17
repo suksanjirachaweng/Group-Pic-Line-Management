@@ -49,9 +49,19 @@ function fitFontSize(doc: PDFKit.PDFDocument, text: string, maxWidth: number, ma
   return size;
 }
 
-/** Shrink-to-fit against BOTH a max width and a max height (using the font's real line-height
- * metrics, not an assumed ratio) — for a block of text meant to fill a given box on the page,
- * as opposed to fitFontSize's width-only fit against an arbitrary cap. Caller must have already
+/** The font's cap-height (glyph height above baseline, in em-relative 1000ths) — not exposed in
+ * PDFKit's public types, but present at runtime on the internal font object. */
+function capHeightRatio(doc: PDFKit.PDFDocument): number {
+  const internalFont = (doc as unknown as { _font: { capHeight: number } })._font;
+  return internalFont.capHeight / 1000;
+}
+
+/** Shrink-to-fit against BOTH a max width and a max height, using the font's cap-height (the
+ * actual vertical extent of digit glyphs) rather than currentLineHeight(). currentLineHeight()
+ * spans the font's full ascender-to-descender range, which for a Thai typeface is ~2.3x taller
+ * than a digit's cap-height because it reserves room for tone marks/vowels that sit well above
+ * and below the baseline — text with no such marks (e.g. a card number) only ever needs
+ * cap-height, so fitting against line-height left most of the box empty. Caller must have already
  * set the intended font (e.g. `doc.font("Sarabun-Bold")`) before calling this, since bold glyphs
  * are wider than regular at the same size and measuring with the wrong font under-fits. */
 function fitFontSizeBox(
@@ -62,10 +72,11 @@ function fitFontSizeBox(
   maxSize: number,
   minSize = 10,
 ): number {
+  const capRatio = capHeightRatio(doc);
   let size = maxSize;
   while (size > minSize) {
     doc.fontSize(size);
-    if (doc.widthOfString(text) <= maxWidth && doc.currentLineHeight() <= maxHeight) break;
+    if (doc.widthOfString(text) <= maxWidth && capRatio * size <= maxHeight) break;
     size -= 1;
   }
   return size;
@@ -216,8 +227,16 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
     const codeStr = String(code);
     doc.font("Sarabun-Bold");
     const codeSize = fitFontSizeBox(doc, codeStr, contentWidth - 16, numberBottom - numberTop, 400, 40);
-    const codeLineHeight = doc.fontSize(codeSize).currentLineHeight();
-    const codeY = numberTop + (numberBottom - numberTop - codeLineHeight) / 2;
+    doc.fontSize(codeSize);
+    // PDFKit positions .text()'s y as the top of the ascender box, with the baseline at
+    // y + ascender. Centering by cap-height (not currentLineHeight) means we have to place the
+    // baseline ourselves: solve for y so the glyphs' visual cap-height band sits in the middle
+    // of [numberTop, numberBottom], using the same internal font metrics as fitFontSizeBox.
+    const internalFont = (doc as unknown as { _font: { ascender: number; capHeight: number } })._font;
+    const ascenderPt = (internalFont.ascender / 1000) * codeSize;
+    const capHeightPt = (internalFont.capHeight / 1000) * codeSize;
+    const boxCenterY = numberTop + (numberBottom - numberTop) / 2;
+    const codeY = boxCenterY - ascenderPt + capHeightPt / 2;
     doc
       .font("Sarabun-Bold")
       .fontSize(codeSize)
