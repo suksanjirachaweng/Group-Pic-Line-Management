@@ -219,20 +219,6 @@ export function TagEditDialog({
         <p className="mt-1.5 text-xs text-gray-400">ถ้าลำดับซ้ำกับคนอื่นในแถวเดียวกัน คนที่เหลือจะขยับ +1 ให้อัตโนมัติ</p>
 
         {initial.id && (
-          <label className="mt-3 flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-2 text-xs text-gray-700">
-            <input
-              type="checkbox"
-              checked={problemAcknowledged}
-              onChange={(e) => setProblemAcknowledged(e.target.checked)}
-              className="mt-0.5"
-            />
-            <span>
-              ตรวจสอบแล้วว่าถูกต้อง — ไม่ต้องแสดงในรายชื่อที่มีปัญหาอีก (ทั้งหน้านี้และหน้า validate)
-            </span>
-          </label>
-        )}
-
-        {initial.id && (
           <div className="mt-3 border-t border-gray-100 pt-2">
             <button
               type="button"
@@ -262,7 +248,7 @@ export function TagEditDialog({
           </div>
         )}
 
-        <div className="mt-4 flex justify-between gap-2">
+        <div className="mt-4 flex items-center justify-between gap-2">
           {onDelete ? (
             <button
               type="button"
@@ -273,6 +259,19 @@ export function TagEditDialog({
             </button>
           ) : (
             <span />
+          )}
+          {initial.id && (
+            <button
+              type="button"
+              onClick={() => setProblemAcknowledged((v) => !v)}
+              className={
+                problemAcknowledged
+                  ? "rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100"
+                  : "rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              }
+            >
+              {problemAcknowledged ? "แสดงปัญหาอีกครั้ง" : "ไม่แสดงปัญหา"}
+            </button>
           )}
           <div className="flex gap-2">
             <button

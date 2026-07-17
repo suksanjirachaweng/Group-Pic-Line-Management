@@ -136,6 +136,7 @@ export type TagRecord = {
   editedViaPublicLink: boolean;
   confirmedViaPublicLink: boolean;
   problemAcknowledged: boolean;
+  ocrLowConfidence: boolean;
 };
 
 /**
@@ -618,7 +619,7 @@ export function TagCanvas({
   // order off its own running list instead of possibly-stale component state.
   async function saveBulkOcrCandidate(
     against: TagRecord[],
-    candidate: { code: string; x: number; y: number },
+    candidate: { code: string; x: number; y: number; confident: boolean },
     row: number,
   ): Promise<TagRecord> {
     const normalizedCode = candidate.code.replace(/\D+/g, "");
@@ -646,6 +647,7 @@ export function TagCanvas({
       registrantId,
       matchSource,
       problemAcknowledged: false,
+      ocrLowConfidence: !candidate.confident,
     });
 
     return {
@@ -663,6 +665,7 @@ export function TagCanvas({
       editedViaPublicLink: false,
       confirmedViaPublicLink: false,
       problemAcknowledged: false,
+      ocrLowConfidence: !candidate.confident,
     };
   }
 
@@ -671,12 +674,13 @@ export function TagCanvas({
     x: number,
     y: number,
     code: string,
+    confident: boolean,
   ) {
     dismissBulkOcrCandidate(candidateId);
     const row = resolveRowsForNewPoints(tags, [{ key: candidateId, x, y }]).get(
       candidateId,
     )!;
-    const saved = await saveBulkOcrCandidate(tags, { code, x, y }, row);
+    const saved = await saveBulkOcrCandidate(tags, { code, x, y, confident }, row);
     setTags((prev) => [
       ...applyRowOrderShift(prev, undefined, saved.row, saved.order),
       saved,
@@ -794,6 +798,9 @@ export function TagCanvas({
       registrantId: input.registrantId,
       matchSource: input.matchSource,
       problemAcknowledged: input.problemAcknowledged,
+      // The manual dialog never creates a tag from an unconfirmed OCR read — this only ever
+      // matters via saveBulkOcrCandidate, which calls saveGroupPhotoTag directly, not this dialog.
+      ocrLowConfidence: false,
     });
     const normalizedCode = input.code.replace(/\D+/g, "");
     setTags((prev) => {
@@ -806,7 +813,10 @@ export function TagCanvas({
       if (dialogInitial.id) {
         const id = dialogInitial.id;
         return shifted.map((t) =>
-          t.id === id ? { ...t, ...input, normalizedCode } : t,
+          // A deliberate dialog save always clears ocrLowConfidence server-side (see
+          // saveGroupPhotoTag's UPDATE branch) — mirror that here so the marker/badge disappears
+          // immediately instead of waiting for the next page load.
+          t.id === id ? { ...t, ...input, normalizedCode, ocrLowConfidence: false } : t,
         );
       }
       return [
@@ -820,6 +830,7 @@ export function TagCanvas({
           reportedProblem: false,
           editedViaPublicLink: false,
           confirmedViaPublicLink: false,
+          ocrLowConfidence: false,
         },
       ];
     });
@@ -1162,21 +1173,31 @@ export function TagCanvas({
             setListMode(mode);
             setSelectedTagId(null);
           }}
-          renderBadges={(t) =>
-            t.editedViaPublicLink ? (
-              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-                แก้ไข
-              </span>
-            ) : t.confirmedViaPublicLink ? (
-              <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
-                ยืนยัน
-              </span>
-            ) : null
-          }
+          renderBadges={(t) => (
+            <>
+              {t.ocrLowConfidence && (
+                <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                  OCR ไม่มั่นใจ
+                </span>
+              )}
+              {t.editedViaPublicLink ? (
+                <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                  แก้ไข
+                </span>
+              ) : t.confirmedViaPublicLink ? (
+                <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
+                  ยืนยัน
+                </span>
+              ) : null}
+            </>
+          )}
         />
         <div
           ref={containerRef}
-          className="relative flex-1 overflow-hidden bg-gray-800"
+          // Light blue, deliberately distinct from ReviewCanvas's dark bg-gray-800 (shared by
+          // /validate and /photo-review) — this is the admin-only tag page, not that shared
+          // component, so this can differ freely without affecting the public pages.
+          className="relative flex-1 overflow-hidden bg-sky-100"
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -1192,7 +1213,7 @@ export function TagCanvas({
               height={canvasSize.height}
               onClick={handleCanvasClick}
               onDoubleClick={handleCanvasDoubleClick}
-              className={`block bg-gray-800 ${spacePressed ? "cursor-grab" : "cursor-crosshair"}`}
+              className={`block bg-sky-100 ${spacePressed ? "cursor-grab" : "cursor-crosshair"}`}
             />
             <div className="pointer-events-none absolute inset-0">
               {displayFields.has("line") && (
@@ -1262,12 +1283,16 @@ export function TagCanvas({
                               ? "0 0 0 2px #f97316"
                               : isProblem
                                 ? "0 0 0 2px #ef4444"
-                                : undefined
+                                : t.ocrLowConfidence
+                                  ? "0 0 0 2px #f59e0b"
+                                  : undefined
                       }
                       title={
                         t.reportedProblem
                           ? `${t.code} — ${t.name} (บัณฑิตแจ้งปัญหา)`
-                          : `${t.code} — ${t.name}`
+                          : t.ocrLowConfidence
+                            ? `${t.code} — ${t.name} (OCR ไม่ค่อยมั่นใจ ควรตรวจสอบ)`
+                            : `${t.code} — ${t.name}`
                       }
                     />
                     <TagLabel
@@ -1296,7 +1321,11 @@ export function TagCanvas({
                   >
                     <button
                       type="button"
-                      className="rounded-full border-2 border-dashed border-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/30"
+                      className={
+                        c.confident
+                          ? "rounded-full border-2 border-dashed border-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/30"
+                          : "rounded-full border-2 border-dashed border-amber-400 bg-amber-400/10 hover:bg-amber-400/30"
+                      }
                       style={{ width: 16, height: 16 }}
                       onClick={() =>
                         void handleQuickSaveBulkOcrCandidate(
@@ -1304,12 +1333,20 @@ export function TagCanvas({
                           c.x,
                           c.y,
                           c.code,
+                          c.confident,
                         )
                       }
-                      title="อ่านได้จากป้ายอัตโนมัติ — คลิกเพื่อบันทึกคนนี้ทันที"
+                      title={
+                        c.confident
+                          ? "อ่านได้จากป้ายอัตโนมัติ — คลิกเพื่อบันทึกคนนี้ทันที"
+                          : "อ่านได้จากป้ายอัตโนมัติ แต่ไม่ค่อยมั่นใจ ควรตรวจสอบ — คลิกเพื่อบันทึกคนนี้ทันที"
+                      }
                     />
-                    <div className="pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-emerald-700/80 px-1 text-[10px] leading-tight text-white">
+                    <div
+                      className={`pointer-events-none absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap rounded px-1 text-[10px] leading-tight text-white ${c.confident ? "bg-emerald-700/80" : "bg-amber-700/80"}`}
+                    >
                       {c.code}
+                      {!c.confident && " ?"}
                     </div>
                   </div>
                 );

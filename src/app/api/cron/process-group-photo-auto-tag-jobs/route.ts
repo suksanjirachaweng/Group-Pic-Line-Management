@@ -74,6 +74,7 @@ async function processOcrStage(job: ClaimedJob) {
               code: hit.code,
               x: tile.left + (hit.x / uploadWidth) * tile.width,
               y: tile.top + (hit.y / uploadHeight) * tile.height,
+              confident: hit.confident,
             })),
           });
         }
@@ -105,7 +106,7 @@ async function processAcceptingStage(job: ClaimedJob) {
   });
   // First tile to read a given code wins — matches useBulkCardOcr.ts's own de-dup rule.
   const seenCodes = new Set<string>();
-  const deduped: { code: string; x: number; y: number }[] = [];
+  const deduped: { code: string; x: number; y: number; confident: boolean }[] = [];
   for (const hit of hitRows) {
     if (seenCodes.has(hit.code)) continue;
     seenCodes.add(hit.code);
@@ -187,6 +188,9 @@ async function processAcceptingStage(job: ClaimedJob) {
           // A bulk-created tag has never been reviewed by an admin, so it's never pre-dismissed
           // from the problem list.
           problemAcknowledged: false,
+          // Carries the model's own self-reported read confidence through from the OCR stage —
+          // surfaced as an amber ring/badge on the tag page so an admin can go double-check it.
+          ocrLowConfidence: !candidate.confident,
         }),
       );
       running = [

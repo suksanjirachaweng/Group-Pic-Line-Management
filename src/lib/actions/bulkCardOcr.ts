@@ -27,16 +27,18 @@ const client = new Anthropic();
 function buildPrompt(width: number, height: number): string {
   return `This is a cropped section of a large group photo, showing several people. Each person is holding up a small paper card with a printed number on it, roughly at chest/shoulder height, BELOW their own face.
 
-This image is exactly ${width}x${height} pixels. For EVERY card in this image where the digits are clearly legible, report its digits and the position of the CENTER OF THE CARD ITSELF (not the person's face, not the person's body — the small paper card) as PIXEL coordinates within THIS image, where (0,0) is the top-left corner and (${width},${height}) is the bottom-right corner.
+This image is exactly ${width}x${height} pixels. For EVERY card in this image where the digits are legible enough to make a reading, report its digits and the position of the CENTER OF THE CARD ITSELF (not the person's face, not the person's body — the small paper card) as PIXEL coordinates within THIS image, where (0,0) is the top-left corner and (${width},${height}) is the bottom-right corner.
 
 Each card belongs to exactly one person, the one physically holding it. Double check you are not reporting a number using a neighboring person's card position.
 
-Reply with ONLY a JSON array, no other text, no markdown fences. Format: [{"code":"1234","x":783,"y":1230}, ...]
+Also report your own confidence in each reading as a boolean "confident": true only if every digit is sharp and unambiguous; false if you could read it but something makes it uncertain — e.g. a digit could plausibly be more than one value (1 vs 7, 5 vs 6), the card is blurry, at a sharp angle, partially covered by a hand/finger, or has glare on it.
 
-If a card is cut off at the edge of the crop or its digits are not clearly legible, skip it entirely rather than guessing.`;
+Reply with ONLY a JSON array, no other text, no markdown fences. Format: [{"code":"1234","x":783,"y":1230,"confident":true}, ...]
+
+If a card is cut off at the edge of the crop or its digits are too illegible to make any reading at all, skip it entirely rather than guessing.`;
 }
 
-export type CardOcrHit = { code: string; x: number; y: number };
+export type CardOcrHit = { code: string; x: number; y: number; confident: boolean };
 
 /**
  * Runs OCR on one tile crop of a group photo (not the whole image — see useBulkCardOcr, which
@@ -117,13 +119,15 @@ export async function runCardGridOcr(
   const hits: CardOcrHit[] = [];
   for (const entry of parsed) {
     if (typeof entry !== "object" || entry === null) continue;
-    const { code, x, y } = entry as Record<string, unknown>;
+    const { code, x, y, confident } = entry as Record<string, unknown>;
     const digits = String(code ?? "").replace(/\D/g, "");
     const nx = Number(x);
     const ny = Number(y);
     if (digits.length < 3 || digits.length > 5) continue;
     if (!Number.isFinite(nx) || !Number.isFinite(ny)) continue;
-    hits.push({ code: digits, x: nx, y: ny });
+    // Default to confident when the field is missing/malformed rather than flooding every hit
+    // with an uncertainty flag on a parsing hiccup — only an explicit `false` counts as unsure.
+    hits.push({ code: digits, x: nx, y: ny, confident: confident !== false });
   }
   return { hits, width, height };
 }

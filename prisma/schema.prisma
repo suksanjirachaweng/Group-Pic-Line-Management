@@ -447,12 +447,13 @@ model GroupPhotoAutoTagJob {
 /// already mapped to full-photo pixel space (not tile-local) so the ACCEPTING stage doesn't need
 /// to remember each hit's originating tile geometry.
 model GroupPhotoAutoTagHit {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   jobId     String
   tileIndex Int
   code      String
   x         Float
   y         Float
+  confident Boolean @default(true) // model's own self-reported read confidence (see bulkCardOcr.ts's prompt) — carried through to GroupPhotoTag.ocrLowConfidence when this hit is accepted into a real tag
 
   job GroupPhotoAutoTagJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
@@ -516,6 +517,7 @@ model GroupPhotoTag {
   reportedProblem        Boolean        @default(false) // graduate flagged this from their own /photo-view link (wrong photo/code, can't self-fix)
   reportedAt             DateTime?
   problemAcknowledged    Boolean        @default(false) // admin explicitly reviewed this tag and confirmed it's fine — validateTags() excludes it from the problem list entirely (both DUPLICATE_CODE and UNMATCHED_CODE), on both the admin tag page and the public /validate page, even though the underlying duplicate/unmatched condition is still technically true in the data. Toggled via the admin edit dialog only — not exposed on any public page.
+  ocrLowConfidence       Boolean        @default(false) // set true when this tag was created from a bulk-OCR (or mobile background auto-tag) hit the model itself flagged as an uncertain read — surfaced as an amber ring/badge on the admin tag page so an admin can go double-check the card. Never set by a manual dialog save (create or edit) — any deliberate admin save clears it, since that IS the human review this flag is asking for.
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
 

@@ -120,6 +120,11 @@ export type SaveTagInput = {
   // from validateTags()'s problem list entirely, on both this page and the public /validate page,
   // without touching the underlying duplicate/unmatched condition itself.
   problemAcknowledged: boolean;
+  // Only meaningful when creating a tag straight from an OCR hit (see saveBulkOcrCandidate) — the
+  // manual dialog (TagCanvas.tsx's handleSave) always passes `false` here, and the UPDATE branch
+  // below always clears it server-side regardless of what's passed, since a deliberate edit-save
+  // through the dialog IS the human review this flag exists to prompt.
+  ocrLowConfidence: boolean;
 };
 
 /**
@@ -160,6 +165,7 @@ export async function createGroupPhotoTagCore(
     matchSource: input.matchSource,
     nameOverridden: input.nameOverridden,
     problemAcknowledged: input.problemAcknowledged,
+    ocrLowConfidence: input.ocrLowConfidence,
   };
   await tx.groupPhotoTag.updateMany({
     where: { groupPhotoId, row: input.row, order: { gte: input.order } },
@@ -202,6 +208,9 @@ export async function saveGroupPhotoTag(
     matchSource: input.matchSource,
     nameOverridden,
     problemAcknowledged: input.problemAcknowledged,
+    // A deliberate save through this action's UPDATE path always counts as the human review the
+    // flag is asking for, regardless of what the caller passed — never re-derived from input.
+    ocrLowConfidence: false,
   };
 
   // `row`/`order` are meant to stay a dense 0..N sequence per row (drives the row-line drawing

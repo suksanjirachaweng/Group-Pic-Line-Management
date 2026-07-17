@@ -5,7 +5,7 @@ import { ocrCardGrid } from "@/lib/actions/bulkCardOcr";
 import { extractRectCrop } from "@/lib/groupPhoto/coordinateMapping";
 import { OCR_UPLOAD_SIZE, CONCURRENCY, computeTiles } from "@/lib/groupPhoto/tileGeometry";
 
-export type BulkOcrCandidate = { id: string; code: string; x: number; y: number };
+export type BulkOcrCandidate = { id: string; code: string; x: number; y: number; confident: boolean };
 
 // One entry per tile actually sent to Claude, kept around purely so an admin can open the
 // "ตรวจสอบผล OCR" debug view and see exactly what image + raw hits each tile produced — the same
@@ -23,7 +23,7 @@ export type TileDebugInfo = {
   uploadWidth: number;
   uploadHeight: number;
   imageUrl: string;
-  hits: { code: string; x: number; y: number }[];
+  hits: { code: string; x: number; y: number; confident: boolean }[];
   failed: boolean;
 };
 
@@ -113,6 +113,7 @@ export function useBulkCardOcr() {
                 // then place within the full photo.
                 x: tile.left + (hit.x / uploadWidth) * tile.width,
                 y: tile.top + (hit.y / uploadHeight) * tile.height,
+                confident: hit.confident,
               });
             }
           } catch (err) {
