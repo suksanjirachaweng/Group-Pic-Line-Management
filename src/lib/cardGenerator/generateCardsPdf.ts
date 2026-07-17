@@ -16,6 +16,13 @@ const LOGO_PATH = path.join(process.cwd(), "public/nsl-logo.png");
 
 const SHOP_NAME = "ห้องภาพนิวซาลอน";
 const SHOP_PHONE = "02-233-2276";
+// nsl-logo.png is a 154x60 wordmark (not a square icon) — its rendered width at a given height
+// must be computed from its real aspect ratio, or text placed "next to" it at a fixed offset
+// overlaps the logo's own right edge (confirmed visually: text was rendering on top of the mark).
+const LOGO_NATIVE_W = 154;
+const LOGO_NATIVE_H = 60;
+const LOGO_HEIGHT = 18;
+const LOGO_WIDTH = (LOGO_HEIGHT * LOGO_NATIVE_W) / LOGO_NATIVE_H;
 const TITLE_CHECKBOXES = ["ศ", "รศ", "ผศ", "ดร", "อ"];
 
 export type CardGeneratorOptions = {
@@ -33,10 +40,10 @@ export type CardGeneratorOptions = {
   universitySlug: string;
 };
 
-/** Binary-search the largest font size (in 1pt steps) whose rendered width fits maxWidth. */
-function fitFontSize(doc: PDFKit.PDFDocument, text: string, maxWidth: number, maxSize: number): number {
+/** Shrink-to-fit the largest font size (in 1pt steps) whose rendered width fits maxWidth. */
+function fitFontSize(doc: PDFKit.PDFDocument, text: string, maxWidth: number, maxSize: number, minSize = 10): number {
   let size = maxSize;
-  while (size > 10 && doc.fontSize(size).widthOfString(text) > maxWidth) {
+  while (size > minSize && doc.fontSize(size).widthOfString(text) > maxWidth) {
     size -= 1;
   }
   return size;
@@ -51,7 +58,9 @@ function drawDottedLine(doc: PDFKit.PDFDocument, x1: number, y: number, x2: numb
 
 /** Right-pointing arrow banner, matching the studio's existing card design. */
 function drawScanArrow(doc: PDFKit.PDFDocument, x: number, y: number, w: number, h: number) {
-  const notch = h / 2;
+  // A larger notch (most of the bar's height) reads as a clear arrowhead at this size — h/2 was
+  // too shallow and looked like a plain rectangle with a clipped corner.
+  const notch = h * 0.85;
   doc
     .save()
     .path(
@@ -59,11 +68,16 @@ function drawScanArrow(doc: PDFKit.PDFDocument, x: number, y: number, w: number,
     )
     .fill("#000000")
     .restore();
+  // The arrow can end up quite narrow once a fill-in box and QR both share the bottom band —
+  // shrink-to-fit rather than a fixed size, or "SCAN TO REGISTER" silently clips to "SCAN TO"
+  // (found via a real generated card, not caught by the earlier structural-only verification).
+  const labelWidth = w - notch - 10;
+  doc.font("Sarabun-Bold");
+  const labelSize = fitFontSize(doc, "SCAN TO REGISTER", labelWidth, 11, 6);
   doc
-    .font("Sarabun-Bold")
-    .fontSize(11)
+    .fontSize(labelSize)
     .fillColor("#ffffff")
-    .text("SCAN TO REGISTER", x + 6, y + h / 2 - 6, { width: w - notch - 10, align: "center" });
+    .text("SCAN TO REGISTER", x + 6, y + h / 2 - labelSize / 2, { width: labelWidth, align: "center" });
   doc.fillColor("#000000");
 }
 
@@ -154,12 +168,12 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
     doc.addPage({ size: [PAGE_WIDTH, PAGE_HEIGHT], margin: 0 });
 
     if (includeBrand) {
-      doc.image(LOGO_PATH, MARGIN, MARGIN - 2, { height: 18 });
+      doc.image(LOGO_PATH, MARGIN, MARGIN - 2, { height: LOGO_HEIGHT });
       doc
         .font("Sarabun")
         .fontSize(11)
         .fillColor("#000000")
-        .text(`${SHOP_NAME}  ${SHOP_PHONE}`, MARGIN + 24, MARGIN, { lineBreak: false });
+        .text(`${SHOP_NAME}  ${SHOP_PHONE}`, MARGIN + LOGO_WIDTH + 8, MARGIN, { lineBreak: false });
     }
 
     if (eventName.trim() || year.trim()) {
@@ -180,11 +194,17 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
       .text(codeStr, MARGIN, 50, { width: contentWidth, align: "center" });
 
     if (includeFillIn && includeQr) {
-      const fillInWidth = contentWidth * 0.55;
+      // Leaves the arrow section (fillInWidth is the only free variable here — QR is a fixed
+      // square, MARGIN/gaps are constants) enough room for "SCAN TO REGISTER" at a readable size;
+      // 0.55 left it too narrow and the label was clipping.
+      const fillInWidth = contentWidth * 0.48;
       drawFillInBox(doc, MARGIN, bottomBandY, fillInWidth);
 
       const qrSize = bottomBandHeight;
-      const arrowW = contentWidth - fillInWidth - 14 - qrSize;
+      // A small gap before the QR — with 0 gap the arrow's point visually fused into the QR's own
+      // edge instead of reading as a separate arrowhead pointing at it.
+      const arrowGap = 6;
+      const arrowW = contentWidth - fillInWidth - 14 - qrSize - arrowGap;
       const arrowX = MARGIN + fillInWidth + 14;
       drawScanArrow(doc, arrowX, bottomBandY + bottomBandHeight / 2 - 9, arrowW, 18);
       // A fresh Buffer copy per page — reusing the exact same Buffer object across many
@@ -200,7 +220,8 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
       drawFillInBox(doc, MARGIN, bottomBandY, contentWidth);
     } else if (includeQr) {
       const qrSize = bottomBandHeight;
-      const arrowW = contentWidth - qrSize - 14;
+      const arrowGap = 6;
+      const arrowW = contentWidth - qrSize - 14 - arrowGap;
       drawScanArrow(doc, MARGIN, bottomBandY + bottomBandHeight / 2 - 9, arrowW, 18);
       doc.image(Buffer.from(qrBuffer!), PAGE_WIDTH - MARGIN - qrSize, bottomBandY, {
         width: qrSize,
