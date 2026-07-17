@@ -69,7 +69,10 @@ export default async function GroupPhotoTaggingPage({
     // AdminChrome hides the shared header/padding for this route (see FULLSCREEN_PATTERN), so
     // this can just claim the full viewport directly instead of subtracting that chrome's size.
     <div className="flex h-dvh flex-col">
-      <div className="border-b border-gray-200 bg-white px-4 py-2.5">
+      {/* Light-blue theme (deliberately distinct from ReviewCanvas's white/dark chrome on
+          /validate and /photo-review, per the user's request) — carried consistently across the
+          header, TagCanvas's own canvas viewport/sidebar/bottom toolbar. */}
+      <div className="border-b border-gray-200 bg-sky-50 px-4 py-2.5">
         <div className="flex items-stretch gap-3">
           {/* Left column: back+logo above the import buttons, both flush against the same
               left edge — kept as one flex-col instead of two independently-flexed rows so

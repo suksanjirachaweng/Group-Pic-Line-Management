@@ -1173,6 +1173,7 @@ export function TagCanvas({
             setListMode(mode);
             setSelectedTagId(null);
           }}
+          panelBgClassName="bg-sky-50"
           renderBadges={(t) => (
             <>
               {t.ocrLowConfidence && (
@@ -1526,7 +1527,7 @@ export function TagCanvas({
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 border-t border-gray-200 bg-white px-3 py-2 text-xs">
+      <div className="flex flex-col gap-2 border-t border-gray-200 bg-sky-50 px-3 py-2 text-xs">
         {/* Row 1: the photo/detection controls. */}
         <div className="flex flex-wrap items-center gap-2">
           <ZoomButtons

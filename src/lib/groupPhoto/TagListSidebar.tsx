@@ -220,6 +220,7 @@ export function TagListSidebar<T extends BaseTag>({
   renderBadges,
   emptyMessage = "ไม่พบปัญหา",
   landscapeMobile,
+  panelBgClassName = "bg-white",
 }: {
   tags: T[];
   selectedTagId: string | null;
@@ -237,6 +238,11 @@ export function TagListSidebar<T extends BaseTag>({
    * mobile (the public /validate page) — omit it to keep the original CSS-only behavior (the
    * admin tagging canvas, which doesn't hit the keyboard-triggered bug this works around). */
   landscapeMobile?: boolean;
+  /** Panel background — defaults to white (the public /validate page's look). The admin tag page
+   * overrides this to its own light-blue theme, deliberately kept distinct from /validate (see
+   * TagCanvas.tsx's canvas-background comment) — this is the one piece of this shared component
+   * that's allowed to differ between the two callers, since it's purely cosmetic. */
+  panelBgClassName?: string;
 }) {
   function switchListMode(mode: "problems" | "all") {
     onListModeChange(mode);
@@ -298,11 +304,11 @@ export function TagListSidebar<T extends BaseTag>({
     <>
       {open && (
         <div
-          className={`max-h-[32vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 bg-white md:h-auto md:max-h-none md:min-h-0 md:w-96 md:border-b-0 md:border-r ${landscapeMobileClasses("max-md:landscape:h-auto max-md:landscape:max-h-none max-md:landscape:min-h-0 max-md:landscape:w-56 max-md:landscape:border-b-0 max-md:landscape:border-r", "!h-auto !max-h-none !min-h-0 !w-56 !border-b-0 !border-r", landscapeMobile)}`}
+          className={`max-h-[32vh] w-full shrink-0 overflow-y-auto border-b border-gray-200 ${panelBgClassName} md:h-auto md:max-h-none md:min-h-0 md:w-96 md:border-b-0 md:border-r ${landscapeMobileClasses("max-md:landscape:h-auto max-md:landscape:max-h-none max-md:landscape:min-h-0 max-md:landscape:w-56 max-md:landscape:border-b-0 max-md:landscape:border-r", "!h-auto !max-h-none !min-h-0 !w-56 !border-b-0 !border-r", landscapeMobile)}`}
         >
           {/* Sticky so the problems/all toggle stays reachable while scrolling a long list — its
-              own bg-white + border keeps scrolling rows from showing through underneath. */}
-          <div className="sticky top-0 z-10 border-b border-gray-100 bg-white p-4 pb-3 max-md:px-2 max-md:py-1.5">
+              own background + border keeps scrolling rows from showing through underneath. */}
+          <div className={`sticky top-0 z-10 border-b border-gray-100 ${panelBgClassName} p-4 pb-3 max-md:px-2 max-md:py-1.5`}>
             <div className="flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
               <button
                 type="button"

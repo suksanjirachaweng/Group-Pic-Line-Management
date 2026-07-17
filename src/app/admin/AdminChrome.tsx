@@ -28,11 +28,11 @@ export function AdminChrome({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-indigo-600 px-8 py-4 shadow-md">
+      <header className="bg-indigo-600 px-8 py-3 shadow-md">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-8">
             <span className="flex items-center gap-3 font-semibold text-white">
-              <span className="flex items-center rounded-md bg-white px-2.5 py-1.5 shadow-sm">
+              <span className="flex items-center justify-center rounded-md bg-sky-100 px-2.5 py-1 shadow-sm">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/nsl-logo.png" alt="Newsalon" className="h-6 w-auto" />
               </span>
