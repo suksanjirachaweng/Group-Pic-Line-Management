@@ -126,6 +126,11 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
    * mid-edit. Off by default; opt in per-caller (the public /validate page) rather than changing
    * every ReviewCanvas consumer's initial zoom behavior. */
   fitHeightOnMobileOrientation?: boolean;
+  /** Viewport background — defaults to the original dark gray (photo-view/photo-review's look).
+   * The public /validate page overrides this to its own light theme, the one piece of this shared
+   * component allowed to differ between callers (same reasoning as TagListSidebar's
+   * `panelBgClassName`) since it's purely cosmetic. */
+  viewportBgClassName?: string;
 }>(function ReviewCanvas(
   {
     imageUrl,
@@ -147,6 +152,7 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
     editingTagId = null,
     renderEditPopup,
     fitHeightOnMobileOrientation = false,
+    viewportBgClassName = "bg-gray-800",
   },
   ref,
 ) {
@@ -623,7 +629,7 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
 
       <div
         ref={containerRef}
-        className="relative flex-1 touch-none overflow-hidden bg-gray-800"
+        className={`relative flex-1 touch-none overflow-hidden ${viewportBgClassName}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -643,7 +649,7 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
             onClick={handleCanvasClick}
             onContextMenu={(e) => e.preventDefault()}
             onDragStart={(e) => e.preventDefault()}
-            className={`block select-none bg-gray-800 ${spacePressed ? "cursor-grab" : "cursor-default"}`}
+            className={`block select-none ${viewportBgClassName} ${spacePressed ? "cursor-grab" : "cursor-default"}`}
           />
           <div className="pointer-events-none absolute inset-0">
             {displayFields.has("line") && (

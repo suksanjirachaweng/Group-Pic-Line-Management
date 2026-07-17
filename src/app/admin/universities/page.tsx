@@ -47,7 +47,7 @@ export default async function UniversitiesPage() {
             <li key={u.id}>
               <Link
                 href={`/admin/universities/${u.id}/group-photos`}
-                className="flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50"
+                className="flex items-center justify-between px-4 py-3 text-sm hover:bg-sky-50"
               >
                 <span className="flex items-center gap-2">
                   <span

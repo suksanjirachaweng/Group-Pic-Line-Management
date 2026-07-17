@@ -70,7 +70,7 @@ export default async function ChannelsPage() {
             const universities = c.universityPool.map((p) => p.university.name);
             return (
               <li key={c.id}>
-                <Link href={`/admin/channels/${c.id}`} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50">
+                <Link href={`/admin/channels/${c.id}`} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-sky-50">
                   {qrInfo && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={qrInfo.qrDataUrl} alt="" className="h-12 w-12 shrink-0 rounded border-2 border-[#06C755] p-0.5" />

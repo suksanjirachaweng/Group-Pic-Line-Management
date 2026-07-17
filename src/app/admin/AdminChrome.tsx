@@ -23,11 +23,11 @@ export function AdminChrome({
   const fullscreen = FULLSCREEN_PATTERN.test(pathname);
 
   if (fullscreen) {
-    return <div className="h-dvh bg-gray-50">{children}</div>;
+    return <div className="h-dvh bg-sky-50">{children}</div>;
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-sky-50">
       <header className="bg-indigo-600 px-8 py-3 shadow-md">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-8">
