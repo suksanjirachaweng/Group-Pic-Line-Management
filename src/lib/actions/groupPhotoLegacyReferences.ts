@@ -13,12 +13,15 @@ export type LegacyImportState = { error: string } | { success: true; count: numb
 
 /**
  * Imports the legacy Google Form export (real format confirmed: header-less, columns
- * timestamp/blank/name/code/phone). Replaces the university's whole reference set on every
- * upload — this is reference data only, never merged into Registrant (see schema comment on
- * GroupPhotoLegacyReference for why).
+ * timestamp/blank/name/code/phone). Replaces this specific PhotoEvent's reference set on every
+ * upload — scoped by (universityId, photoEventId), NOT the whole university, since two events of
+ * the same university (e.g. KKU67/KKU68) each have their own legacy reference set and must never
+ * wipe each other out. This is reference data only, never merged into Registrant (see schema
+ * comment on GroupPhotoLegacyReference for why).
  */
 export async function importLegacyReferences(
   universityId: string,
+  photoEventId: string,
   _prevState: LegacyImportState,
   formData: FormData,
 ): Promise<LegacyImportState> {
@@ -47,10 +50,11 @@ export async function importLegacyReferences(
   }
 
   await prisma.$transaction([
-    prisma.groupPhotoLegacyReference.deleteMany({ where: { universityId } }),
+    prisma.groupPhotoLegacyReference.deleteMany({ where: { universityId, photoEventId } }),
     prisma.groupPhotoLegacyReference.createMany({
       data: rows.map((r) => ({
         universityId,
+        photoEventId,
         name: r.name,
         code: r.code,
         normalizedCode: normalizeCode(r.code),
@@ -83,6 +87,7 @@ function parseSheetUrl(input: string): { spreadsheetId: string; gid: string | nu
  */
 export async function importLegacyReferencesFromSheetLink(
   universityId: string,
+  photoEventId: string,
   _prevState: LegacyImportState,
   formData: FormData,
 ): Promise<LegacyImportState> {
@@ -144,10 +149,11 @@ export async function importLegacyReferencesFromSheetLink(
   }
 
   await prisma.$transaction([
-    prisma.groupPhotoLegacyReference.deleteMany({ where: { universityId } }),
+    prisma.groupPhotoLegacyReference.deleteMany({ where: { universityId, photoEventId } }),
     prisma.groupPhotoLegacyReference.createMany({
       data: rows.map((r) => ({
         universityId,
+        photoEventId,
         name: r.name,
         code: r.code,
         normalizedCode: normalizeCode(r.code),

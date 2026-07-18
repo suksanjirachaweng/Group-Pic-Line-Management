@@ -67,6 +67,7 @@ model University {
   sheetExportConfig SheetExportConfig?
   groupPhotos       GroupPhoto[]
   legacyReferences  GroupPhotoLegacyReference[]
+  photoEvents       PhotoEvent[]
 
   @@map("universities")
 }
@@ -234,12 +235,18 @@ model Registrant {
   displayName  String?
   data         Json             @default("{}")
   status       RegistrantStatus @default(PENDING)
+  // Never set at registration time — stamped exactly once, the first time this registrant is
+  // successfully matched (matchSource=REGISTRANT) against a tag belonging to a specific
+  // PhotoEvent (see resolveTagMatch.ts's bootstrap-then-stick mechanism). Sticky: once stamped,
+  // auto-sync must never silently reassign it to a different event.
+  photoEventId String?
   registeredAt DateTime         @default(now())
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
   university     University      @relation(fields: [universityId], references: [id], onDelete: Cascade)
   channel        Channel?        @relation(fields: [channelId], references: [id])
+  photoEvent     PhotoEvent?     @relation(fields: [photoEventId], references: [id], onDelete: SetNull)
   ruleExecutions RuleExecution[]
   messageJobs    MessageJob[]
   messageLogs    MessageLog[]
@@ -247,6 +254,7 @@ model Registrant {
 
   @@index([universityId, lineUserId])
   @@index([universityId, status])
+  @@index([photoEventId])
   @@map("registrants")
 }
 
@@ -382,6 +390,45 @@ model SheetExportConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Phase 3: photo events (multi-event scaling within one university)
+// ---------------------------------------------------------------------------
+
+enum PhotoEventStatus {
+  ACTIVE
+  ARCHIVE_READY // close-out archive job finished, live data not yet deleted
+  ARCHIVED // live data deleted, only archiveFileUrl remains
+}
+
+/// One academic-year photography event for a university (e.g. "KKU67"). Exists because the same
+/// university can run this event more than once with overlapping dates AND overlapping
+/// group_photo_index code ranges (e.g. KKU67 codes 1000-5000, KKU68 codes 3000-7000, same LINE
+/// channel) — nothing about code or channel alone can disambiguate which event a given code
+/// belongs to, so this is the explicit scoping unit resolveTagMatch.ts's matching maps use.
+model PhotoEvent {
+  id             String           @id @default(cuid())
+  universityId   String
+  code           String // short label shown throughout the admin UI, e.g. "KKU67"
+  label          String? // optional longer description, e.g. "ปีการศึกษา 2567"
+  startDate      DateTime // registration-date window used to bootstrap-match unassigned registrants — see resolveTagMatch.ts
+  endDate        DateTime
+  codeRangeMin   Int? // informational sanity-check hint only — never hard-enforced, ranges legitimately overlap across events
+  codeRangeMax   Int?
+  status         PhotoEventStatus @default(ACTIVE)
+  archiveFileUrl String? // set once a close-out archive job succeeds
+  archivedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  university       University                  @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  groupPhotos       GroupPhoto[]
+  legacyReferences  GroupPhotoLegacyReference[]
+  registrants       Registrant[]
+
+  @@unique([universityId, code])
+  @@map("photo_events")
+}
+
+// ---------------------------------------------------------------------------
 // Phase 2: group photo tagging
 // ---------------------------------------------------------------------------
 
@@ -390,6 +437,9 @@ model SheetExportConfig {
 model GroupPhoto {
   id           String           @id @default(cuid())
   universityId String
+  // Every photo belongs to exactly one event. Existing rows were backfilled to a synthetic
+  // per-university PhotoEvent by the `add_photo_event` migration itself (see its migration.sql).
+  photoEventId String
   name         String // also used verbatim as the export's "คณะ" column
   title        String? // display heading shown on the tagging/validate/photo-view pages; may differ from `name` — falls back to `name` when unset
   imageUrl     String // plain string, storage-agnostic — swapping backends later is a data change, not a schema change
@@ -401,12 +451,14 @@ model GroupPhoto {
   updatedAt    DateTime         @updatedAt
 
   university   University               @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  photoEvent   PhotoEvent               @relation(fields: [photoEventId], references: [id], onDelete: Cascade)
   tags         GroupPhotoTag[]
   shareLinks   GroupPhotoShareLink[]
   titleHistory GroupPhotoTitleHistory[]
   autoTagJobs  GroupPhotoAutoTagJob[]
 
   @@index([universityId])
+  @@index([photoEventId])
   @@map("group_photos")
 }
 
@@ -558,6 +610,10 @@ model GroupPhotoTagHistory {
 model GroupPhotoLegacyReference {
   id             String                @id @default(cuid())
   universityId   String
+  // Every import is an explicit per-upload admin action that picks the target event. Existing
+  // rows were backfilled to a synthetic per-university PhotoEvent by the `add_photo_event`
+  // migration itself (see its migration.sql).
+  photoEventId   String
   name           String
   code           String // raw as parsed, plain digits per the real sample format
   normalizedCode String
@@ -567,8 +623,10 @@ model GroupPhotoLegacyReference {
   updatedAt      DateTime              @updatedAt
 
   university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  photoEvent PhotoEvent @relation(fields: [photoEventId], references: [id], onDelete: Cascade)
 
   @@index([universityId, normalizedCode])
+  @@index([photoEventId, normalizedCode])
   @@map("group_photo_legacy_references")
 }
 

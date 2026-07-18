@@ -10,22 +10,23 @@ import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { interpolateTemplate } from "@/lib/rules/evaluate";
 import { TagMatchSource, GroupPhotoStatus, TagHistorySource } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
-import { buildTagMatchMaps, resolveTagMatch } from "@/lib/groupPhoto/resolveTagMatch";
+import { buildTagMatchMaps, resolveTagMatch, stampRegistrantPhotoEvent } from "@/lib/groupPhoto/resolveTagMatch";
 
 export async function createGroupPhoto(
   universityId: string,
+  photoEventId: string,
   input: { name: string; imageUrl: string; imageWidth: number; imageHeight: number },
 ): Promise<{ id: string }> {
   await requireUniversityAccess(universityId);
 
   const lastPhoto = await prisma.groupPhoto.findFirst({
-    where: { universityId },
+    where: { universityId, photoEventId },
     orderBy: { sortOrder: "desc" },
     select: { sortOrder: true },
   });
 
   const photo = await prisma.groupPhoto.create({
-    data: { universityId, ...input, sortOrder: (lastPhoto?.sortOrder ?? -1) + 1 },
+    data: { universityId, photoEventId, ...input, sortOrder: (lastPhoto?.sortOrder ?? -1) + 1 },
   });
 
   revalidatePath(`/admin/universities/${universityId}/group-photos`);
@@ -133,8 +134,13 @@ export type SaveTagInput = {
  * tag "sticky" against later auto-sync overwrites. No match (unmatched code, or a MANUAL entry
  * with nothing to deviate from) is never considered an override.
  */
-async function computeNameOverridden(universityId: string, normalizedCode: string, name: string): Promise<boolean> {
-  const maps = await buildTagMatchMaps(universityId);
+async function computeNameOverridden(
+  universityId: string,
+  photoEventId: string,
+  normalizedCode: string,
+  name: string,
+): Promise<boolean> {
+  const maps = await buildTagMatchMaps(universityId, photoEventId);
   const match = resolveTagMatch(normalizedCode, maps);
   return match ? name.trim() !== match.name.trim() : false;
 }
@@ -150,6 +156,7 @@ async function computeNameOverridden(universityId: string, normalizedCode: strin
 export async function createGroupPhotoTagCore(
   tx: Prisma.TransactionClient,
   groupPhotoId: string,
+  photoEventId: string,
   input: Omit<SaveTagInput, "id"> & { nameOverridden: boolean },
 ) {
   const data = {
@@ -182,6 +189,9 @@ export async function createGroupPhotoTagCore(
       source: "ADMIN",
     },
   });
+  if (input.matchSource === TagMatchSource.REGISTRANT && input.registrantId) {
+    await stampRegistrantPhotoEvent(tx, input.registrantId, photoEventId);
+  }
   return created;
 }
 
@@ -192,8 +202,13 @@ export async function saveGroupPhotoTag(
 ): Promise<{ id: string }> {
   await requireUniversityAccess(universityId);
 
+  const { photoEventId } = await prisma.groupPhoto.findUniqueOrThrow({
+    where: { id: groupPhotoId, universityId },
+    select: { photoEventId: true },
+  });
+
   const normalizedCode = normalizeCode(input.code);
-  const nameOverridden = await computeNameOverridden(universityId, normalizedCode, input.name);
+  const nameOverridden = await computeNameOverridden(universityId, photoEventId, normalizedCode, input.name);
 
   const data = {
     groupPhotoId,
@@ -266,10 +281,13 @@ export async function saveGroupPhotoTag(
           data: { tagId: updated.id, code: updated.code, name: updated.name, row: updated.row, order: updated.order, source: "ADMIN" },
         });
       }
+      if (input.matchSource === TagMatchSource.REGISTRANT && input.registrantId) {
+        await stampRegistrantPhotoEvent(tx, input.registrantId, photoEventId);
+      }
       return updated;
     }
 
-    return createGroupPhotoTagCore(tx, groupPhotoId, { ...input, nameOverridden });
+    return createGroupPhotoTagCore(tx, groupPhotoId, photoEventId, { ...input, nameOverridden });
   });
 
   revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
@@ -392,13 +410,16 @@ export async function getGroupPhotoTitleHistory(
 export async function autoSyncGroupPhotoTags(universityId: string, groupPhotoId: string): Promise<void> {
   await requireUniversityAccess(universityId);
 
-  const photo = await prisma.groupPhoto.findUnique({ where: { id: groupPhotoId, universityId }, select: { status: true } });
+  const photo = await prisma.groupPhoto.findUnique({
+    where: { id: groupPhotoId, universityId },
+    select: { status: true, photoEventId: true },
+  });
   if (!photo || photo.status === "DONE") return;
 
   const tags = await prisma.groupPhotoTag.findMany({ where: { groupPhotoId } });
   if (tags.length === 0) return;
 
-  const maps = await buildTagMatchMaps(universityId);
+  const maps = await buildTagMatchMaps(universityId, photo.photoEventId);
 
   for (const tag of tags) {
     const match = tag.normalizedCode ? resolveTagMatch(tag.normalizedCode, maps) : null;
@@ -432,6 +453,9 @@ export async function autoSyncGroupPhotoTags(universityId: string, groupPhotoId:
         data: { tagId: tag.id, code: tag.code, name: next.name, row: tag.row, order: tag.order, source: "AUTO_SYNC" },
       }),
     ]);
+    if (next.matchSource === TagMatchSource.REGISTRANT && next.registrantId) {
+      await stampRegistrantPhotoEvent(prisma, next.registrantId, photo.photoEventId);
+    }
   }
 }
 

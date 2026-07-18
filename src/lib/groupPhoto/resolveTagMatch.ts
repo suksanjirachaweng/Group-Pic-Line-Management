@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizeCode } from "./normalizeCode";
 import { resolveRegistrantGroupPhotoName } from "./registrantDisplayName";
 import { TagMatchSource } from "@/generated/prisma/enums";
+import type { Prisma } from "@/generated/prisma/client";
 
 export type TagMatchMaps = {
   registrantByCode: Map<string, { id: string; name: string }>;
@@ -11,21 +12,44 @@ export type TagMatchMaps = {
 export type TagMatch = { name: string; registrantId: string | null; matchSource: TagMatchSource };
 
 /**
- * One source of truth for "what registrant/legacy-reference does this code currently belong to",
- * shared by every place that needs it: the bulk auto-sync passes (autoSyncGroupPhotoTags,
- * syncRegistrantGroupPhotoTags), the admin dialog save, and the public/share-link edit actions.
- * Fetches the university's whole registrant/reference set — same "small enough to hold in memory"
- * scale assumption already used everywhere else group-photo matching happens (`Registrant.data`
- * isn't indexed for this, per the project's established normalization strategy).
+ * One source of truth for "what registrant/legacy-reference does this code currently belong to
+ * WITHIN THIS EVENT", shared by every place that needs it: the bulk auto-sync passes
+ * (autoSyncGroupPhotoTags, syncRegistrantGroupPhotoTags), the admin dialog save, and the
+ * public/share-link edit actions.
+ *
+ * Event-scoped since the same university can run this event more than once with overlapping
+ * dates AND overlapping group_photo_index code ranges (e.g. KKU67 codes 1000-5000, KKU68 codes
+ * 3000-7000, same LINE channel) — a code alone can't disambiguate which event's registrant it
+ * belongs to. A registrant is a candidate for event E if EITHER it's already been stamped
+ * `photoEventId = E.id` by a prior successful match (see `stampRegistrantPhotoEvent` below), OR
+ * it has no event stamped yet and its `registeredAt` falls inside E's `[startDate, endDate]`
+ * window (the bootstrap heuristic for a registrant nobody has matched into any event yet). Once
+ * stamped, a registrant is never reconsidered as a candidate for a different, later event — this
+ * is what stops a second overlapping-date event from silently re-claiming an already-claimed
+ * registrant just because its code also happens to fall in the second event's range.
+ *
+ * Legacy-reference rows are matched directly by `photoEventId` with no date-bootstrap — that
+ * data is always imported as an explicit per-event admin action, so there's nothing to bootstrap.
  */
-export async function buildTagMatchMaps(universityId: string): Promise<TagMatchMaps> {
+export async function buildTagMatchMaps(universityId: string, photoEventId: string): Promise<TagMatchMaps> {
+  const event = await prisma.photoEvent.findUniqueOrThrow({
+    where: { id: photoEventId, universityId },
+    select: { startDate: true, endDate: true },
+  });
+
   const [registrantRows, referenceRows] = await Promise.all([
     prisma.registrant.findMany({
-      where: { universityId },
+      where: {
+        universityId,
+        OR: [
+          { photoEventId },
+          { photoEventId: null, registeredAt: { gte: event.startDate, lte: event.endDate } },
+        ],
+      },
       select: { id: true, displayName: true, data: true },
     }),
     prisma.groupPhotoLegacyReference.findMany({
-      where: { universityId },
+      where: { universityId, photoEventId },
       select: { name: true, normalizedCode: true },
     }),
   ]);
@@ -53,4 +77,23 @@ export function resolveTagMatch(normalizedCode: string, maps: TagMatchMaps): Tag
   const ref = maps.referenceByCode.get(normalizedCode);
   if (ref) return { name: ref.name, registrantId: null, matchSource: TagMatchSource.LEGACY_REFERENCE };
   return null;
+}
+
+/**
+ * Stamps a registrant to the event whose tag just matched them, but only if they don't already
+ * belong to one — sticky by design (see buildTagMatchMaps' doc comment). A no-op update (affects
+ * 0 rows) when the registrant is already stamped to ANY event, including this same one, so it's
+ * safe to call unconditionally every time a REGISTRANT match is applied to a tag, without an
+ * extra read first. Takes an explicit client (the singleton `prisma`, or an open `tx`) so callers
+ * that need this inside a larger transaction get one atomic unit of work, not two.
+ */
+export async function stampRegistrantPhotoEvent(
+  db: Prisma.TransactionClient,
+  registrantId: string,
+  photoEventId: string,
+): Promise<void> {
+  await db.registrant.updateMany({
+    where: { id: registrantId, photoEventId: null },
+    data: { photoEventId },
+  });
 }

@@ -10,15 +10,17 @@ import {
 
 export function LegacyReferenceUploadForm({
   universityId,
+  photoEventId,
   registrantCount,
 }: {
   universityId: string;
+  photoEventId: string;
   registrantCount: number;
 }) {
-  const fileAction = importLegacyReferences.bind(null, universityId);
+  const fileAction = importLegacyReferences.bind(null, universityId, photoEventId);
   const [fileState, fileFormAction, fileIsPending] = useActionState<LegacyImportState, FormData>(fileAction, null);
 
-  const sheetAction = importLegacyReferencesFromSheetLink.bind(null, universityId);
+  const sheetAction = importLegacyReferencesFromSheetLink.bind(null, universityId, photoEventId);
   const [sheetState, sheetFormAction, sheetIsPending] = useActionState<LegacyImportState, FormData>(
     sheetAction,
     null,

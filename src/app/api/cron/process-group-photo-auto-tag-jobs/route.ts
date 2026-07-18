@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { isAuthorizedCronRequest } from "@/lib/cronAuth";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
-import { resolveRegistrantGroupPhotoName } from "@/lib/groupPhoto/registrantDisplayName";
+import { buildTagMatchMaps, resolveTagMatch } from "@/lib/groupPhoto/resolveTagMatch";
 import { OCR_UPLOAD_SIZE, CONCURRENCY, computeTiles } from "@/lib/groupPhoto/tileGeometry";
 import { resolveRowsForNewPoints, applyRowOrderShift, clusterIntoRows } from "@/lib/groupPhoto/rowClustering";
 import { runCardGridOcr } from "@/lib/actions/bulkCardOcr";
@@ -121,27 +121,7 @@ async function processAcceptingStage(job: ClaimedJob) {
   const toCreate = deduped.filter((c) => !existingCodes.has(normalizeCode(c.code)));
 
   if (toCreate.length > 0) {
-    const [registrantRows, referenceRows] = await Promise.all([
-      prisma.registrant.findMany({
-        where: { universityId: photo.universityId },
-        select: { id: true, displayName: true, data: true },
-      }),
-      prisma.groupPhotoLegacyReference.findMany({
-        where: { universityId: photo.universityId },
-        select: { name: true, normalizedCode: true },
-      }),
-    ]);
-    const registrantByCode = new Map<string, { id: string; name: string }>();
-    for (const r of registrantRows) {
-      const data = (r.data ?? {}) as Record<string, unknown>;
-      const rawCode = data.group_photo_index;
-      if (typeof rawCode !== "string" || !rawCode.trim()) continue;
-      const normalized = normalizeCode(rawCode);
-      if (!normalized) continue;
-      registrantByCode.set(normalized, { id: r.id, name: resolveRegistrantGroupPhotoName(r) });
-    }
-    const referenceByCode = new Map<string, { name: string }>();
-    for (const r of referenceRows) referenceByCode.set(r.normalizedCode, { name: r.name });
+    const maps = await buildTagMatchMaps(photo.universityId, photo.photoEventId);
 
     // A bulk-created batch redefines a big chunk of the photo's tagging state at once — same
     // reasoning as handleAcceptAllBulkOcrCandidates for why prior history no longer reads as a
@@ -163,25 +143,20 @@ async function processAcceptingStage(job: ClaimedJob) {
       const candidate = toCreate[i];
       const row = rows.get(String(i))!;
       const normalizedCode = normalizeCode(candidate.code);
-      const reg = registrantByCode.get(normalizedCode);
-      const ref = !reg ? referenceByCode.get(normalizedCode) : undefined;
-      const name = reg ? reg.name : ref ? ref.name : "";
+      const match = resolveTagMatch(normalizedCode, maps);
+      const name = match?.name ?? "";
       const order = running.filter((t) => t.row === row && t.x < candidate.x).length;
 
       const created = await prisma.$transaction((tx) =>
-        createGroupPhotoTagCore(tx, photo.id, {
+        createGroupPhotoTagCore(tx, photo.id, photo.photoEventId, {
           code: candidate.code,
           name,
           row,
           order,
           x: candidate.x,
           y: candidate.y,
-          registrantId: reg ? reg.id : null,
-          matchSource: reg
-            ? TagMatchSource.REGISTRANT
-            : ref
-              ? TagMatchSource.LEGACY_REFERENCE
-              : TagMatchSource.MANUAL,
+          registrantId: match?.registrantId ?? null,
+          matchSource: match?.matchSource ?? TagMatchSource.MANUAL,
           // Bulk-accepted hits always use the freshly-resolved match's own name verbatim — never
           // a human deviation, so never sticky.
           nameOverridden: false,

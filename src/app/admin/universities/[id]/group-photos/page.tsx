@@ -14,6 +14,7 @@ import {
   type TagSourceLabel,
 } from "@/lib/groupPhoto/crossPhotoDuplicates";
 import type { GroupPhotoStatus } from "@/generated/prisma/enums";
+import { getDefaultPhotoEventId } from "@/lib/actions/photoEvents";
 import { LegacyReferenceUploadForm } from "./LegacyReferenceUploadForm";
 import { StripNameTitlesButton } from "./StripNameTitlesButton";
 import { UploadGroupPhotoButton } from "./UploadGroupPhotoButton";
@@ -128,6 +129,12 @@ export default async function GroupPhotosPage({
   });
   if (!university) notFound();
 
+  // TODO(phase-3): this page still shows one flat cross-event view — every query below stays
+  // university-scoped (not yet filtered to `defaultPhotoEventId`) until the events management UI
+  // and full route nesting lands. Upload/import already write the correct photoEventId though, so
+  // matching stays correct even before the list views are event-filtered.
+  const defaultPhotoEventId = await getDefaultPhotoEventId(universityId);
+
   const [photoCount, dataCount] = await Promise.all([
     prisma.groupPhoto.count({ where: { universityId } }),
     prisma.groupPhotoLegacyReference.count({ where: { universityId } }).then(async (legacy) => {
@@ -167,6 +174,7 @@ export default async function GroupPhotosPage({
       {tab === "data" ? (
         <DataTab
           universityId={universityId}
+          photoEventId={defaultPhotoEventId}
           q={q}
           pageParam={pageParam}
           sort={sort}
@@ -174,7 +182,7 @@ export default async function GroupPhotosPage({
           dataSubTab={dataSubTab}
         />
       ) : (
-        <PhotosTab universityId={universityId} photoSort={photoSort} photoDir={photoDir} />
+        <PhotosTab universityId={universityId} photoEventId={defaultPhotoEventId} photoSort={photoSort} photoDir={photoDir} />
       )}
     </div>
   );
@@ -182,6 +190,7 @@ export default async function GroupPhotosPage({
 
 async function DataTab({
   universityId,
+  photoEventId,
   q,
   pageParam,
   sort,
@@ -189,6 +198,7 @@ async function DataTab({
   dataSubTab,
 }: {
   universityId: string;
+  photoEventId: string;
   q: string | undefined;
   pageParam: string | undefined;
   sort: SortKey | undefined;
@@ -345,7 +355,11 @@ async function DataTab({
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <LegacyReferenceUploadForm universityId={universityId} registrantCount={registrantRows.length} />
+      <LegacyReferenceUploadForm
+        universityId={universityId}
+        photoEventId={photoEventId}
+        registrantCount={registrantRows.length}
+      />
 
       <div className="mt-5 border-t border-gray-100 pt-4">
         <div className="mb-4 flex w-fit items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
@@ -552,10 +566,12 @@ function CrossPhotoDuplicateAlerts({ groups }: { groups: MergedDuplicateGroup[] 
 
 async function PhotosTab({
   universityId,
+  photoEventId,
   photoSort,
   photoDir,
 }: {
   universityId: string;
+  photoEventId: string;
   photoSort: PhotoSortKey;
   photoDir: "asc" | "desc";
 }) {
@@ -615,7 +631,7 @@ async function PhotosTab({
               {photoSort === "name" && <span aria-hidden>{photoDir === "asc" ? "▲" : "▼"}</span>}
             </Link>
           </div>
-          <UploadGroupPhotoButton universityId={universityId} />
+          <UploadGroupPhotoButton universityId={universityId} photoEventId={photoEventId} />
         </div>
       </div>
 

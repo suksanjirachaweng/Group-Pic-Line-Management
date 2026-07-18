@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
-import { buildTagMatchMaps, resolveTagMatch } from "@/lib/groupPhoto/resolveTagMatch";
+import { buildTagMatchMaps, resolveTagMatch, stampRegistrantPhotoEvent } from "@/lib/groupPhoto/resolveTagMatch";
 import { RegistrantStatus, TagMatchSource } from "@/generated/prisma/enums";
 import type { TagHistoryEntry, TitleHistoryEntry } from "@/lib/actions/groupPhotos";
 
@@ -24,7 +24,7 @@ export async function updateTagViaPublicLink(
 
   const tag = await prisma.groupPhotoTag.findUnique({
     where: { id: tagId },
-    include: { groupPhoto: { select: { universityId: true } } },
+    include: { groupPhoto: { select: { universityId: true, photoEventId: true } } },
   });
   if (!tag || tag.groupPhotoId !== link.groupPhotoId) {
     return { error: "ไม่พบข้อมูลนี้ในรูปที่ลิงก์นี้เกี่ยวข้อง" };
@@ -43,7 +43,7 @@ export async function updateTagViaPublicLink(
   // registrant match if not recomputed. nameOverridden marks the saved name sticky against later
   // auto-sync when it deviates from what that fresh match would itself supply.
   const normalizedCode = normalizeCode(code);
-  const maps = await buildTagMatchMaps(tag.groupPhoto.universityId);
+  const maps = await buildTagMatchMaps(tag.groupPhoto.universityId, tag.groupPhoto.photoEventId);
   const match = resolveTagMatch(normalizedCode, maps);
   const registrantId = match?.registrantId ?? null;
   const matchSource = match?.matchSource ?? TagMatchSource.MANUAL;
@@ -71,6 +71,9 @@ export async function updateTagViaPublicLink(
         ]
       : []),
   ]);
+  if (matchSource === TagMatchSource.REGISTRANT && registrantId) {
+    await stampRegistrantPhotoEvent(prisma, registrantId, tag.groupPhoto.photoEventId);
+  }
 
   revalidatePath(`/photo-review/${token}`);
   return { success: true };
@@ -91,7 +94,7 @@ export async function updateGroupPhotoTagViaValidatePage(
 ): Promise<PublicUpdateState> {
   const tag = await prisma.groupPhotoTag.findUnique({
     where: { id: tagId },
-    include: { groupPhoto: { select: { universityId: true } } },
+    include: { groupPhoto: { select: { universityId: true, photoEventId: true } } },
   });
   if (!tag || tag.groupPhotoId !== photoId) {
     return { error: "ไม่พบข้อมูลนี้ในรูปนี้" };
@@ -113,7 +116,7 @@ export async function updateGroupPhotoTagViaValidatePage(
   // just trusting the tag's existing registrantId/matchSource) so a name correction here is marked
   // sticky against later auto-sync using an up-to-date comparison, same as every other save path.
   const normalizedCode = normalizeCode(code);
-  const maps = await buildTagMatchMaps(tag.groupPhoto.universityId);
+  const maps = await buildTagMatchMaps(tag.groupPhoto.universityId, tag.groupPhoto.photoEventId);
   const match = resolveTagMatch(normalizedCode, maps);
   const registrantId = match?.registrantId ?? null;
   const matchSource = match?.matchSource ?? TagMatchSource.MANUAL;
@@ -142,6 +145,9 @@ export async function updateGroupPhotoTagViaValidatePage(
         ]
       : []),
   ]);
+  if (matchSource === TagMatchSource.REGISTRANT && registrantId) {
+    await stampRegistrantPhotoEvent(prisma, registrantId, tag.groupPhoto.photoEventId);
+  }
 
   revalidatePath(`/group-photos/${photoId}/validate`);
   return { success: true };

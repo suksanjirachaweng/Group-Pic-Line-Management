@@ -5,7 +5,13 @@ import { useRouter } from "next/navigation";
 import { uploadLargePhoto, measureImageDimensions } from "@/lib/groupPhoto/uploadLargePhoto";
 import { createGroupPhoto } from "@/lib/actions/groupPhotos";
 
-export function UploadGroupPhotoButton({ universityId }: { universityId: string }) {
+export function UploadGroupPhotoButton({
+  universityId,
+  photoEventId,
+}: {
+  universityId: string;
+  photoEventId: string;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const router = useRouter();
@@ -18,7 +24,7 @@ export function UploadGroupPhotoButton({ universityId }: { universityId: string 
     try {
       const { width, height } = await measureImageDimensions(file);
       const { url } = await uploadLargePhoto(universityId, file, setProgress);
-      await createGroupPhoto(universityId, { name: name.trim(), imageUrl: url, imageWidth: width, imageHeight: height });
+      await createGroupPhoto(universityId, photoEventId, { name: name.trim(), imageUrl: url, imageWidth: width, imageHeight: height });
       router.refresh();
     } catch (err) {
       window.alert(`อัปโหลดไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`);

@@ -4,6 +4,7 @@ import { useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { uploadLargePhoto } from "@/lib/groupPhoto/uploadLargePhoto";
 import { createGroupPhoto } from "@/lib/actions/groupPhotos";
+import { getDefaultPhotoEventId } from "@/lib/actions/photoEvents";
 import { startGroupPhotoAutoTag } from "@/lib/actions/groupPhotoAutoTag";
 import { MobileCropTool } from "./MobileCropTool";
 
@@ -68,8 +69,11 @@ export function QuickTagWizard({ universities }: { universities: University[] })
     setError(null);
     try {
       const file = new File([blob], "cropped.jpg", { type: "image/jpeg" });
-      const { url } = await uploadLargePhoto(universityId, file);
-      const { id: groupPhotoId } = await createGroupPhoto(universityId, {
+      const [{ url }, photoEventId] = await Promise.all([
+        uploadLargePhoto(universityId, file),
+        getDefaultPhotoEventId(universityId),
+      ]);
+      const { id: groupPhotoId } = await createGroupPhoto(universityId, photoEventId, {
         name: title.trim() || "ไม่ระบุชื่อ",
         imageUrl: url,
         imageWidth: width,
