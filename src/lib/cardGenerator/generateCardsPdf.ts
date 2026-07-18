@@ -237,6 +237,11 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
     const capHeightPt = (internalFont.capHeight / 1000) * codeSize;
     const boxCenterY = numberTop + (numberBottom - numberTop) / 2;
     const codeY = boxCenterY - ascenderPt + capHeightPt / 2;
+    // Scoped in save/restore — the stroke reinforcement below sets a multi-point lineWidth
+    // directly on `doc`, and without scoping it stays active for every stroke() drawn afterward
+    // (checkbox borders, dotted fill-in lines), rendering them as solid black blocks instead of
+    // thin lines. Found via a real generated card, not caught by earlier checks.
+    doc.save();
     doc
       .font("Sarabun-Bold")
       .fontSize(codeSize)
@@ -247,6 +252,7 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
       // hand-drawn reference box.
       .lineWidth(Math.max(1, codeSize * 0.02))
       .text(codeStr, MARGIN, codeY, { width: contentWidth, align: "center", fill: true, stroke: true });
+    doc.restore();
 
     if (includeFillIn && includeQr) {
       // Leaves the arrow section (fillInWidth is the only free variable here — QR is a fixed
@@ -261,7 +267,9 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
       const arrowGap = 6;
       const arrowW = contentWidth - fillInWidth - 14 - qrSize - arrowGap;
       const arrowX = MARGIN + fillInWidth + 14;
-      drawScanArrow(doc, arrowX, bottomBandY + bottomBandHeight / 2 - 9, arrowW, 18);
+      // Top-aligned with the checkbox row / QR's top edge, not centered in the whole band —
+      // centered left too much empty space below and read as floating too low.
+      drawScanArrow(doc, arrowX, bottomBandY, arrowW, 18);
       // A fresh Buffer copy per page — reusing the exact same Buffer object across many
       // doc.image() calls corrupted the PDF's xref table past the first page (confirmed via
       // `pdftoppm`: "XObject 'I3' is unknown" on page 2 onward). Recomputing the QR PNG per page
@@ -277,7 +285,7 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
       const qrSize = bottomBandHeight;
       const arrowGap = 6;
       const arrowW = contentWidth - qrSize - 14 - arrowGap;
-      drawScanArrow(doc, MARGIN, bottomBandY + bottomBandHeight / 2 - 9, arrowW, 18);
+      drawScanArrow(doc, MARGIN, bottomBandY, arrowW, 18);
       doc.image(Buffer.from(qrBuffer!), PAGE_WIDTH - MARGIN - qrSize, bottomBandY, {
         width: qrSize,
         height: qrSize,
