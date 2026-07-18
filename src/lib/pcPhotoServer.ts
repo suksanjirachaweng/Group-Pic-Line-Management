@@ -33,15 +33,30 @@ export type EmbedFaceResult = { embedding: number[]; score: number; cropUrl: str
  * isn't configured at all — both are legitimate "nothing to do here" outcomes for callers like the
  * close-out face-backup trigger, which shouldn't fail a whole archive job over either case.
  */
+// The PC server is a real physical machine in the studio, not managed infra — it can be asleep,
+// powered off, or unreachable. Without a bounded timeout, an admin's face-search click could hang
+// for however long the platform's own function timeout happens to be (found via a real
+// "กำลังค้นหา..." that never resolved) instead of failing fast with a visible error.
+const EMBED_FACE_TIMEOUT_MS = 20_000;
+
 export async function embedFace(imageBuffer: Buffer): Promise<EmbedFaceResult | null> {
   if (!isPcPhotoServerConfigured()) return null;
 
   const { baseUrl, token } = mintPcPhotoServerToken();
-  const resp = await fetch(`${baseUrl}/embed-face`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
-    body: new Uint8Array(imageBuffer),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(`${baseUrl}/embed-face`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
+      body: new Uint8Array(imageBuffer),
+      signal: AbortSignal.timeout(EMBED_FACE_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      throw new Error("PC server ไม่ตอบสนอง (เครื่องอาจปิดอยู่หรือไม่ได้เชื่อมต่ออินเทอร์เน็ต)");
+    }
+    throw err;
+  }
   if (resp.status === 422) return null;
   if (!resp.ok) throw new Error(`PC server /embed-face failed (${resp.status})`);
   return resp.json();

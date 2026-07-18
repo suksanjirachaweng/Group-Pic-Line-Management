@@ -15,7 +15,8 @@ export type FaceSearchCandidate = { name: string; score: number; sourceCropUrl: 
 export type FaceSearchResult =
   | { status: "not_configured" }
   | { status: "no_face_detected" }
-  | { status: "ok"; candidates: FaceSearchCandidate[] };
+  | { status: "ok"; candidates: FaceSearchCandidate[] }
+  | { status: "error"; message: string };
 
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0, na = 0, nb = 0;
@@ -52,20 +53,29 @@ export async function searchFacultyByFace(
   const left = Math.max(0, Math.min(photo.imageWidth - FACE_CROP_SIZE, Math.round(x - half)));
   const top = Math.max(0, Math.min(photo.imageHeight - FACE_CROP_SIZE, Math.round(y - half)));
 
-  const resp = await fetch(photo.imageUrl);
-  if (!resp.ok) throw new Error(`Failed to fetch photo image (${resp.status})`);
-  const fullBuf = Buffer.from(await resp.arrayBuffer());
-  const cropBuf = await sharp(fullBuf)
-    .extract({
-      left,
-      top,
-      width: Math.min(FACE_CROP_SIZE, photo.imageWidth),
-      height: Math.min(FACE_CROP_SIZE, photo.imageHeight),
-    })
-    .jpeg({ quality: 90 })
-    .toBuffer();
+  // Everything past this point crosses the network (photo fetch, the self-hosted PC embedding
+  // server) or does raw image processing — any of those can fail or time out. Without this
+  // try/catch, an uncaught rejection here leaves the caller's `loading` state stuck forever with
+  // no feedback (found via a real "กำลังค้นหา..." that never resolved).
+  let embedResult: Awaited<ReturnType<typeof embedFace>>;
+  try {
+    const resp = await fetch(photo.imageUrl);
+    if (!resp.ok) throw new Error(`Failed to fetch photo image (${resp.status})`);
+    const fullBuf = Buffer.from(await resp.arrayBuffer());
+    const cropBuf = await sharp(fullBuf)
+      .extract({
+        left,
+        top,
+        width: Math.min(FACE_CROP_SIZE, photo.imageWidth),
+        height: Math.min(FACE_CROP_SIZE, photo.imageHeight),
+      })
+      .jpeg({ quality: 90 })
+      .toBuffer();
 
-  const embedResult = await embedFace(cropBuf);
+    embedResult = await embedFace(cropBuf);
+  } catch (err) {
+    return { status: "error", message: err instanceof Error ? err.message : "ค้นหาไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
   if (!embedResult) return { status: "no_face_detected" };
 
   const profiles = await prisma.facultyFaceProfile.findMany({

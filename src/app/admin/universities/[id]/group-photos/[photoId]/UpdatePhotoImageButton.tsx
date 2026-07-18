@@ -1,14 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { uploadLargePhoto, measureImageDimensions } from "@/lib/groupPhoto/uploadLargePhoto";
 import { updateGroupPhotoImage } from "@/lib/actions/groupPhotos";
 
 export function UpdatePhotoImageButton({ universityId, groupPhotoId }: { universityId: string; groupPhotoId: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<number | null>(null);
-  const router = useRouter();
 
   async function handleFile(file: File) {
     if (
@@ -24,7 +22,11 @@ export function UpdatePhotoImageButton({ universityId, groupPhotoId }: { univers
       const { width, height } = await measureImageDimensions(file);
       const { url } = await uploadLargePhoto(universityId, file, setProgress);
       await updateGroupPhotoImage(universityId, groupPhotoId, { imageUrl: url, imageWidth: width, imageHeight: height });
-      router.refresh();
+      // A full reload, not router.refresh() — same fix already confirmed for the crop-and-save
+      // flow in TagCanvas.tsx: router.refresh() alone doesn't get the already-mounted canvas to
+      // actually redraw the new image (new props arrive, but the canvas keeps showing "กำลังโหลดรูป..."
+      // forever), even though the underlying [imageUrl] effect looks like it should re-run.
+      window.location.reload();
     } catch (err) {
       window.alert(`อัปเดตรูปไม่สำเร็จ: ${err instanceof Error ? err.message : "unknown error"}`);
     } finally {

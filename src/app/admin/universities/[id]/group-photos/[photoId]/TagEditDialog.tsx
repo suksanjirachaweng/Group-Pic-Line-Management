@@ -164,8 +164,18 @@ export function TagEditDialog({
   async function handleFaceSearch() {
     if (!initial) return;
     setFaceSearch({ loading: true, result: null });
-    const result = await searchFacultyByFace(universityId, groupPhotoId, initial.x, initial.y);
-    setFaceSearch({ loading: false, result });
+    // Belt-and-suspenders on top of the action's own try/catch — a server action call itself can
+    // still reject (e.g. the request never reaches the server), and without this the button would
+    // stay stuck on "กำลังค้นหา..." forever with no way to retry.
+    try {
+      const result = await searchFacultyByFace(universityId, groupPhotoId, initial.x, initial.y);
+      setFaceSearch({ loading: false, result });
+    } catch (err) {
+      setFaceSearch({
+        loading: false,
+        result: { status: "error", message: err instanceof Error ? err.message : "ค้นหาไม่สำเร็จ ลองใหม่อีกครั้ง" },
+      });
+    }
   }
 
   function handlePickFaceCandidate(candidateName: string) {
@@ -236,6 +246,9 @@ export function TagEditDialog({
             )}
             {faceSearch.result?.status === "no_face_detected" && (
               <p className="mt-1 text-xs text-gray-400">ไม่พบใบหน้าที่ชัดเจนบริเวณนี้</p>
+            )}
+            {faceSearch.result?.status === "error" && (
+              <p className="mt-1 text-xs text-red-500">ค้นหาไม่สำเร็จ: {faceSearch.result.message} — ลองกดค้นหาใหม่อีกครั้ง</p>
             )}
             {faceSearch.result?.status === "ok" && faceSearch.result.candidates.length === 0 && (
               <p className="mt-1 text-xs text-gray-400">ยังไม่มีข้อมูลใบหน้าในระบบให้เทียบ</p>
