@@ -23,6 +23,7 @@ const STATUS_CLASS: Record<PhotoEventStatus, string> = {
 const ARCHIVE_STAGE_LABEL: Record<string, string> = {
   EXPORTING_DATA: "กำลังบันทึกข้อมูล",
   COPYING_IMAGES: "กำลังคัดลอกรูปภาพ",
+  EMBEDDING_FACES: "กำลังสำรองข้อมูลใบหน้าอาจารย์",
   DONE: "เสร็จสิ้น",
   FAILED: "ล้มเหลว",
 };
@@ -48,7 +49,9 @@ export default async function PhotoEventDetailPage({
     prisma.photoEventArchiveJob.findFirst({ where: { photoEventId: eventId }, orderBy: { createdAt: "desc" } }),
   ]);
 
-  const jobInProgress = latestJob && (latestJob.stage === "EXPORTING_DATA" || latestJob.stage === "COPYING_IMAGES");
+  const jobInProgress =
+    latestJob &&
+    (latestJob.stage === "EXPORTING_DATA" || latestJob.stage === "COPYING_IMAGES" || latestJob.stage === "EMBEDDING_FACES");
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -101,6 +104,12 @@ export default async function PhotoEventDetailPage({
               <span>
                 {" "}
                 ({latestJob.imagesDone}/{latestJob.imagesTotal} รูป)
+              </span>
+            )}
+            {latestJob.stage === "EMBEDDING_FACES" && (
+              <span>
+                {" "}
+                ({latestJob.facesDone}/{latestJob.facesTotal} คน)
               </span>
             )}
             {latestJob.stage === "FAILED" && latestJob.errorMessage && (

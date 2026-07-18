@@ -444,6 +444,7 @@ model PhotoEvent {
 enum PhotoEventArchiveStage {
   EXPORTING_DATA
   COPYING_IMAGES
+  EMBEDDING_FACES
   DONE
   FAILED
 }
@@ -455,12 +456,16 @@ enum PhotoEventArchiveStage {
 /// reimported later. Processed a tick at a time by api/cron/process-photo-event-archive-jobs
 /// (same claim-one-job pattern as GroupPhotoAutoTagJob) since a real event's images can total
 /// hundreds of MB — too large to safely build in memory within one serverless invocation.
+/// EMBEDDING_FACES (before DONE) backs up row-0, named, non-problem tags into
+/// FacultyFaceProfile via the self-hosted PC server's /embed-face — see that model's docstring.
 model PhotoEventArchiveJob {
   id           String                 @id @default(cuid())
   photoEventId String
   stage        PhotoEventArchiveStage @default(EXPORTING_DATA)
   imagesTotal  Int                    @default(0)
   imagesDone   Int                    @default(0)
+  facesTotal   Int                    @default(0)
+  facesDone    Int                    @default(0)
   errorMessage String?
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt
@@ -693,4 +698,41 @@ model GroupPhotoShareLink {
   groupPhoto GroupPhoto @relation(fields: [groupPhotoId], references: [id], onDelete: Cascade)
 
   @@map("group_photo_share_links")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3.4: faculty face recognition bank
+// ---------------------------------------------------------------------------
+
+/// Durable, cross-year bank of recognized faculty faces — global, NOT scoped to one
+/// university/event, since the same professor legitimately recurs across different
+/// universities/years. Built up by PhotoEventArchiveJob's EMBEDDING_FACES stage during event
+/// close-out: every row-0 (front row), named, non-problem tag gets its face cropped and embedded
+/// via the self-hosted PC server's POST /embed-face (InsightFace/ArcFace, see
+/// pc-photo-server/spike-face-recognition for the de-risk spike that validated this approach on
+/// real data — 0.85 same-person vs 0.39 different-person cosine similarity). Looked up later from
+/// TagEditDialog's "ค้นหาจากใบหน้า" button when a future event's front-row tag can't be matched by
+/// code, to suggest "this might be the same person as an earlier year."
+///
+/// `embedding` is a plain Float[] (512-d), not pgvector — pgvector IS available on this Neon
+/// project (confirmed `SELECT * FROM pg_available_extensions WHERE name='vector'`, v0.8.0) but
+/// deliberately not enabled: expected row count here is a few hundred to low thousands (unique
+/// faculty, not a large-scale dataset), where brute-force cosine similarity computed in Node is
+/// already sub-10ms — no meaningful benefit from a native vector index at this scale, and this
+/// avoids adding a native Postgres extension dependency local dev doesn't have installed.
+///
+/// Upserted by exact `name` match (keyed `@unique`) — a real, accepted limitation: two different
+/// faculty sharing the exact same name string would collide. Acceptable for v1 given how rarely
+/// this occurs among a university's teaching staff; an admin can resolve a collision manually.
+model FacultyFaceProfile {
+  id                   String   @id @default(cuid())
+  name                 String   @unique
+  embedding            Float[]
+  sourceCropUrl        String // face crop saved alongside the embedding so an admin can visually confirm a search match
+  lastSeenPhotoEventId String? // informational only — not a real FK (the referenced PhotoEvent may later be deleted by close-out; this profile must survive that)
+  timesMatched         Int      @default(1)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("faculty_face_profiles")
 }

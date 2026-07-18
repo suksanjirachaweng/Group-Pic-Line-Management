@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { TagMatchSource, LegacyReferenceSource } from "@/generated/prisma/enums";
 import { getGroupPhotoTagHistory, type TagHistoryEntry } from "@/lib/actions/groupPhotos";
+import { searchFacultyByFace, type FaceSearchResult } from "@/lib/actions/facultyFaceSearch";
 
 export type RegistrantLookup = { id: string; name: string; normalizedCode: string; hasLine: boolean };
 export type ReferenceLookup = { name: string; normalizedCode: string; source: LegacyReferenceSource };
@@ -41,6 +42,7 @@ export function TagEditDialog({
   initial,
   ocrLoading,
   universityId,
+  groupPhotoId,
   registrantByCode,
   referenceByCode,
   onSave,
@@ -51,6 +53,7 @@ export function TagEditDialog({
   initial: DialogInitial | null;
   ocrLoading: boolean;
   universityId: string;
+  groupPhotoId: string;
   registrantByCode: Map<string, RegistrantLookup>;
   referenceByCode: Map<string, ReferenceLookup>;
   onSave: (input: SavePayload) => void;
@@ -67,6 +70,10 @@ export function TagEditDialog({
   const [problemAcknowledged, setProblemAcknowledged] = useState(false);
   const [history, setHistory] = useState<TagHistoryEntry[] | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [faceSearch, setFaceSearch] = useState<{ loading: boolean; result: FaceSearchResult | null }>({
+    loading: false,
+    result: null,
+  });
 
   // Reset form fields whenever a different `initial` object is passed in (a new tag opened, a
   // different tag selected, or OCR filling in the code on the currently-open dialog) — derived
@@ -81,6 +88,7 @@ export function TagEditDialog({
     setSyncedInitial(initial);
     setHistory(null);
     setHistoryOpen(false);
+    setFaceSearch({ loading: false, result: null });
     if (initial) {
       setCode(initial.code);
       setRow(initial.row);
@@ -153,6 +161,22 @@ export function TagEditDialog({
     setReferenceSource(null);
   }
 
+  async function handleFaceSearch() {
+    if (!initial) return;
+    setFaceSearch({ loading: true, result: null });
+    const result = await searchFacultyByFace(universityId, groupPhotoId, initial.x, initial.y);
+    setFaceSearch({ loading: false, result });
+  }
+
+  function handlePickFaceCandidate(candidateName: string) {
+    setName(candidateName);
+    // A face-search suggestion is never as authoritative as a code match — the admin picked it
+    // by eye, so it's recorded the same way any other manual entry is.
+    setRegistrantId(null);
+    setMatchSource(TagMatchSource.MANUAL);
+    setReferenceSource(null);
+  }
+
   if (!open || !initial) return null;
 
   return (
@@ -195,6 +219,47 @@ export function TagEditDialog({
           placeholder="เว้นว่างไว้ก่อนได้ — ค่อยกลับมาใส่ทีหลัง"
           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
         />
+
+        {row === 0 && (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handleFaceSearch}
+              disabled={faceSearch.loading}
+              className="text-xs font-medium text-indigo-600 hover:underline disabled:opacity-50"
+            >
+              {faceSearch.loading ? "กำลังค้นหา..." : "🔍 ค้นหาจากใบหน้า"}
+            </button>
+
+            {faceSearch.result?.status === "not_configured" && (
+              <p className="mt-1 text-xs text-gray-400">ยังไม่ได้ตั้งค่าระบบจดจำใบหน้า (PC server)</p>
+            )}
+            {faceSearch.result?.status === "no_face_detected" && (
+              <p className="mt-1 text-xs text-gray-400">ไม่พบใบหน้าที่ชัดเจนบริเวณนี้</p>
+            )}
+            {faceSearch.result?.status === "ok" && faceSearch.result.candidates.length === 0 && (
+              <p className="mt-1 text-xs text-gray-400">ยังไม่มีข้อมูลใบหน้าในระบบให้เทียบ</p>
+            )}
+            {faceSearch.result?.status === "ok" && faceSearch.result.candidates.length > 0 && (
+              <div className="mt-2 space-y-1.5 rounded-md border border-gray-200 bg-gray-50 p-2">
+                <p className="text-xs text-gray-500">เลือกคนที่ตรงจากรายการ (แอดมินยืนยันเอง ระบบไม่เติมให้อัตโนมัติ):</p>
+                {faceSearch.result.candidates.map((c) => (
+                  <button
+                    key={c.name}
+                    type="button"
+                    onClick={() => handlePickFaceCandidate(c.name)}
+                    className="flex w-full items-center gap-2 rounded-md bg-white p-1.5 text-left hover:bg-indigo-50"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- external, self-hosted-or-Blob crop URL, not a local asset */}
+                    <img src={c.sourceCropUrl} alt={c.name} className="h-10 w-10 rounded object-cover" />
+                    <span className="min-w-0 flex-1 truncate text-xs text-gray-800">{c.name}</span>
+                    <span className="flex-none text-xs text-gray-400">{(c.score * 100).toFixed(0)}%</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-3 grid grid-cols-2 gap-2">
           <div>

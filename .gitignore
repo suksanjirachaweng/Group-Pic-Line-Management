@@ -49,3 +49,14 @@ next-env.d.ts
 # pc-photo-server (self-hosted, not part of the Vercel deploy)
 pc-photo-server/node_modules
 pc-photo-server/storage
+# real InsightFace model weights (~191MB) — downloaded once per README, never committed
+pc-photo-server/models
+
+# Phase 3.4 de-risk spike — throwaway, not shipped code; large model weights, own node_modules,
+# and real people's face photos/crops used for the accuracy test (never commit real faces)
+pc-photo-server/spike-face-recognition/node_modules
+pc-photo-server/spike-face-recognition/models
+pc-photo-server/spike-face-recognition/samples
+pc-photo-server/spike-face-recognition/*.png
+pc-photo-server/spike-face-recognition/*.jpg
+pc-photo-server/spike-face-recognition/*.jpeg

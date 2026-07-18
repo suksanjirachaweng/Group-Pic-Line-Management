@@ -1710,6 +1710,7 @@ export function TagCanvas({
         initial={dialogInitial}
         ocrLoading={ocrLoading}
         universityId={universityId}
+        groupPhotoId={groupPhotoId}
         registrantByCode={registrantByCode}
         referenceByCode={referenceByCode}
         onSave={handleSave}

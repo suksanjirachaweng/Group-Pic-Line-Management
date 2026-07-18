@@ -103,3 +103,42 @@ That's it — no code changes needed on the app side. As soon as those two varia
 new group-photo upload goes through your PC instead of Vercel Blob. Existing photos already
 stored in Vercel Blob keep working exactly as before (their URLs don't change) — this only
 affects new uploads going forward.
+
+## 8. Optional: face recognition (faculty face search)
+
+This adds a `POST /embed-face` endpoint the main app calls during event close-out (to build a
+searchable face bank of faculty) and from the "ค้นหาจากใบหน้า" button on the tagging page. It's
+fully optional — everything else in this server works fine without it.
+
+**Download the two model files** (from the official InsightFace project — see
+[buffalo_l release notes](https://github.com/deepinsight/insightface/releases/tag/v0.7)) into a
+new `models` folder next to `server.js`:
+
+- `det_10g.onnx` (~17MB) — face detector
+- `w600k_r50.onnx` (~174MB) — face recognition/embedding model
+
+Both come bundled together in `buffalo_l.zip` from that release — download it, extract just these
+two files into `pc-photo-server/models/`, and you can delete the zip and the other 3 files inside
+it (`1k3d68.onnx`, `2d106det.onnx`, `genderage.onnx` — not used).
+
+Then reinstall dependencies (`npm install` in this folder, picks up `onnxruntime-node` + `sharp`)
+and restart the server. On startup you should see either:
+
+```
+Face recognition models loaded — /embed-face is ready.
+```
+
+or, if the `models` folder isn't set up yet:
+
+```
+Face recognition models failed to load (/embed-face will return errors until this is fixed): ...
+```
+
+The second message is harmless if you don't need this feature yet — photo storage keeps working
+normally either way. `/embed-face` retries loading on every request until it succeeds, so you can
+add the model files later and it'll pick them up without a restart.
+
+**Why `onnxruntime-node` is pinned to exactly `1.19.2`** in `package.json` (not a `^` range): this
+is the exact version validated end-to-end against real photos during this feature's de-risk spike
+(`pc-photo-server/spike-face-recognition/`). Newer versions may work fine too, especially on
+Windows, but haven't been verified — don't bump this without re-testing.

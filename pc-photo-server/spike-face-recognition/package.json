@@ -1,0 +1,10 @@
+{
+  "name": "grouppic-face-recognition-spike",
+  "version": "0.0.1",
+  "private": true,
+  "description": "De-risk spike for Phase 3.4 (faculty face recognition) — not part of the deployed app.",
+  "dependencies": {
+    "onnxruntime-node": "1.19.2",
+    "sharp": "^0.33.5"
+  }
+}

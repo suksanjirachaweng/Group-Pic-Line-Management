@@ -12,6 +12,7 @@ const express = require("express");
 const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
+const { preloadModels, detectAndEmbed } = require("./faceEmbedding");
 
 const PORT = Number(process.env.PORT || 8793);
 const SECRET = process.env.UPLOAD_SECRET;
@@ -126,6 +127,63 @@ app.post("/upload", (req, res) => {
   req.pipe(writeStream);
 });
 
+const MAX_EMBED_BYTES = 10 * 1024 * 1024; // face crops sent for embedding are small, not full group photos
+
+/** Buffers the raw request body up to `maxBytes`, rejecting (destroying the connection) if
+ * exceeded — mirrors /upload's streaming size guard, just fully in-memory since this endpoint
+ * needs the whole image for sharp/onnxruntime anyway. */
+function readBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    req.on("data", (chunk) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        req.destroy();
+        reject(Object.assign(new Error("payload too large"), { status: 413 }));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+app.post("/embed-face", async (req, res) => {
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!verifyToken(token)) {
+    return res.status(401).json({ error: "unauthorized or expired token" });
+  }
+
+  let buf;
+  try {
+    buf = await readBody(req, MAX_EMBED_BYTES);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
+
+  let result;
+  try {
+    result = await detectAndEmbed(buf);
+  } catch (err) {
+    console.error("detectAndEmbed failed:", err);
+    return res.status(500).json({ error: "face embedding failed" });
+  }
+  if (!result) {
+    return res.status(422).json({ error: "no_face_detected" });
+  }
+
+  const relativeFilePath = path.join("faces", `${crypto.randomBytes(12).toString("hex")}.jpg`);
+  const destPath = safeStoragePath(relativeFilePath);
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
+  fs.writeFileSync(destPath, result.faceCropBuf);
+  const cropUrl = `${PUBLIC_BASE_URL.replace(/\/+$/, "")}/photos/${relativeFilePath.split(path.sep).join("/")}`;
+
+  res.json({ embedding: result.embedding, score: result.score, cropUrl });
+});
+
 app.use(
   "/photos",
   express.static(STORAGE_DIR, { maxAge: "365d", immutable: true, dotfiles: "deny", index: false }),
@@ -136,3 +194,16 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 app.listen(PORT, "127.0.0.1", () => {
   console.log(`Photo storage server listening on 127.0.0.1:${PORT}, serving from ${STORAGE_DIR}`);
 });
+
+// Face recognition (POST /embed-face) is an optional add-on — photo storage (/upload, /photos) is
+// this server's primary job and must keep working even if the face models aren't set up yet, so
+// this loads in the background rather than blocking startup. A request to /embed-face made before
+// this finishes (or if models/ is missing entirely) just fails with a clear error, not a crash.
+preloadModels()
+  .then(() => console.log("Face recognition models loaded — /embed-face is ready."))
+  .catch((err) => {
+    console.warn(
+      "Face recognition models failed to load (/embed-face will return errors until this is fixed):",
+      err.message,
+    );
+  });

@@ -1,16 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
+import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { isAuthorizedCronRequest } from "@/lib/cronAuth";
 import { buildEventArchiveData } from "@/lib/photoEvent/buildEventArchiveData";
 import { uploadArchiveDataJson, copyImageToArchive } from "@/lib/photoEvent/archiveStorage";
+import { isPcPhotoServerConfigured, embedFace } from "@/lib/pcPhotoServer";
 import { PhotoEventStatus } from "@/generated/prisma/enums";
 import type { PhotoEventArchiveJob } from "@/generated/prisma/client";
 
-// Hobby-plan cap — the COPYING_IMAGES stage's own soft time budget below stays comfortably under
-// this so the route always returns a real response instead of getting killed mid-tick.
+// Hobby-plan cap — the COPYING_IMAGES/EMBEDDING_FACES stages' own soft time budget below stays
+// comfortably under this so the route always returns a real response instead of getting killed
+// mid-tick.
 export const maxDuration = 60;
 const TIME_BUDGET_MS = 45_000;
 const IMAGE_COPY_CONCURRENCY = 3;
+const FACE_EMBED_CONCURRENCY = 2; // each call does real CPU-bound ML inference on the PC server — gentler than image copying
+
+// Generous crop window around a tag's (x,y) point before handing off to the PC server's own
+// detector — these group photos can be extremely high-res (15000px+ wide) with many people per
+// frame, and a too-tight window can miss the actual face entirely. Same size validated in the
+// de-risk spike (pc-photo-server/spike-face-recognition) against real production photos.
+const FACE_CROP_SIZE = 1400;
 
 /** Claims exactly one non-terminal job per tick — same FOR UPDATE SKIP LOCKED pattern as
  * process-group-photo-auto-tag-jobs, for the same reason (the actual work below is way too slow
@@ -19,13 +29,20 @@ async function claimJob(): Promise<PhotoEventArchiveJob | null> {
   return prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT "id" FROM "photo_event_archive_jobs"
-      WHERE "stage" IN ('EXPORTING_DATA', 'COPYING_IMAGES')
+      WHERE "stage" IN ('EXPORTING_DATA', 'COPYING_IMAGES', 'EMBEDDING_FACES')
       ORDER BY "createdAt" ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
     `;
     if (rows.length === 0) return null;
     return tx.photoEventArchiveJob.findUniqueOrThrow({ where: { id: rows[0].id } });
+  });
+}
+
+async function finishArchive(photoEventId: string) {
+  await prisma.photoEvent.update({
+    where: { id: photoEventId },
+    data: { status: PhotoEventStatus.ARCHIVE_READY, archivedAt: new Date() },
   });
 }
 
@@ -82,20 +99,117 @@ async function processCopyingImagesStage(job: PhotoEventArchiveJob) {
   );
 
   const done = next >= photos.length;
-  await prisma.photoEventArchiveJob.update({
-    where: { id: job.id },
-    data: {
-      imagesDone: next,
-      stage: done ? "DONE" : "COPYING_IMAGES",
-      completedAt: done ? new Date() : null,
+  if (!done) {
+    await prisma.photoEventArchiveJob.update({ where: { id: job.id }, data: { imagesDone: next } });
+    return;
+  }
+
+  // Face backup is optional (skipped entirely if the operator hasn't set up PC-server face
+  // recognition) — jump straight to DONE rather than leaving the job stuck in a stage that will
+  // never advance.
+  if (!isPcPhotoServerConfigured()) {
+    await prisma.photoEventArchiveJob.update({
+      where: { id: job.id },
+      data: { imagesDone: next, stage: "DONE", completedAt: new Date() },
+    });
+    await finishArchive(job.photoEventId);
+    return;
+  }
+
+  const facesTotal = await prisma.groupPhotoTag.count({
+    where: {
+      row: 0,
+      name: { not: "" },
+      OR: [{ reportedProblem: false }, { problemAcknowledged: true }],
+      groupPhoto: { photoEventId: job.photoEventId },
     },
   });
-  if (done) {
-    await prisma.photoEvent.update({
-      where: { id: job.photoEventId },
-      data: { status: PhotoEventStatus.ARCHIVE_READY, archivedAt: new Date() },
-    });
+  await prisma.photoEventArchiveJob.update({
+    where: { id: job.id },
+    data: { imagesDone: next, facesTotal, stage: facesTotal > 0 ? "EMBEDDING_FACES" : "DONE", completedAt: facesTotal > 0 ? null : new Date() },
+  });
+  if (facesTotal === 0) await finishArchive(job.photoEventId);
+}
+
+async function processEmbeddingFacesStage(job: PhotoEventArchiveJob) {
+  const tags = await prisma.groupPhotoTag.findMany({
+    where: {
+      row: 0,
+      name: { not: "" },
+      OR: [{ reportedProblem: false }, { problemAcknowledged: true }],
+      groupPhoto: { photoEventId: job.photoEventId },
+    },
+    orderBy: [{ id: "asc" }],
+    select: {
+      name: true,
+      x: true,
+      y: true,
+      groupPhoto: { select: { imageUrl: true, imageWidth: true, imageHeight: true } },
+    },
+  });
+
+  const startedAt = Date.now();
+  let next = job.facesDone;
+
+  async function worker() {
+    while (next < tags.length && Date.now() - startedAt < TIME_BUDGET_MS) {
+      const index = next++;
+      const tag = tags[index];
+      try {
+        const { imageUrl, imageWidth, imageHeight } = tag.groupPhoto;
+        const half = FACE_CROP_SIZE / 2;
+        const left = Math.max(0, Math.min(imageWidth - FACE_CROP_SIZE, Math.round(tag.x - half)));
+        const top = Math.max(0, Math.min(imageHeight - FACE_CROP_SIZE, Math.round(tag.y - half)));
+        const resp = await fetch(imageUrl);
+        if (!resp.ok) throw new Error(`Failed to fetch photo image (${resp.status})`);
+        const fullBuf = Buffer.from(await resp.arrayBuffer());
+        const cropBuf = await sharp(fullBuf)
+          .extract({
+            left,
+            top,
+            width: Math.min(FACE_CROP_SIZE, imageWidth),
+            height: Math.min(FACE_CROP_SIZE, imageHeight),
+          })
+          .jpeg({ quality: 90 })
+          .toBuffer();
+
+        const result = await embedFace(cropBuf);
+        if (result) {
+          await prisma.facultyFaceProfile.upsert({
+            where: { name: tag.name },
+            create: {
+              name: tag.name,
+              embedding: result.embedding,
+              sourceCropUrl: result.cropUrl,
+              lastSeenPhotoEventId: job.photoEventId,
+              timesMatched: 1,
+            },
+            update: {
+              embedding: result.embedding,
+              sourceCropUrl: result.cropUrl,
+              lastSeenPhotoEventId: job.photoEventId,
+              timesMatched: { increment: 1 },
+            },
+          });
+        }
+      } catch (err) {
+        // One face failing to embed (bad crop, transient PC-server hiccup, no confident face in
+        // the window) shouldn't fail the whole event archive — same graceful-degradation stance
+        // as the image-copy stage.
+        console.error(`Archive job ${job.id}: face embed for "${tag.name}" failed:`, err);
+      }
+    }
   }
+  await Promise.all(
+    Array.from({ length: Math.min(FACE_EMBED_CONCURRENCY, tags.length - next) || 1 }, worker),
+  );
+
+  const done = next >= tags.length;
+  await prisma.photoEventArchiveJob.update({
+    where: { id: job.id },
+    data: { facesDone: next, stage: done ? "DONE" : "EMBEDDING_FACES", completedAt: done ? new Date() : null },
+  });
+  if (done) await finishArchive(job.photoEventId);
 }
 
 async function handle(request: NextRequest) {
@@ -111,6 +225,8 @@ async function handle(request: NextRequest) {
       await processExportingDataStage(job);
     } else if (job.stage === "COPYING_IMAGES") {
       await processCopyingImagesStage(job);
+    } else if (job.stage === "EMBEDDING_FACES") {
+      await processEmbeddingFacesStage(job);
     }
     return NextResponse.json({ processed: true, jobId: job.id, stage: job.stage });
   } catch (err) {

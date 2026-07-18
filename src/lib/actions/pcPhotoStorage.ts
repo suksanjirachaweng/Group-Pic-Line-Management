@@ -1,9 +1,7 @@
 "use server";
 
-import { createHmac } from "node:crypto";
 import { requireUniversityAccess } from "@/lib/authz";
-
-const TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes — long enough to start an upload on a slow connection
+import { mintPcPhotoServerToken } from "@/lib/pcPhotoServer";
 
 /**
  * Mints a short-lived, HMAC-signed upload token for the self-hosted PC photo server — the shared
@@ -13,12 +11,6 @@ const TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes — long enough to start an upl
  */
 export async function getPcUploadToken(universityId: string): Promise<{ uploadUrl: string; token: string }> {
   await requireUniversityAccess(universityId);
-
-  const baseUrl = process.env.NEXT_PUBLIC_PC_PHOTO_STORAGE_URL;
-  const secret = process.env.PC_PHOTO_STORAGE_SECRET;
-  if (!baseUrl || !secret) throw new Error("PC photo storage is not configured (missing env vars)");
-
-  const expiry = Date.now() + TOKEN_TTL_MS;
-  const signature = createHmac("sha256", secret).update(String(expiry)).digest("hex");
-  return { uploadUrl: baseUrl.replace(/\/+$/, ""), token: `${expiry}.${signature}` };
+  const { baseUrl, token } = mintPcPhotoServerToken();
+  return { uploadUrl: baseUrl, token };
 }
