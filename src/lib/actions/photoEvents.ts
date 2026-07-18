@@ -66,6 +66,26 @@ export async function getDefaultPhotoEventId(universityId: string): Promise<stri
   return created.id;
 }
 
+/**
+ * Resolves the event a list page (group-photos, registrants) should filter to, given the
+ * `?eventId=` query param the admin may have picked from the EventFilterDropdown. Falls back to
+ * `getDefaultPhotoEventId` when the param is absent, blank, or doesn't actually belong to this
+ * university (e.g. a stale/tampered URL) — never trusts the param without checking ownership.
+ */
+export async function resolveSelectedPhotoEventId(
+  universityId: string,
+  eventIdParam: string | undefined,
+): Promise<string> {
+  if (eventIdParam) {
+    const owned = await prisma.photoEvent.findUnique({
+      where: { id: eventIdParam, universityId },
+      select: { id: true },
+    });
+    if (owned) return owned.id;
+  }
+  return getDefaultPhotoEventId(universityId);
+}
+
 export async function listPhotoEvents(universityId: string): Promise<PhotoEventListItem[]> {
   await requireUniversityAccess(universityId);
   const rows = await prisma.photoEvent.findMany({

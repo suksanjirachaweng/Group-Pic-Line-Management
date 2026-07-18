@@ -34,9 +34,6 @@ export default async function UnregisteredFollowersPage({
           {university.name} — เพิ่มเพื่อน LINE แต่ยังไม่ลงทะเบียน
           <span className="ml-2 text-sm font-normal text-gray-400">{followers.length} คน</span>
         </h1>
-        <Link href={`/admin/universities/${universityId}`} className="text-sm text-gray-500 hover:underline">
-          Back to university
-        </Link>
       </div>
 
       <p className="mb-4 text-sm text-gray-500">

@@ -9,6 +9,7 @@ import {
   filterByAdvancedConditions,
   type AdvancedConditionRow,
 } from "@/lib/registrantFilters";
+import { resolveSelectedPhotoEventId } from "@/lib/actions/photoEvents";
 
 const ADVANCED_FILTER_ROWS = 3;
 
@@ -29,13 +30,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!university) return new NextResponse("University not found", { status: 404 });
 
   const sp = request.nextUrl.searchParams;
-  const where = buildRegistrantWhere(universityId, {
-    status: sp.get("status") ?? undefined,
-    deliveryStatus: sp.get("deliveryStatus") ?? undefined,
-    q: sp.get("q") ?? undefined,
-    fieldKey: sp.get("fieldKey") ?? undefined,
-    fieldValue: sp.get("fieldValue") ?? undefined,
+  const selectedPhotoEventId = await resolveSelectedPhotoEventId(universityId, sp.get("eventId") ?? undefined);
+  const selectedEvent = await prisma.photoEvent.findUniqueOrThrow({
+    where: { id: selectedPhotoEventId },
+    select: { startDate: true, endDate: true },
   });
+  const where = buildRegistrantWhere(
+    universityId,
+    {
+      status: sp.get("status") ?? undefined,
+      deliveryStatus: sp.get("deliveryStatus") ?? undefined,
+      q: sp.get("q") ?? undefined,
+      fieldKey: sp.get("fieldKey") ?? undefined,
+      fieldValue: sp.get("fieldValue") ?? undefined,
+      photoEventId: selectedPhotoEventId,
+    },
+    selectedEvent,
+  );
 
   const matched = await prisma.registrant.findMany({
     where,

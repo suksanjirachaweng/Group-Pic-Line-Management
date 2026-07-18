@@ -1,5 +1,6 @@
 import { Prisma, RegistrantStatus, DeliveryStatus } from "@/generated/prisma/client";
 import { matchesConditionTree, type Condition, type ConditionGroup, type ConditionOperator } from "@/lib/rules/evaluate";
+import { buildEventScopedRegistrantWhere } from "@/lib/groupPhoto/resolveTagMatch";
 
 export const CONDITION_OPERATORS: { value: ConditionOperator; label: string }[] = [
   { value: "eq", label: "=" },
@@ -112,17 +113,26 @@ export type RegistrantFilterParams = {
   q?: string;
   fieldKey?: string;
   fieldValue?: string;
+  photoEventId?: string;
 };
 
 /**
  * Builds the shared registrant list filter — used by both the admin list page and the
  * Excel export route so the exported file always matches what's currently on screen.
+ *
+ * `eventWindow` (the selected event's own `startDate`/`endDate`) is passed separately from
+ * `photoEventId` rather than folded into `RegistrantFilterParams` because it isn't a raw URL
+ * param — callers already have to fetch the `PhotoEvent` row to resolve the id in the first
+ * place, so this just takes what they already have. Combined via `AND` (not spread) with the
+ * base filter because both `buildEventScopedRegistrantWhere`'s bootstrap logic and the `q` search
+ * above independently need the `OR` key — spreading them would silently drop one.
  */
 export function buildRegistrantWhere(
   universityId: string,
-  { status, deliveryStatus, q, fieldKey, fieldValue }: RegistrantFilterParams,
+  { status, deliveryStatus, q, fieldKey, fieldValue, photoEventId }: RegistrantFilterParams,
+  eventWindow?: { startDate: Date; endDate: Date },
 ): Prisma.RegistrantWhereInput {
-  return {
+  const base: Prisma.RegistrantWhereInput = {
     universityId,
     ...(status ? { status: status as RegistrantStatus } : {}),
     ...(deliveryStatus ? { deliveryStatus: deliveryStatus as DeliveryStatus } : {}),
@@ -143,4 +153,7 @@ export function buildRegistrantWhere(
         }
       : {}),
   };
+
+  if (!photoEventId || !eventWindow) return base;
+  return { AND: [base, buildEventScopedRegistrantWhere(universityId, photoEventId, eventWindow)] };
 }

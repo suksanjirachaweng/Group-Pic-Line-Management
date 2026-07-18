@@ -31,6 +31,28 @@ export type TagMatch = { name: string; registrantId: string | null; matchSource:
  * Legacy-reference rows are matched directly by `photoEventId` with no date-bootstrap — that
  * data is always imported as an explicit per-event admin action, so there's nothing to bootstrap.
  */
+/**
+ * The shared "does this registrant belong to event E" filter — same bootstrap-then-stick rule
+ * documented above, factored out so display-side filtering (the group-photos/registrants admin
+ * pages' event-scope dropdown) and match-time filtering (`buildTagMatchMaps` below) can never
+ * drift into two different definitions of "belongs to this event." Takes the event's own
+ * `startDate`/`endDate` rather than re-fetching them, since callers usually already have the
+ * `PhotoEvent` row in hand.
+ */
+export function buildEventScopedRegistrantWhere(
+  universityId: string,
+  photoEventId: string,
+  eventWindow: { startDate: Date; endDate: Date },
+): Prisma.RegistrantWhereInput {
+  return {
+    universityId,
+    OR: [
+      { photoEventId },
+      { photoEventId: null, registeredAt: { gte: eventWindow.startDate, lte: eventWindow.endDate } },
+    ],
+  };
+}
+
 export async function buildTagMatchMaps(universityId: string, photoEventId: string): Promise<TagMatchMaps> {
   const event = await prisma.photoEvent.findUniqueOrThrow({
     where: { id: photoEventId, universityId },
@@ -39,13 +61,7 @@ export async function buildTagMatchMaps(universityId: string, photoEventId: stri
 
   const [registrantRows, referenceRows] = await Promise.all([
     prisma.registrant.findMany({
-      where: {
-        universityId,
-        OR: [
-          { photoEventId },
-          { photoEventId: null, registeredAt: { gte: event.startDate, lte: event.endDate } },
-        ],
-      },
+      where: buildEventScopedRegistrantWhere(universityId, photoEventId, event),
       select: { id: true, displayName: true, data: true },
     }),
     prisma.groupPhotoLegacyReference.findMany({

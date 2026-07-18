@@ -12,6 +12,8 @@ import {
   CONDITION_OPERATORS,
   type AdvancedConditionRow,
 } from "@/lib/registrantFilters";
+import { resolveSelectedPhotoEventId, listPhotoEvents } from "@/lib/actions/photoEvents";
+import { EventFilterDropdown } from "../EventFilterDropdown";
 import { SelectAllCheckbox } from "./SelectAllCheckbox";
 import { BulkSendButton } from "./BulkSendButton";
 import { BulkDeliveryStatusButton } from "./BulkDeliveryStatusButton";
@@ -55,7 +57,7 @@ export default async function RegistrantsPage({
 }) {
   const { id: universityId } = await params;
   const sp0 = await searchParams;
-  const { page: pageParam, status, deliveryStatus, q, fieldKey, fieldValue, sortBy, sortDir } = sp0;
+  const { page: pageParam, status, deliveryStatus, q, fieldKey, fieldValue, sortBy, sortDir, eventId } = sp0;
 
   const session = await getServerSession(authOptions);
   const user = session!.user;
@@ -67,6 +69,15 @@ export default async function RegistrantsPage({
   });
   if (!university) notFound();
 
+  const [selectedPhotoEventId, events] = await Promise.all([
+    resolveSelectedPhotoEventId(universityId, eventId),
+    listPhotoEvents(universityId),
+  ]);
+  const selectedEvent = await prisma.photoEvent.findUniqueOrThrow({
+    where: { id: selectedPhotoEventId },
+    select: { startDate: true, endDate: true },
+  });
+
   const page = Math.max(1, Number(pageParam) || 1);
   const formFieldKeys = new Set(university.formFields.map((f) => f.key));
 
@@ -77,7 +88,11 @@ export default async function RegistrantsPage({
   }));
   const advancedGroup = buildAdvancedConditionGroup(advancedRows);
 
-  const where = buildRegistrantWhere(universityId, { status, deliveryStatus, q, fieldKey, fieldValue });
+  const where = buildRegistrantWhere(
+    universityId,
+    { status, deliveryStatus, q, fieldKey, fieldValue, photoEventId: selectedPhotoEventId },
+    selectedEvent,
+  );
 
   const matched = await prisma.registrant.findMany({
     where,
@@ -91,11 +106,12 @@ export default async function RegistrantsPage({
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const registrants = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const baseParams = { status, deliveryStatus, q, fieldKey, fieldValue, sortBy, sortDir };
+  const baseParams = { status, deliveryStatus, q, fieldKey, fieldValue, sortBy, sortDir, eventId };
 
   function pageHref(nextPage: number, overrides: Record<string, string | undefined> = {}) {
     const merged = { ...baseParams, ...overrides };
     const sp = new URLSearchParams();
+    if (merged.eventId) sp.set("eventId", merged.eventId);
     if (merged.status) sp.set("status", merged.status);
     if (merged.deliveryStatus) sp.set("deliveryStatus", merged.deliveryStatus);
     if (merged.q) sp.set("q", merged.q);
@@ -126,6 +142,7 @@ export default async function RegistrantsPage({
   }
 
   const exportSp = new URLSearchParams();
+  if (eventId) exportSp.set("eventId", eventId);
   if (status) exportSp.set("status", status);
   if (deliveryStatus) exportSp.set("deliveryStatus", deliveryStatus);
   if (q) exportSp.set("q", q);
@@ -154,6 +171,7 @@ export default async function RegistrantsPage({
           <span className="ml-2 text-sm font-normal text-gray-400">{total} total</span>
         </h1>
         <div className="flex items-center gap-3">
+          <EventFilterDropdown events={events} selectedEventId={selectedPhotoEventId} />
           <BulkDeliveryStatusButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
           <BulkSendButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
           <a
@@ -167,9 +185,6 @@ export default async function RegistrantsPage({
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             เพิ่มเพื่อนแต่ยังไม่ลงทะเบียน
-          </Link>
-          <Link href={`/admin/universities/${universityId}`} className="text-sm text-gray-500 hover:underline">
-            Back to university
           </Link>
         </div>
       </div>
@@ -219,6 +234,7 @@ export default async function RegistrantsPage({
         />
         {sortBy && <input type="hidden" name="sortBy" value={sortBy} />}
         {sortDir && <input type="hidden" name="sortDir" value={sortDir} />}
+        {eventId && <input type="hidden" name="eventId" value={eventId} />}
         <button type="submit" className="rounded-md bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white">
           Filter
         </button>
@@ -236,6 +252,7 @@ export default async function RegistrantsPage({
           {fieldValue && <input type="hidden" name="fieldValue" value={fieldValue} />}
           {sortBy && <input type="hidden" name="sortBy" value={sortBy} />}
           {sortDir && <input type="hidden" name="sortDir" value={sortDir} />}
+          {eventId && <input type="hidden" name="eventId" value={eventId} />}
           {Array.from({ length: ADVANCED_FILTER_ROWS }, (_, i) => (
             <div key={i} className="flex gap-2">
               <select

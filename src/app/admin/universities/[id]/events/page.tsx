@@ -35,9 +35,6 @@ export default async function PhotoEventsPage({ params }: { params: Promise<{ id
     <div className="mx-auto max-w-4xl p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">{university.name} — งานถ่ายรูป (Events)</h1>
-        <Link href={`/admin/universities/${universityId}/group-photos`} className="text-sm text-gray-500 hover:text-gray-700 hover:underline">
-          ไปหน้ารูปหมู่ / ข้อมูล
-        </Link>
       </div>
 
       <p className="mb-4 text-sm text-gray-500">

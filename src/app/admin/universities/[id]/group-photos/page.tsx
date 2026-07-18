@@ -14,13 +14,15 @@ import {
   type TagSourceLabel,
 } from "@/lib/groupPhoto/crossPhotoDuplicates";
 import type { GroupPhotoStatus } from "@/generated/prisma/enums";
-import { getDefaultPhotoEventId } from "@/lib/actions/photoEvents";
+import { resolveSelectedPhotoEventId, listPhotoEvents } from "@/lib/actions/photoEvents";
+import { buildEventScopedRegistrantWhere } from "@/lib/groupPhoto/resolveTagMatch";
 import { LegacyReferenceUploadForm } from "./LegacyReferenceUploadForm";
 import { StripNameTitlesButton } from "./StripNameTitlesButton";
 import { UploadGroupPhotoButton } from "./UploadGroupPhotoButton";
 import { DeleteGroupPhotoButton } from "./DeleteGroupPhotoButton";
 import { PhotoSelectAll } from "./PhotoSelectAll";
 import { SharePhotoLinksButton } from "./SharePhotoLinksButton";
+import { EventFilterDropdown } from "../EventFilterDropdown";
 
 const PAGE_SIZE = 50;
 const PHOTO_SELECT_FORM_ID = "photo-select-form";
@@ -97,6 +99,7 @@ export default async function GroupPhotosPage({
     dir?: string;
     psort?: string;
     pdir?: string;
+    eventId?: string;
   }>;
 }) {
   const { id: universityId } = await params;
@@ -109,6 +112,7 @@ export default async function GroupPhotosPage({
     dir: dirParam,
     psort: psortParam,
     pdir: pdirParam,
+    eventId: eventIdParam,
   } = await searchParams;
   const tab: "data" | "photos" = tabParam === "data" ? "data" : "photos";
   const dataSubTab: "list" | "alerts" = dtabParam === "alerts" ? "alerts" : "list";
@@ -129,36 +133,39 @@ export default async function GroupPhotosPage({
   });
   if (!university) notFound();
 
-  // TODO(phase-3): this page still shows one flat cross-event view — every query below stays
-  // university-scoped (not yet filtered to `defaultPhotoEventId`) until the events management UI
-  // and full route nesting lands. Upload/import already write the correct photoEventId though, so
-  // matching stays correct even before the list views are event-filtered.
-  const defaultPhotoEventId = await getDefaultPhotoEventId(universityId);
+  const [selectedPhotoEventId, events] = await Promise.all([
+    resolveSelectedPhotoEventId(universityId, eventIdParam),
+    listPhotoEvents(universityId),
+  ]);
 
   const [photoCount, dataCount] = await Promise.all([
-    prisma.groupPhoto.count({ where: { universityId } }),
-    prisma.groupPhotoLegacyReference.count({ where: { universityId } }).then(async (legacy) => {
-      const registrants = await prisma.registrant.count({ where: { universityId } });
-      return legacy + registrants;
-    }),
+    prisma.groupPhoto.count({ where: { universityId, photoEventId: selectedPhotoEventId } }),
+    prisma.groupPhotoLegacyReference
+      .count({ where: { universityId, photoEventId: selectedPhotoEventId } })
+      .then(async (legacy) => {
+        const event = await prisma.photoEvent.findUniqueOrThrow({
+          where: { id: selectedPhotoEventId },
+          select: { startDate: true, endDate: true },
+        });
+        const registrants = await prisma.registrant.count({
+          where: buildEventScopedRegistrantWhere(universityId, selectedPhotoEventId, event),
+        });
+        return legacy + registrants;
+      }),
   ]);
 
   function tabHref(nextTab: "data" | "photos") {
-    return `?tab=${nextTab}`;
+    const sp = new URLSearchParams();
+    sp.set("tab", nextTab);
+    if (eventIdParam) sp.set("eventId", eventIdParam);
+    return `?${sp.toString()}`;
   }
 
   return (
     <div className="mx-auto max-w-5xl p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">{university.name} — รูปหมู่</h1>
-        <div className="flex items-center gap-4">
-          <Link href={`/admin/universities/${universityId}/events`} className="text-sm text-gray-500 hover:text-gray-700 hover:underline">
-            งานถ่ายรูป (Events)
-          </Link>
-          <Link href={`/admin/universities/${universityId}`} className="text-sm text-gray-500 hover:text-gray-700 hover:underline">
-            ตั้งค่ามหาวิทยาลัย / LINE Channel
-          </Link>
-        </div>
+        <EventFilterDropdown events={events} selectedEventId={selectedPhotoEventId} />
       </div>
 
       <div className="mb-6 border-b border-gray-200">
@@ -179,15 +186,22 @@ export default async function GroupPhotosPage({
       {tab === "data" ? (
         <DataTab
           universityId={universityId}
-          photoEventId={defaultPhotoEventId}
+          photoEventId={selectedPhotoEventId}
           q={q}
           pageParam={pageParam}
           sort={sort}
           dir={dir}
           dataSubTab={dataSubTab}
+          eventIdParam={eventIdParam}
         />
       ) : (
-        <PhotosTab universityId={universityId} photoEventId={defaultPhotoEventId} photoSort={photoSort} photoDir={photoDir} />
+        <PhotosTab
+          universityId={universityId}
+          photoEventId={selectedPhotoEventId}
+          photoSort={photoSort}
+          photoDir={photoDir}
+          eventIdParam={eventIdParam}
+        />
       )}
     </div>
   );
@@ -201,6 +215,7 @@ async function DataTab({
   sort,
   dir,
   dataSubTab,
+  eventIdParam,
 }: {
   universityId: string;
   photoEventId: string;
@@ -209,19 +224,25 @@ async function DataTab({
   sort: SortKey | undefined;
   dir: "asc" | "desc";
   dataSubTab: "list" | "alerts";
+  eventIdParam: string | undefined;
 }) {
   const formFields = await prisma.formFieldDefinition.findMany({ where: { universityId } });
   const phoneFieldKey = formFields.find((f) => f.fieldType === "PHONE")?.key;
 
+  const event = await prisma.photoEvent.findUniqueOrThrow({
+    where: { id: photoEventId },
+    select: { startDate: true, endDate: true },
+  });
+
   const [legacyRows, registrantRows, tagRows] = await Promise.all([
-    prisma.groupPhotoLegacyReference.findMany({ where: { universityId }, orderBy: { createdAt: "asc" } }),
+    prisma.groupPhotoLegacyReference.findMany({ where: { universityId, photoEventId }, orderBy: { createdAt: "asc" } }),
     prisma.registrant.findMany({
-      where: { universityId },
+      where: buildEventScopedRegistrantWhere(universityId, photoEventId, event),
       select: { id: true, displayName: true, data: true },
       orderBy: { registeredAt: "asc" },
     }),
     prisma.groupPhotoTag.findMany({
-      where: { groupPhoto: { universityId } },
+      where: { groupPhoto: { universityId, photoEventId } },
       select: {
         id: true,
         groupPhotoId: true,
@@ -323,6 +344,7 @@ async function DataTab({
   function pageHref(nextPage: number) {
     const sp = new URLSearchParams();
     sp.set("tab", "data");
+    if (eventIdParam) sp.set("eventId", eventIdParam);
     if (q) sp.set("q", q);
     if (sort) {
       sp.set("sort", sort);
@@ -335,6 +357,7 @@ async function DataTab({
   function sortHref(key: SortKey) {
     const sp = new URLSearchParams();
     sp.set("tab", "data");
+    if (eventIdParam) sp.set("eventId", eventIdParam);
     if (q) sp.set("q", q);
     sp.set("sort", key);
     sp.set("dir", sort === key && dir === "asc" ? "desc" : "asc");
@@ -346,6 +369,7 @@ async function DataTab({
   function dataSubTabHref(next: "list" | "alerts") {
     const sp = new URLSearchParams();
     sp.set("tab", "data");
+    if (eventIdParam) sp.set("eventId", eventIdParam);
     if (next === "alerts") {
       sp.set("dtab", "alerts");
     } else {
@@ -402,6 +426,7 @@ async function DataTab({
                 <StripNameTitlesButton universityId={universityId} />
                 <form method="get" className="flex gap-2">
                   <input type="hidden" name="tab" value="data" />
+                  {eventIdParam && <input type="hidden" name="eventId" value={eventIdParam} />}
                   {sort && <input type="hidden" name="sort" value={sort} />}
                   {sort && <input type="hidden" name="dir" value={dir} />}
                   <input
@@ -574,14 +599,16 @@ async function PhotosTab({
   photoEventId,
   photoSort,
   photoDir,
+  eventIdParam,
 }: {
   universityId: string;
   photoEventId: string;
   photoSort: PhotoSortKey;
   photoDir: "asc" | "desc";
+  eventIdParam: string | undefined;
 }) {
   const photos = await prisma.groupPhoto.findMany({
-    where: { universityId },
+    where: { universityId, photoEventId },
     orderBy: photoSort === "name" ? { name: photoDir } : { sortOrder: photoDir },
     include: { _count: { select: { tags: true } } },
   });
@@ -590,7 +617,7 @@ async function PhotosTab({
   // closes the loop on "the admin doesn't need to watch it", since they can check back on any
   // device without opening the photo itself.
   const activeAutoTagJobs = await prisma.groupPhotoAutoTagJob.findMany({
-    where: { groupPhoto: { universityId }, stage: { in: ["OCR", "ACCEPTING", "FIXING_ORDER"] } },
+    where: { groupPhoto: { universityId, photoEventId }, stage: { in: ["OCR", "ACCEPTING", "FIXING_ORDER"] } },
     orderBy: { createdAt: "desc" },
     select: { groupPhotoId: true, stage: true, tilesDone: true, tilesTotal: true },
   });
@@ -602,6 +629,7 @@ async function PhotosTab({
   function photoSortHref(key: PhotoSortKey) {
     const sp = new URLSearchParams();
     sp.set("tab", "photos");
+    if (eventIdParam) sp.set("eventId", eventIdParam);
     sp.set("psort", key);
     sp.set("pdir", photoSort === key && photoDir === "asc" ? "desc" : "asc");
     return `?${sp.toString()}`;

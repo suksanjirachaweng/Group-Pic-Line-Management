@@ -81,24 +81,6 @@ export default async function UniversityDetailPage({
             >
               Preview: My registrations
             </Link>
-            <Link
-              href={`/admin/universities/${university.id}/rules`}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700"
-            >
-              Rules
-            </Link>
-            <Link
-              href={`/admin/universities/${university.id}/cards`}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700"
-            >
-              แผ่นป้ายเบอร์
-            </Link>
-            <Link
-              href={`/admin/universities/${university.id}/events`}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700"
-            >
-              งานถ่ายรูป (Events)
-            </Link>
           </div>
         </div>
 
