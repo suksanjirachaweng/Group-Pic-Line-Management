@@ -141,12 +141,25 @@ async function processEmbeddingFacesStage(job: PhotoEventArchiveJob) {
     },
     orderBy: [{ id: "asc" }],
     select: {
+      id: true,
       name: true,
       x: true,
       y: true,
+      updatedAt: true,
       groupPhoto: { select: { imageUrl: true, imageWidth: true, imageHeight: true } },
     },
   });
+
+  // One batched lookup instead of a query per tag — lets each worker skip the expensive
+  // fetch+crop+PC-server round trip entirely when this exact tag (same id, unchanged since) was
+  // already the source of that name's current profile. Re-running the button (or running a full
+  // archive after already building the face bank standalone) then does real work only for
+  // genuinely new/edited tags, not every eligible tag in the event again.
+  const existingProfiles = await prisma.facultyFaceProfile.findMany({
+    where: { name: { in: [...new Set(tags.map((t) => t.name))] } },
+    select: { name: true, lastEmbeddedTagId: true, lastEmbeddedTagUpdatedAt: true },
+  });
+  const existingByName = new Map(existingProfiles.map((p) => [p.name, p]));
 
   const startedAt = Date.now();
   let next = job.facesDone;
@@ -155,6 +168,14 @@ async function processEmbeddingFacesStage(job: PhotoEventArchiveJob) {
     while (next < tags.length && Date.now() - startedAt < TIME_BUDGET_MS) {
       const index = next++;
       const tag = tags[index];
+      const existing = existingByName.get(tag.name);
+      if (
+        existing &&
+        existing.lastEmbeddedTagId === tag.id &&
+        existing.lastEmbeddedTagUpdatedAt?.getTime() === tag.updatedAt.getTime()
+      ) {
+        continue; // unchanged since last embed — nothing to do
+      }
       try {
         const { imageUrl, imageWidth, imageHeight } = tag.groupPhoto;
         const half = FACE_CROP_SIZE / 2;
@@ -182,12 +203,16 @@ async function processEmbeddingFacesStage(job: PhotoEventArchiveJob) {
               embedding: result.embedding,
               sourceCropUrl: result.cropUrl,
               lastSeenPhotoEventId: job.photoEventId,
+              lastEmbeddedTagId: tag.id,
+              lastEmbeddedTagUpdatedAt: tag.updatedAt,
               timesMatched: 1,
             },
             update: {
               embedding: result.embedding,
               sourceCropUrl: result.cropUrl,
               lastSeenPhotoEventId: job.photoEventId,
+              lastEmbeddedTagId: tag.id,
+              lastEmbeddedTagUpdatedAt: tag.updatedAt,
               timesMatched: { increment: 1 },
             },
           });
@@ -209,7 +234,9 @@ async function processEmbeddingFacesStage(job: PhotoEventArchiveJob) {
     where: { id: job.id },
     data: { facesDone: next, stage: done ? "DONE" : "EMBEDDING_FACES", completedAt: done ? new Date() : null },
   });
-  if (done) await finishArchive(job.photoEventId);
+  // A facesOnly job (the standalone "ดึงเข้าคลังใบหน้า" button) never exported/copied/closed
+  // anything — finishing it must not flip PhotoEvent.status to ARCHIVE_READY.
+  if (done && !job.facesOnly) await finishArchive(job.photoEventId);
 }
 
 async function handle(request: NextRequest) {

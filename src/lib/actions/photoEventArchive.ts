@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess } from "@/lib/authz";
+import { isPcPhotoServerConfigured } from "@/lib/pcPhotoServer";
 import { deletePhotoEventData } from "@/lib/photoEvent/deletePhotoEventData";
 import { reimportEventArchive, type ReimportSummary } from "@/lib/photoEvent/reimportEventArchive";
 
@@ -19,6 +20,42 @@ export async function startPhotoEventArchive(universityId: string, photoEventId:
   if (existingActiveJob) return { error: "กำลังสำรองข้อมูลของงานนี้อยู่แล้ว" };
 
   await prisma.photoEventArchiveJob.create({ data: { photoEventId } });
+  revalidatePath(`/admin/universities/${universityId}/events/${photoEventId}`);
+  return { success: true };
+}
+
+/**
+ * Standalone "ดึงเข้าคลังใบหน้า" trigger — runs just the EMBEDDING_FACES stage the full close-out
+ * flow already has, without exporting/copying/closing anything. Reuses the same
+ * `PhotoEventArchiveJob`-backed cron machinery (an admin's photos + face-embedding calls can
+ * comfortably exceed a single request's time budget) via `facesOnly: true`, which tells the cron
+ * route to skip flipping `PhotoEvent.status` to ARCHIVE_READY on completion.
+ */
+export async function startFaceBankBuild(universityId: string, photoEventId: string): Promise<ActionResult> {
+  await requireUniversityAccess(universityId);
+  const event = await prisma.photoEvent.findUnique({ where: { id: photoEventId, universityId } });
+  if (!event) return { error: "ไม่พบงานนี้" };
+
+  if (!isPcPhotoServerConfigured()) return { error: "ยังไม่ได้ตั้งค่าระบบจดจำใบหน้า (PC server)" };
+
+  const existingActiveJob = await prisma.photoEventArchiveJob.findFirst({
+    where: { photoEventId, stage: { in: ["EXPORTING_DATA", "COPYING_IMAGES", "EMBEDDING_FACES"] } },
+  });
+  if (existingActiveJob) return { error: "มีงานสำรองข้อมูล/ดึงคลังใบหน้าของ event นี้กำลังทำงานอยู่แล้ว" };
+
+  const facesTotal = await prisma.groupPhotoTag.count({
+    where: {
+      row: 0,
+      name: { not: "" },
+      OR: [{ reportedProblem: false }, { problemAcknowledged: true }],
+      groupPhoto: { photoEventId },
+    },
+  });
+  if (facesTotal === 0) return { error: "ยังไม่มีแท็กแถวหน้า (แถว 0) ที่มีชื่อและไม่มีปัญหาค้างอยู่ให้ดึงเข้าคลังใบหน้า" };
+
+  await prisma.photoEventArchiveJob.create({
+    data: { photoEventId, stage: "EMBEDDING_FACES", facesOnly: true, facesTotal },
+  });
   revalidatePath(`/admin/universities/${universityId}/events/${photoEventId}`);
   return { success: true };
 }

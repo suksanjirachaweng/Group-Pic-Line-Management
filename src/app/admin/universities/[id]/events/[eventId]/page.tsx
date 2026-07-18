@@ -7,6 +7,7 @@ import { PhotoEventStatus } from "@/generated/prisma/enums";
 import { StartArchiveButton } from "./StartArchiveButton";
 import { DeleteEventDataButton } from "./DeleteEventDataButton";
 import { ReimportArchiveButton } from "./ReimportArchiveButton";
+import { BuildFaceBankButton } from "./BuildFaceBankButton";
 
 const STATUS_LABEL: Record<PhotoEventStatus, string> = {
   ACTIVE: "กำลังดำเนินการ",
@@ -42,16 +43,19 @@ export default async function PhotoEventDetailPage({
   const event = await prisma.photoEvent.findUnique({ where: { id: eventId, universityId } });
   if (!event) notFound();
 
-  const [registrantCount, groupPhotoCount, legacyReferenceCount, latestJob] = await Promise.all([
+  const [registrantCount, groupPhotoCount, legacyReferenceCount, latestJob, latestFaceBankJob] = await Promise.all([
     prisma.registrant.count({ where: { photoEventId: eventId } }),
     prisma.groupPhoto.count({ where: { photoEventId: eventId } }),
     prisma.groupPhotoLegacyReference.count({ where: { photoEventId: eventId } }),
-    prisma.photoEventArchiveJob.findFirst({ where: { photoEventId: eventId }, orderBy: { createdAt: "desc" } }),
+    prisma.photoEventArchiveJob.findFirst({ where: { photoEventId: eventId, facesOnly: false }, orderBy: { createdAt: "desc" } }),
+    prisma.photoEventArchiveJob.findFirst({ where: { photoEventId: eventId, facesOnly: true }, orderBy: { createdAt: "desc" } }),
   ]);
 
   const jobInProgress =
     latestJob &&
     (latestJob.stage === "EXPORTING_DATA" || latestJob.stage === "COPYING_IMAGES" || latestJob.stage === "EMBEDDING_FACES");
+
+  const faceBankJobInProgress = latestFaceBankJob && latestFaceBankJob.stage === "EMBEDDING_FACES";
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -146,6 +150,41 @@ export default async function PhotoEventDetailPage({
             <ReimportArchiveButton universityId={universityId} photoEventId={eventId} />
           )}
         </div>
+      </section>
+
+      <section className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">คลังใบหน้าอาจารย์</h2>
+        <p className="mb-3 text-xs text-gray-500">
+          ครอบตัดใบหน้าจากทุกแท็กแถวหน้า (แถว 0) ที่มีชื่อและไม่มีปัญหาค้างอยู่ ส่งไปคำนวณค่าเปรียบเทียบแล้วเก็บเข้าคลังใบหน้า
+          ไว้ใช้กับปุ่ม &quot;ค้นหาจากใบหน้า&quot; ในหน้าแท็กรูป — ทำได้ทันทีโดยไม่ต้องปิดงาน/สำรองข้อมูลก่อน และไม่ลบหรือแก้ไขข้อมูลอื่นของ event นี้เลย
+        </p>
+
+        {latestFaceBankJob && (
+          <div className="mb-3 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            สถานะล่าสุด: <span className="font-medium">{ARCHIVE_STAGE_LABEL[latestFaceBankJob.stage]}</span>
+            {latestFaceBankJob.stage === "EMBEDDING_FACES" && (
+              <span>
+                {" "}
+                ({latestFaceBankJob.facesDone}/{latestFaceBankJob.facesTotal} คน)
+              </span>
+            )}
+            {latestFaceBankJob.stage === "FAILED" && latestFaceBankJob.errorMessage && (
+              <span className="ml-1 text-red-600">— {latestFaceBankJob.errorMessage}</span>
+            )}
+            {faceBankJobInProgress && (
+              <>
+                {" "}
+                <Link href={`/admin/universities/${universityId}/events/${eventId}`} className="text-indigo-600 hover:underline">
+                  รีเฟรชสถานะ
+                </Link>
+              </>
+            )}
+          </div>
+        )}
+
+        {event.status !== "ARCHIVED" && !faceBankJobInProgress && (
+          <BuildFaceBankButton universityId={universityId} photoEventId={eventId} />
+        )}
       </section>
     </div>
   );

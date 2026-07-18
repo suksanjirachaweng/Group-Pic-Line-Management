@@ -462,6 +462,11 @@ model PhotoEventArchiveJob {
   id           String                 @id @default(cuid())
   photoEventId String
   stage        PhotoEventArchiveStage @default(EXPORTING_DATA)
+  // True when this job was started via the standalone "ดึงเข้าคลังใบหน้า" button (starts directly
+  // at EMBEDDING_FACES, skipping EXPORTING_DATA/COPYING_IMAGES) rather than a full close-out —
+  // on completion the cron route must NOT flip PhotoEvent.status to ARCHIVE_READY, since nothing
+  // was actually backed up/closed out, only the face bank was updated.
+  facesOnly    Boolean                @default(false)
   imagesTotal  Int                    @default(0)
   imagesDone   Int                    @default(0)
   facesTotal   Int                    @default(0)
@@ -725,14 +730,22 @@ model GroupPhotoShareLink {
 /// faculty sharing the exact same name string would collide. Acceptable for v1 given how rarely
 /// this occurs among a university's teaching staff; an admin can resolve a collision manually.
 model FacultyFaceProfile {
-  id                   String   @id @default(cuid())
-  name                 String   @unique
-  embedding            Float[]
-  sourceCropUrl        String // face crop saved alongside the embedding so an admin can visually confirm a search match
-  lastSeenPhotoEventId String? // informational only — not a real FK (the referenced PhotoEvent may later be deleted by close-out; this profile must survive that)
-  timesMatched         Int      @default(1)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                       String    @id @default(cuid())
+  name                     String    @unique
+  embedding                Float[]
+  sourceCropUrl            String // face crop saved alongside the embedding so an admin can visually confirm a search match
+  lastSeenPhotoEventId     String? // informational only — not a real FK (the referenced PhotoEvent may later be deleted by close-out; this profile must survive that)
+  // The GroupPhotoTag this profile's embedding was last derived from, plus that tag's own
+  // updatedAt at the time — lets a re-run (clicking "ดึงเข้าคลังใบหน้า" again, or running a full
+  // archive after already building the face bank standalone) skip the expensive PC-server
+  // crop+embed round trip entirely when the candidate tag hasn't changed at all since. Not a real
+  // FK — the tag can be deleted/re-tagged later, in which case this just stops matching and the
+  // next run re-embeds normally.
+  lastEmbeddedTagId        String?
+  lastEmbeddedTagUpdatedAt DateTime?
+  timesMatched             Int       @default(1)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   @@map("faculty_face_profiles")
 }
