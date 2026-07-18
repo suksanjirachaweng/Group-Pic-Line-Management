@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess } from "@/lib/authz";
-import type { ConditionOperator, ConditionGroup } from "@/lib/rules/evaluate";
+import { interpolateTemplate, type ConditionOperator, type ConditionGroup } from "@/lib/rules/evaluate";
 import { RuleTrigger } from "@/generated/prisma/enums";
 import { Prisma } from "@/generated/prisma/client";
 
@@ -120,4 +120,51 @@ export async function deleteRule(universityId: string, ruleId: string) {
   await prisma.rule.delete({ where: { id: ruleId, universityId } });
 
   revalidatePath(`/admin/universities/${universityId}/rules`);
+}
+
+export type TestSendState = { success: true; displayName: string } | { success: false; error: string } | null;
+
+/**
+ * Queues a one-off MessageJob using the rule's own template (interpolated against a real
+ * registrant's data), bypassing the rule's conditions entirely — lets an admin see exactly what
+ * the message will look like without waiting for a real trigger. source=MANUAL and no
+ * ruleExecutionId, same as sendBulkMessage — critically, this must never write a RuleExecution
+ * row, or a test send would silently consume that registrant's one real shot at this rule later.
+ */
+export async function testSendRule(
+  universityId: string,
+  ruleId: string,
+  _prevState: TestSendState,
+  formData: FormData,
+): Promise<TestSendState> {
+  await requireUniversityAccess(universityId);
+
+  const registrantId = String(formData.get("registrantId") ?? "").trim();
+  if (!registrantId) return { success: false, error: "กรุณาเลือกผู้รับทดสอบ" };
+
+  const [rule, registrant] = await Promise.all([
+    prisma.rule.findUnique({ where: { id: ruleId, universityId } }),
+    prisma.registrant.findUnique({ where: { id: registrantId, universityId } }),
+  ]);
+  if (!rule) return { success: false, error: "ไม่พบ rule นี้" };
+  if (!registrant) return { success: false, error: "ไม่พบผู้รับที่เลือก" };
+  if (!registrant.lineUserId || !registrant.channelId) {
+    return { success: false, error: "ผู้รับนี้ยังไม่ได้ผูก LINE ส่งไม่ได้" };
+  }
+
+  const body = interpolateTemplate(rule.messageTemplate, {
+    displayName: registrant.displayName,
+    data: (registrant.data ?? {}) as Record<string, unknown>,
+  });
+
+  await prisma.messageJob.create({
+    data: {
+      registrantId: registrant.id,
+      channelId: registrant.channelId,
+      source: "MANUAL",
+      body,
+    },
+  });
+
+  return { success: true, displayName: registrant.displayName ?? registrant.lineUserId };
 }

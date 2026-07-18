@@ -5,12 +5,12 @@ import { usePathname } from "next/navigation";
 import { isFullscreenAdminRoute } from "@/lib/admin/fullscreenAdminRoutes";
 
 const TABS = [
-  { slug: "group-photos", label: "รูปหมู่" },
-  { slug: "events", label: "งานถ่ายรูป" },
-  { slug: "registrants", label: "รายชื่อ" },
+  { slug: "events", label: "ชื่องาน" },
+  { slug: "group-photos", label: "จัดการ File และรายชื่อ" },
+  { slug: "registrants", label: "LINE Registrants" },
   { slug: "rules", label: "Rules" },
-  { slug: "cards", label: "แผ่นป้ายเบอร์" },
-  { slug: "", label: "ตั้งค่า" },
+  { slug: "cards", label: "ทำแผ่นป้ายเบอร์" },
+  { slug: "", label: "ตั้งค่าหน้าลงทะเบียน" },
 ] as const;
 
 /**
@@ -39,7 +39,10 @@ export function UniversitySubNav({
   return (
     <div>
       <div className="mb-3 text-sm text-gray-500">
-        <Link href="/admin/universities" className="hover:text-gray-700 hover:underline">
+        <Link
+          href="/admin/universities"
+          className="hover:text-gray-700 hover:underline"
+        >
           Universities
         </Link>
         <span className="mx-1.5">/</span>
@@ -49,7 +52,9 @@ export function UniversitySubNav({
       <nav className="mb-6 flex gap-1 border-b border-gray-200">
         {TABS.map((tab) => {
           const href = tab.slug ? `${base}/${tab.slug}` : base;
-          const active = tab.slug ? pathname.startsWith(href) : pathname === base;
+          const active = tab.slug
+            ? pathname.startsWith(href)
+            : pathname === base;
           return (
             <Link
               key={tab.label}

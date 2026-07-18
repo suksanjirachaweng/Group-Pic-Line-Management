@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { updateRule } from "@/lib/actions/rules";
 import { ConditionRowsFields } from "../ConditionRowsFields";
 import { TriggerFields } from "../TriggerFields";
+import { TestSendButton } from "./TestSendButton";
 import type { ConditionGroup } from "@/lib/rules/evaluate";
 
 export default async function EditRulePage({
@@ -17,9 +18,18 @@ export default async function EditRulePage({
   const session = await getServerSession(authOptions);
   if (!canAccessUniversity(session!.user, universityId)) notFound();
 
-  const [rule, fields] = await Promise.all([
+  const [rule, fields, testRecipients] = await Promise.all([
     prisma.rule.findUnique({ where: { id: ruleId, universityId } }),
     prisma.formFieldDefinition.findMany({ where: { universityId }, orderBy: { sortOrder: "asc" } }),
+    // Most-recent-first and capped — the admin's own test registration (the realistic "self" to
+    // send to) is almost always among the most recent rows, and a university can have thousands
+    // of registrants, which would make a plain <select> unwieldy without this cap.
+    prisma.registrant.findMany({
+      where: { universityId, lineUserId: { not: null }, channelId: { not: null } },
+      orderBy: { registeredAt: "desc" },
+      take: 200,
+      select: { id: true, displayName: true, lineUserId: true },
+    }),
   ]);
   if (!rule) notFound();
 
@@ -81,6 +91,14 @@ export default async function EditRulePage({
           Save
         </button>
       </form>
+
+      <div className="mt-4">
+        <TestSendButton
+          universityId={universityId}
+          ruleId={ruleId}
+          registrants={testRecipients.map((r) => ({ id: r.id, displayName: r.displayName, lineUserId: r.lineUserId! }))}
+        />
+      </div>
     </div>
   );
 }

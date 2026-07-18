@@ -14,7 +14,10 @@ import {
   type TagSourceLabel,
 } from "@/lib/groupPhoto/crossPhotoDuplicates";
 import type { GroupPhotoStatus } from "@/generated/prisma/enums";
-import { resolveSelectedPhotoEventId, listPhotoEvents } from "@/lib/actions/photoEvents";
+import {
+  resolveSelectedPhotoEventId,
+  listPhotoEvents,
+} from "@/lib/actions/photoEvents";
 import { buildEventScopedRegistrantWhere } from "@/lib/groupPhoto/resolveTagMatch";
 import { LegacyReferenceUploadForm } from "./LegacyReferenceUploadForm";
 import { StripNameTitlesButton } from "./StripNameTitlesButton";
@@ -76,10 +79,12 @@ function combinedRowSortValue(row: CombinedRow, key: SortKey): string {
   return key === "photos" ? row.photos.join(", ") : row[key];
 }
 
-const ACTIVE_DATA_TAB_CLASS = "border-b-2 border-rose-500 px-1 py-3 text-sm font-medium text-rose-600";
+const ACTIVE_DATA_TAB_CLASS =
+  "border-b-2 border-rose-500 px-1 py-3 text-sm font-medium text-rose-600";
 const INACTIVE_DATA_TAB_CLASS =
   "border-b-2 border-transparent px-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700";
-const ACTIVE_PHOTOS_TAB_CLASS = "border-b-2 border-emerald-500 px-1 py-3 text-sm font-medium text-emerald-600";
+const ACTIVE_PHOTOS_TAB_CLASS =
+  "border-b-2 border-emerald-500 px-1 py-3 text-sm font-medium text-emerald-600";
 const INACTIVE_PHOTOS_TAB_CLASS =
   "border-b-2 border-transparent px-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700";
 
@@ -115,8 +120,11 @@ export default async function GroupPhotosPage({
     eventId: eventIdParam,
   } = await searchParams;
   const tab: "data" | "photos" = tabParam === "data" ? "data" : "photos";
-  const dataSubTab: "list" | "alerts" = dtabParam === "alerts" ? "alerts" : "list";
-  const sort = SORT_COLUMNS.some((c) => c.key === sortParam) ? (sortParam as SortKey) : undefined;
+  const dataSubTab: "list" | "alerts" =
+    dtabParam === "alerts" ? "alerts" : "list";
+  const sort = SORT_COLUMNS.some((c) => c.key === sortParam)
+    ? (sortParam as SortKey)
+    : undefined;
   const dir: "asc" | "desc" = dirParam === "desc" ? "desc" : "asc";
   // Separate `psort`/`pdir` query params (not `sort`/`dir`) so switching tabs never carries the
   // other tab's sort state along by accident.
@@ -139,7 +147,9 @@ export default async function GroupPhotosPage({
   ]);
 
   const [photoCount, dataCount] = await Promise.all([
-    prisma.groupPhoto.count({ where: { universityId, photoEventId: selectedPhotoEventId } }),
+    prisma.groupPhoto.count({
+      where: { universityId, photoEventId: selectedPhotoEventId },
+    }),
     prisma.groupPhotoLegacyReference
       .count({ where: { universityId, photoEventId: selectedPhotoEventId } })
       .then(async (legacy) => {
@@ -148,7 +158,11 @@ export default async function GroupPhotosPage({
           select: { startDate: true, endDate: true },
         });
         const registrants = await prisma.registrant.count({
-          where: buildEventScopedRegistrantWhere(universityId, selectedPhotoEventId, event),
+          where: buildEventScopedRegistrantWhere(
+            universityId,
+            selectedPhotoEventId,
+            event,
+          ),
         });
         return legacy + registrants;
       }),
@@ -164,21 +178,42 @@ export default async function GroupPhotosPage({
   return (
     <div className="mx-auto max-w-5xl p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">{university.name} — รูปหมู่</h1>
-        <EventFilterDropdown events={events} selectedEventId={selectedPhotoEventId} />
+        <h1 className="text-xl font-semibold text-gray-900">
+          {university.name} — รูปหมู่
+        </h1>
+        <EventFilterDropdown
+          events={events}
+          selectedEventId={selectedPhotoEventId}
+        />
       </div>
 
       <div className="mb-6 border-b border-gray-200">
         <nav className="-mb-px flex gap-6">
-          <Link href={tabHref("photos")} className={tab === "photos" ? ACTIVE_PHOTOS_TAB_CLASS : INACTIVE_PHOTOS_TAB_CLASS}>
+          <Link
+            href={tabHref("photos")}
+            className={
+              tab === "photos"
+                ? ACTIVE_PHOTOS_TAB_CLASS
+                : INACTIVE_PHOTOS_TAB_CLASS
+            }
+          >
             <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-emerald-500" />
-            ภาพหมู่
-            <span className="ml-1.5 text-xs font-normal text-gray-400">{photoCount}</span>
+            File ภาพหมู่
+            <span className="ml-1.5 text-xs font-normal text-gray-400">
+              {photoCount}
+            </span>
           </Link>
-          <Link href={tabHref("data")} className={tab === "data" ? ACTIVE_DATA_TAB_CLASS : INACTIVE_DATA_TAB_CLASS}>
+          <Link
+            href={tabHref("data")}
+            className={
+              tab === "data" ? ACTIVE_DATA_TAB_CLASS : INACTIVE_DATA_TAB_CLASS
+            }
+          >
             <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-rose-500" />
-            ข้อมูล
-            <span className="ml-1.5 text-xs font-normal text-gray-400">{dataCount}</span>
+            รายชื่อ
+            <span className="ml-1.5 text-xs font-normal text-gray-400">
+              {dataCount}
+            </span>
           </Link>
         </nav>
       </div>
@@ -226,7 +261,9 @@ async function DataTab({
   dataSubTab: "list" | "alerts";
   eventIdParam: string | undefined;
 }) {
-  const formFields = await prisma.formFieldDefinition.findMany({ where: { universityId } });
+  const formFields = await prisma.formFieldDefinition.findMany({
+    where: { universityId },
+  });
   const phoneFieldKey = formFields.find((f) => f.fieldType === "PHONE")?.key;
 
   const event = await prisma.photoEvent.findUniqueOrThrow({
@@ -235,7 +272,10 @@ async function DataTab({
   });
 
   const [legacyRows, registrantRows, tagRows] = await Promise.all([
-    prisma.groupPhotoLegacyReference.findMany({ where: { universityId, photoEventId }, orderBy: { createdAt: "asc" } }),
+    prisma.groupPhotoLegacyReference.findMany({
+      where: { universityId, photoEventId },
+      orderBy: { createdAt: "asc" },
+    }),
     prisma.registrant.findMany({
       where: buildEventScopedRegistrantWhere(universityId, photoEventId, event),
       select: { id: true, displayName: true, data: true },
@@ -261,11 +301,19 @@ async function DataTab({
   const legacySourceByCode = new Map<string, "Excel" | "Google Sheet">();
   for (const r of legacyRows) {
     const normalized = normalizeCode(r.code);
-    if (normalized) legacySourceByCode.set(normalized, r.source === "GOOGLE_SHEET" ? "Google Sheet" : "Excel");
+    if (normalized)
+      legacySourceByCode.set(
+        normalized,
+        r.source === "GOOGLE_SHEET" ? "Google Sheet" : "Excel",
+      );
   }
-  function resolveTagSource(matchSource: string, normalizedCode: string): TagSourceLabel {
+  function resolveTagSource(
+    matchSource: string,
+    normalizedCode: string,
+  ): TagSourceLabel {
     if (matchSource === "REGISTRANT") return "LINE";
-    if (matchSource === "LEGACY_REFERENCE") return legacySourceByCode.get(normalizedCode) ?? "Excel";
+    if (matchSource === "LEGACY_REFERENCE")
+      return legacySourceByCode.get(normalizedCode) ?? "Excel";
     return "กรอกเอง";
   }
   const tagsForCrossPhotoCheck: TagForCrossPhotoCheck[] = tagRows.map((t) => ({
@@ -279,7 +327,10 @@ async function DataTab({
   }));
   const codeDuplicates = findCrossPhotoDuplicatesByCode(tagsForCrossPhotoCheck);
   const nameDuplicates = findCrossPhotoDuplicatesByName(tagsForCrossPhotoCheck);
-  const mergedDuplicateGroups = mergeCrossPhotoDuplicates(codeDuplicates, nameDuplicates);
+  const mergedDuplicateGroups = mergeCrossPhotoDuplicates(
+    codeDuplicates,
+    nameDuplicates,
+  );
 
   // Which photo(s) each reference-data code has actually been tagged in, for the combined list's
   // "ปรากฏในภาพ" column — a code with no entry here just hasn't been tagged (or read) anywhere yet.
@@ -297,19 +348,25 @@ async function DataTab({
       name: r.name,
       code: r.code,
       phone: r.phone ?? "—",
-      source: (r.source === "GOOGLE_SHEET" ? "Google Sheet" : "Excel") as CombinedRowSource,
+      source: (r.source === "GOOGLE_SHEET"
+        ? "Google Sheet"
+        : "Excel") as CombinedRowSource,
       photos: photoNamesByCode.get(normalizeCode(r.code)) ?? [],
     })),
     ...registrantRows.map((r) => {
       const data = (r.data ?? {}) as Record<string, unknown>;
       const rawCode = data.group_photo_index;
       const phoneValue = phoneFieldKey ? data[phoneFieldKey] : undefined;
-      const code = typeof rawCode === "string" && rawCode.trim() ? rawCode : "—";
+      const code =
+        typeof rawCode === "string" && rawCode.trim() ? rawCode : "—";
       return {
         key: `registrant-${r.id}`,
         name: resolveRegistrantGroupPhotoName(r),
         code,
-        phone: typeof phoneValue === "string" && phoneValue.trim() ? phoneValue : "—",
+        phone:
+          typeof phoneValue === "string" && phoneValue.trim()
+            ? phoneValue
+            : "—",
         source: "LINE" as const,
         photos: photoNamesByCode.get(normalizeCode(code)) ?? [],
       };
@@ -329,10 +386,14 @@ async function DataTab({
 
   const sorted = sort
     ? [...filtered].sort((a, b) => {
-        const cmp = combinedRowSortValue(a, sort).localeCompare(combinedRowSortValue(b, sort), "th", {
-          numeric: true,
-          sensitivity: "base",
-        });
+        const cmp = combinedRowSortValue(a, sort).localeCompare(
+          combinedRowSortValue(b, sort),
+          "th",
+          {
+            numeric: true,
+            sensitivity: "base",
+          },
+        );
         return dir === "desc" ? -cmp : cmp;
       })
     : filtered;
@@ -395,20 +456,27 @@ async function DataTab({
           <Link
             href={dataSubTabHref("list")}
             className={`rounded px-3 py-1.5 font-medium ${
-              dataSubTab === "list" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-sky-50"
+              dataSubTab === "list"
+                ? "bg-indigo-600 text-white"
+                : "text-gray-600 hover:bg-sky-50"
             }`}
           >
-            รายชื่อทั้งหมด <span className="text-xs opacity-80">({filtered.length})</span>
+            รายชื่อทั้งหมด{" "}
+            <span className="text-xs opacity-80">({filtered.length})</span>
           </Link>
           <Link
             href={dataSubTabHref("alerts")}
             className={`rounded px-3 py-1.5 font-medium ${
-              dataSubTab === "alerts" ? "bg-amber-500 text-white" : "text-gray-600 hover:bg-sky-50"
+              dataSubTab === "alerts"
+                ? "bg-amber-500 text-white"
+                : "text-gray-600 hover:bg-sky-50"
             }`}
           >
             รายการแจ้งเตือน{" "}
             {mergedDuplicateGroups.length > 0 && (
-              <span className="text-xs opacity-80">({mergedDuplicateGroups.length})</span>
+              <span className="text-xs opacity-80">
+                ({mergedDuplicateGroups.length})
+              </span>
             )}
           </Link>
         </div>
@@ -420,13 +488,17 @@ async function DataTab({
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-gray-900">
                 รายชื่อทั้งหมด (รวมทุกแหล่งข้อมูล)
-                <span className="ml-2 text-xs font-normal text-gray-400">{filtered.length} รายการ</span>
+                <span className="ml-2 text-xs font-normal text-gray-400">
+                  {filtered.length} รายการ
+                </span>
               </h3>
               <div className="flex flex-wrap items-center gap-2">
                 <StripNameTitlesButton universityId={universityId} />
                 <form method="get" className="flex gap-2">
                   <input type="hidden" name="tab" value="data" />
-                  {eventIdParam && <input type="hidden" name="eventId" value={eventIdParam} />}
+                  {eventIdParam && (
+                    <input type="hidden" name="eventId" value={eventIdParam} />
+                  )}
                   {sort && <input type="hidden" name="sort" value={sort} />}
                   {sort && <input type="hidden" name="dir" value={dir} />}
                   <input
@@ -452,7 +524,10 @@ async function DataTab({
                   <tr>
                     {SORT_COLUMNS.map(({ key, label }) => (
                       <th key={key} className="whitespace-nowrap px-3 py-2">
-                        <Link href={sortHref(key)} className="flex items-center gap-1 hover:text-gray-900">
+                        <Link
+                          href={sortHref(key)}
+                          className="flex items-center gap-1 hover:text-gray-900"
+                        >
                           {label}
                           <span className="w-3 text-gray-400">
                             {sort === key ? (dir === "asc" ? "▲" : "▼") : ""}
@@ -469,7 +544,9 @@ async function DataTab({
                       <td className="px-3 py-1.5 font-mono">{r.code}</td>
                       <td className="px-3 py-1.5">{r.phone}</td>
                       <td className="px-3 py-1.5">
-                        <span className={`rounded px-1.5 py-0.5 text-xs ${COMBINED_ROW_SOURCE_CLASS[r.source]}`}>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-xs ${COMBINED_ROW_SOURCE_CLASS[r.source]}`}
+                        >
                           {r.source}
                         </span>
                       </td>
@@ -506,7 +583,11 @@ async function DataTab({
               <div className="mt-3 flex items-center gap-3 text-sm">
                 <Link
                   href={pageHref(Math.max(1, page - 1))}
-                  className={page <= 1 ? "pointer-events-none text-gray-300" : "text-gray-600 hover:underline"}
+                  className={
+                    page <= 1
+                      ? "pointer-events-none text-gray-300"
+                      : "text-gray-600 hover:underline"
+                  }
                 >
                   ก่อนหน้า
                 </Link>
@@ -516,7 +597,9 @@ async function DataTab({
                 <Link
                   href={pageHref(Math.min(totalPages, page + 1))}
                   className={
-                    page >= totalPages ? "pointer-events-none text-gray-300" : "text-gray-600 hover:underline"
+                    page >= totalPages
+                      ? "pointer-events-none text-gray-300"
+                      : "text-gray-600 hover:underline"
                   }
                 >
                   ถัดไป
@@ -530,7 +613,10 @@ async function DataTab({
   );
 }
 
-const DUPLICATE_KIND_LABEL: Record<"code" | "name", string> = { code: "CODE", name: "ชื่อ" };
+const DUPLICATE_KIND_LABEL: Record<"code" | "name", string> = {
+  code: "CODE",
+  name: "ชื่อ",
+};
 
 /**
  * Cross-photo duplicate check — different from validateTags.ts's per-photo duplicate-code check
@@ -539,7 +625,11 @@ const DUPLICATE_KIND_LABEL: Record<"code" | "name", string> = { code: "CODE", na
  * check, not a hard error blocking anything. One flat table (grouped visually, not one card per
  * group) so a long list of duplicates stays scannable instead of stacking into many small boxes.
  */
-function CrossPhotoDuplicateAlerts({ groups }: { groups: MergedDuplicateGroup[] }) {
+function CrossPhotoDuplicateAlerts({
+  groups,
+}: {
+  groups: MergedDuplicateGroup[];
+}) {
   if (groups.length === 0) {
     return (
       <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
@@ -553,7 +643,9 @@ function CrossPhotoDuplicateAlerts({ groups }: { groups: MergedDuplicateGroup[] 
       <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-amber-800">
         <span aria-hidden>⚠️</span>
         รายการแจ้งเตือน — พบ CODE หรือชื่อซ้ำกันคนละภาพ
-        <span className="text-xs font-normal text-amber-600">({groups.length} รายการ)</span>
+        <span className="text-xs font-normal text-amber-600">
+          ({groups.length} รายการ)
+        </span>
       </h3>
       <div className="overflow-x-auto rounded-md border border-amber-200">
         <table className="w-full text-xs">
@@ -572,17 +664,31 @@ function CrossPhotoDuplicateAlerts({ groups }: { groups: MergedDuplicateGroup[] 
                 <tr
                   key={m.id}
                   className={`${gi % 2 === 0 ? "bg-white" : "bg-amber-50/50"} ${
-                    mi === 0 ? "border-t-2 border-amber-200" : "border-t border-amber-100/70"
+                    mi === 0
+                      ? "border-t-2 border-amber-200"
+                      : "border-t border-amber-100/70"
                   }`}
                 >
                   <td className="whitespace-nowrap px-3 py-1.5">{m.name}</td>
-                  <td className="whitespace-nowrap px-3 py-1.5 font-mono">{m.code}</td>
-                  <td className="whitespace-nowrap px-3 py-1.5">{m.groupPhotoName}</td>
-                  <td className="whitespace-nowrap px-3 py-1.5">
-                    <span className={`rounded px-1.5 py-0.5 ${TAG_SOURCE_CLASS[m.source]}`}>{m.source}</span>
+                  <td className="whitespace-nowrap px-3 py-1.5 font-mono">
+                    {m.code}
                   </td>
                   <td className="whitespace-nowrap px-3 py-1.5">
-                    {mi === 0 ? group.kinds.map((k) => DUPLICATE_KIND_LABEL[k]).join(" + ") : ""}
+                    {m.groupPhotoName}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-1.5">
+                    <span
+                      className={`rounded px-1.5 py-0.5 ${TAG_SOURCE_CLASS[m.source]}`}
+                    >
+                      {m.source}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-1.5">
+                    {mi === 0
+                      ? group.kinds
+                          .map((k) => DUPLICATE_KIND_LABEL[k])
+                          .join(" + ")
+                      : ""}
                   </td>
                 </tr>
               )),
@@ -609,7 +715,8 @@ async function PhotosTab({
 }) {
   const photos = await prisma.groupPhoto.findMany({
     where: { universityId, photoEventId },
-    orderBy: photoSort === "name" ? { name: photoDir } : { sortOrder: photoDir },
+    orderBy:
+      photoSort === "name" ? { name: photoDir } : { sortOrder: photoDir },
     include: { _count: { select: { tags: true } } },
   });
 
@@ -617,13 +724,25 @@ async function PhotosTab({
   // closes the loop on "the admin doesn't need to watch it", since they can check back on any
   // device without opening the photo itself.
   const activeAutoTagJobs = await prisma.groupPhotoAutoTagJob.findMany({
-    where: { groupPhoto: { universityId, photoEventId }, stage: { in: ["OCR", "ACCEPTING", "FIXING_ORDER"] } },
+    where: {
+      groupPhoto: { universityId, photoEventId },
+      stage: { in: ["OCR", "ACCEPTING", "FIXING_ORDER"] },
+    },
     orderBy: { createdAt: "desc" },
-    select: { groupPhotoId: true, stage: true, tilesDone: true, tilesTotal: true },
+    select: {
+      groupPhotoId: true,
+      stage: true,
+      tilesDone: true,
+      tilesTotal: true,
+    },
   });
-  const activeAutoTagByPhoto = new Map<string, (typeof activeAutoTagJobs)[number]>();
+  const activeAutoTagByPhoto = new Map<
+    string,
+    (typeof activeAutoTagJobs)[number]
+  >();
   for (const job of activeAutoTagJobs) {
-    if (!activeAutoTagByPhoto.has(job.groupPhotoId)) activeAutoTagByPhoto.set(job.groupPhotoId, job);
+    if (!activeAutoTagByPhoto.has(job.groupPhotoId))
+      activeAutoTagByPhoto.set(job.groupPhotoId, job);
   }
 
   function photoSortHref(key: PhotoSortKey) {
@@ -648,28 +767,41 @@ async function PhotosTab({
             <Link
               href={photoSortHref("upload")}
               className={`flex items-center gap-1 rounded px-2 py-1 font-medium ${
-                photoSort === "upload" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-sky-50"
+                photoSort === "upload"
+                  ? "bg-indigo-600 text-white"
+                  : "text-gray-600 hover:bg-sky-50"
               }`}
             >
               ลำดับอัปโหลด
-              {photoSort === "upload" && <span aria-hidden>{photoDir === "asc" ? "▲" : "▼"}</span>}
+              {photoSort === "upload" && (
+                <span aria-hidden>{photoDir === "asc" ? "▲" : "▼"}</span>
+              )}
             </Link>
             <Link
               href={photoSortHref("name")}
               className={`flex items-center gap-1 rounded px-2 py-1 font-medium ${
-                photoSort === "name" ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-sky-50"
+                photoSort === "name"
+                  ? "bg-indigo-600 text-white"
+                  : "text-gray-600 hover:bg-sky-50"
               }`}
             >
               ชื่อ
-              {photoSort === "name" && <span aria-hidden>{photoDir === "asc" ? "▲" : "▼"}</span>}
+              {photoSort === "name" && (
+                <span aria-hidden>{photoDir === "asc" ? "▲" : "▼"}</span>
+              )}
             </Link>
           </div>
-          <UploadGroupPhotoButton universityId={universityId} photoEventId={photoEventId} />
+          <UploadGroupPhotoButton
+            universityId={universityId}
+            photoEventId={photoEventId}
+          />
         </div>
       </div>
 
       {photos.length === 0 ? (
-        <p className="text-sm text-gray-400">ยังไม่มีรูปหมู่ — อัปโหลดรูปแรกได้เลย</p>
+        <p className="text-sm text-gray-400">
+          ยังไม่มีรูปหมู่ — อัปโหลดรูปแรกได้เลย
+        </p>
       ) : (
         <form id={PHOTO_SELECT_FORM_ID}>
           <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
@@ -678,28 +810,45 @@ async function PhotosTab({
               <span className="text-xs text-gray-500">เลือกทั้งหมด</span>
             </li>
             {photos.map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
+              <li
+                key={p.id}
+                className="flex items-center justify-between gap-3 px-4 py-3"
+              >
                 <div className="flex min-w-0 items-center gap-3">
-                  <input type="checkbox" name="photoIds" value={p.id} aria-label={`เลือก ${p.name}`} />
+                  <input
+                    type="checkbox"
+                    name="photoIds"
+                    value={p.id}
+                    aria-label={`เลือก ${p.name}`}
+                  />
                   <Link
                     href={`/admin/universities/${universityId}/group-photos/${p.id}`}
                     className="truncate text-sm text-gray-900 hover:text-indigo-600 hover:underline"
                   >
                     {p.name}
                   </Link>
-                  <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-xs ${PHOTO_STATUS_CLASS[p.status]}`}>
+                  <span
+                    className={`whitespace-nowrap rounded px-1.5 py-0.5 text-xs ${PHOTO_STATUS_CLASS[p.status]}`}
+                  >
                     {PHOTO_STATUS_LABEL[p.status]}
                   </span>
                   {activeAutoTagByPhoto.has(p.id) && (
                     <span className="whitespace-nowrap rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-700">
-                      ⏳ กำลังประมวลผลอัตโนมัติ ({activeAutoTagByPhoto.get(p.id)!.tilesDone}/
+                      ⏳ กำลังประมวลผลอัตโนมัติ (
+                      {activeAutoTagByPhoto.get(p.id)!.tilesDone}/
                       {activeAutoTagByPhoto.get(p.id)!.tilesTotal} tile)
                     </span>
                   )}
                 </div>
                 <div className="flex flex-none items-center gap-3">
-                  <span className="text-xs text-gray-400">{p._count.tags} คน</span>
-                  <DeleteGroupPhotoButton universityId={universityId} groupPhotoId={p.id} photoName={p.name} />
+                  <span className="text-xs text-gray-400">
+                    {p._count.tags} คน
+                  </span>
+                  <DeleteGroupPhotoButton
+                    universityId={universityId}
+                    groupPhotoId={p.id}
+                    photoName={p.name}
+                  />
                 </div>
               </li>
             ))}
