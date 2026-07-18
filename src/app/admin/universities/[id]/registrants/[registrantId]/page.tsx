@@ -3,8 +3,16 @@ import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { RegistrantStatus } from "@/generated/prisma/enums";
-import { updateRegistrantStatus, sendManualMessage } from "@/lib/actions/registrants";
+import { RegistrantStatus, DeliveryStatus } from "@/generated/prisma/enums";
+import { updateRegistrantStatus, updateRegistrantDeliveryStatus, sendManualMessage } from "@/lib/actions/registrants";
+
+const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
+  REGISTERED: "ลงทะเบียนแล้ว",
+  PHOTO_ORDERED: "สั่งจองรูปแล้ว",
+  PHOTO_RECEIVED: "ได้รับรูปแล้ว",
+  NO_SHOW: "ยกเลิกไม่เข้ารับ",
+  OTHER: "อื่นๆ",
+};
 
 export default async function RegistrantDetailPage({
   params,
@@ -29,6 +37,7 @@ export default async function RegistrantDetailPage({
   if (!registrant) notFound();
 
   const updateStatusWithIds = updateRegistrantStatus.bind(null, universityId, registrantId);
+  const updateDeliveryStatusWithIds = updateRegistrantDeliveryStatus.bind(null, universityId, registrantId);
   const sendMessageWithIds = sendManualMessage.bind(null, universityId, registrantId);
   const data = registrant.data as Record<string, string | number>;
 
@@ -82,6 +91,23 @@ export default async function RegistrantDetailPage({
           </select>
           <button type="submit" className="rounded-md bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white">
             Update status
+          </button>
+        </form>
+
+        <form action={updateDeliveryStatusWithIds} className="mt-2 flex items-center gap-2">
+          <select
+            name="deliveryStatus"
+            defaultValue={registrant.deliveryStatus}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            {Object.values(DeliveryStatus).map((s) => (
+              <option key={s} value={s}>
+                {DELIVERY_STATUS_LABEL[s]}
+              </option>
+            ))}
+          </select>
+          <button type="submit" className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            อัปเดตสถานะการรับรูป
           </button>
         </form>
       </div>

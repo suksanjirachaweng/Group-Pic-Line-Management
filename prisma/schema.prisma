@@ -226,23 +226,35 @@ enum RegistrantStatus {
   CANCELLED
 }
 
+/// Post-tagging photo-delivery lifecycle — deliberately separate from RegistrantStatus (which
+/// tracks registration-quality/rule-engine concerns and stays untouched) since this is about
+/// what happens to a graduate's PRINTED photo after the event, not their registration itself.
+enum DeliveryStatus {
+  REGISTERED // default — no delivery-related action taken yet
+  PHOTO_ORDERED
+  PHOTO_RECEIVED
+  NO_SHOW
+  OTHER
+}
+
 model Registrant {
-  id           String           @id @default(cuid())
-  universityId String
-  channelId    String?
-  lineUserId   String?
-  isFriend     Boolean          @default(false)
-  displayName  String?
-  data         Json             @default("{}")
-  status       RegistrantStatus @default(PENDING)
+  id             String           @id @default(cuid())
+  universityId   String
+  channelId      String?
+  lineUserId     String?
+  isFriend       Boolean          @default(false)
+  displayName    String?
+  data           Json             @default("{}")
+  status         RegistrantStatus @default(PENDING)
+  deliveryStatus DeliveryStatus   @default(REGISTERED)
   // Never set at registration time — stamped exactly once, the first time this registrant is
   // successfully matched (matchSource=REGISTRANT) against a tag belonging to a specific
   // PhotoEvent (see resolveTagMatch.ts's bootstrap-then-stick mechanism). Sticky: once stamped,
   // auto-sync must never silently reassign it to a different event.
-  photoEventId String?
-  registeredAt DateTime         @default(now())
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  photoEventId   String?
+  registeredAt   DateTime         @default(now())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   university     University      @relation(fields: [universityId], references: [id], onDelete: Cascade)
   channel        Channel?        @relation(fields: [channelId], references: [id])
@@ -420,9 +432,9 @@ model PhotoEvent {
   updatedAt      DateTime         @updatedAt
 
   university       University                  @relation(fields: [universityId], references: [id], onDelete: Cascade)
-  groupPhotos       GroupPhoto[]
-  legacyReferences  GroupPhotoLegacyReference[]
-  registrants       Registrant[]
+  groupPhotos      GroupPhoto[]
+  legacyReferences GroupPhotoLegacyReference[]
+  registrants      Registrant[]
 
   @@unique([universityId, code])
   @@map("photo_events")

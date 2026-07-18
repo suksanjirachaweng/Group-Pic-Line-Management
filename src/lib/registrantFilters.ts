@@ -1,4 +1,4 @@
-import { Prisma, RegistrantStatus } from "@/generated/prisma/client";
+import { Prisma, RegistrantStatus, DeliveryStatus } from "@/generated/prisma/client";
 import { matchesConditionTree, type Condition, type ConditionGroup, type ConditionOperator } from "@/lib/rules/evaluate";
 
 export const CONDITION_OPERATORS: { value: ConditionOperator; label: string }[] = [
@@ -53,6 +53,7 @@ type SortableRegistrant = {
   channel: { name: string } | null;
   isFriend: boolean;
   status: string;
+  deliveryStatus: string;
   registeredAt: Date;
   data: unknown;
 };
@@ -88,6 +89,8 @@ export function sortRegistrants<T extends SortableRegistrant>(
         return r.isFriend ? 1 : 0;
       case "status":
         return r.status;
+      case "deliveryStatus":
+        return r.deliveryStatus;
       case "registered":
         return r.registeredAt.getTime();
       default:
@@ -105,6 +108,7 @@ export function sortRegistrants<T extends SortableRegistrant>(
 
 export type RegistrantFilterParams = {
   status?: string;
+  deliveryStatus?: string;
   q?: string;
   fieldKey?: string;
   fieldValue?: string;
@@ -116,11 +120,12 @@ export type RegistrantFilterParams = {
  */
 export function buildRegistrantWhere(
   universityId: string,
-  { status, q, fieldKey, fieldValue }: RegistrantFilterParams,
+  { status, deliveryStatus, q, fieldKey, fieldValue }: RegistrantFilterParams,
 ): Prisma.RegistrantWhereInput {
   return {
     universityId,
     ...(status ? { status: status as RegistrantStatus } : {}),
+    ...(deliveryStatus ? { deliveryStatus: deliveryStatus as DeliveryStatus } : {}),
     ...(q
       ? {
           OR: [

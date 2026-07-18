@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess } from "@/lib/authz";
-import { RegistrantStatus } from "@/generated/prisma/enums";
+import { RegistrantStatus, DeliveryStatus } from "@/generated/prisma/enums";
 
 export async function updateRegistrantStatus(
   universityId: string,
@@ -22,6 +22,59 @@ export async function updateRegistrantStatus(
 
   revalidatePath(`/admin/universities/${universityId}/registrants/${registrantId}`);
   revalidatePath(`/admin/universities/${universityId}/registrants`);
+}
+
+/**
+ * Post-tagging photo-delivery lifecycle (registered → ordered → received → no-show/other) —
+ * deliberately separate from updateRegistrantStatus above, which tracks registration-quality/
+ * rule-engine concerns that this doesn't touch.
+ */
+export async function updateRegistrantDeliveryStatus(
+  universityId: string,
+  registrantId: string,
+  formData: FormData,
+) {
+  await requireUniversityAccess(universityId);
+
+  const deliveryStatus = z.nativeEnum(DeliveryStatus).parse(formData.get("deliveryStatus"));
+
+  await prisma.registrant.update({
+    where: { id: registrantId, universityId },
+    data: { deliveryStatus },
+  });
+
+  revalidatePath(`/admin/universities/${universityId}/registrants/${registrantId}`);
+  revalidatePath(`/admin/universities/${universityId}/registrants`);
+}
+
+export type BulkDeliveryStatusState = { success: true; count: number } | { success: false; error: string } | null;
+
+/**
+ * Bulk-sets delivery status for whatever's checked in the registrants list's shared select-form
+ * (the same `registrantIds` checkboxes BulkSendButton reads) — a distinct action from bulk-send,
+ * since setting status and messaging are two separate admin intents that just happen to share the
+ * same "select some rows first" UI.
+ */
+export async function bulkSetDeliveryStatus(
+  universityId: string,
+  _prevState: BulkDeliveryStatusState,
+  formData: FormData,
+): Promise<BulkDeliveryStatusState> {
+  await requireUniversityAccess(universityId);
+
+  const registrantIds = formData.getAll("registrantIds").map(String);
+  if (registrantIds.length === 0) return { success: false, error: "ยังไม่ได้เลือกผู้รับ" };
+
+  const parsed = z.nativeEnum(DeliveryStatus).safeParse(formData.get("deliveryStatus"));
+  if (!parsed.success) return { success: false, error: "สถานะไม่ถูกต้อง" };
+
+  const result = await prisma.registrant.updateMany({
+    where: { id: { in: registrantIds }, universityId },
+    data: { deliveryStatus: parsed.data },
+  });
+
+  revalidatePath(`/admin/universities/${universityId}/registrants`);
+  return { success: true, count: result.count };
 }
 
 export async function sendManualMessage(

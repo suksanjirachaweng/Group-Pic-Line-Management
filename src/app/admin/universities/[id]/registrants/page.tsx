@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { RegistrantStatus } from "@/generated/prisma/enums";
+import { RegistrantStatus, DeliveryStatus } from "@/generated/prisma/enums";
 import {
   buildRegistrantWhere,
   sortRegistrants,
@@ -14,6 +14,7 @@ import {
 } from "@/lib/registrantFilters";
 import { SelectAllCheckbox } from "./SelectAllCheckbox";
 import { BulkSendButton } from "./BulkSendButton";
+import { BulkDeliveryStatusButton } from "./BulkDeliveryStatusButton";
 
 const SELECT_FORM_ID = "bulk-select-form";
 
@@ -25,8 +26,25 @@ const FIXED_COLUMNS = [
   { key: "channel", label: "LINE Channel" },
   { key: "friend", label: "Friend" },
   { key: "status", label: "Status" },
+  { key: "deliveryStatus", label: "การรับรูป" },
   { key: "registered", label: "Registered" },
 ] as const;
+
+const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
+  REGISTERED: "ลงทะเบียนแล้ว",
+  PHOTO_ORDERED: "สั่งจองรูปแล้ว",
+  PHOTO_RECEIVED: "ได้รับรูปแล้ว",
+  NO_SHOW: "ยกเลิกไม่เข้ารับ",
+  OTHER: "อื่นๆ",
+};
+
+const DELIVERY_STATUS_CLASS: Record<DeliveryStatus, string> = {
+  REGISTERED: "bg-gray-100 text-gray-600",
+  PHOTO_ORDERED: "bg-amber-100 text-amber-700",
+  PHOTO_RECEIVED: "bg-green-100 text-green-700",
+  NO_SHOW: "bg-red-100 text-red-700",
+  OTHER: "bg-purple-100 text-purple-700",
+};
 
 export default async function RegistrantsPage({
   params,
@@ -37,7 +55,7 @@ export default async function RegistrantsPage({
 }) {
   const { id: universityId } = await params;
   const sp0 = await searchParams;
-  const { page: pageParam, status, q, fieldKey, fieldValue, sortBy, sortDir } = sp0;
+  const { page: pageParam, status, deliveryStatus, q, fieldKey, fieldValue, sortBy, sortDir } = sp0;
 
   const session = await getServerSession(authOptions);
   const user = session!.user;
@@ -59,7 +77,7 @@ export default async function RegistrantsPage({
   }));
   const advancedGroup = buildAdvancedConditionGroup(advancedRows);
 
-  const where = buildRegistrantWhere(universityId, { status, q, fieldKey, fieldValue });
+  const where = buildRegistrantWhere(universityId, { status, deliveryStatus, q, fieldKey, fieldValue });
 
   const matched = await prisma.registrant.findMany({
     where,
@@ -73,12 +91,13 @@ export default async function RegistrantsPage({
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const registrants = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const baseParams = { status, q, fieldKey, fieldValue, sortBy, sortDir };
+  const baseParams = { status, deliveryStatus, q, fieldKey, fieldValue, sortBy, sortDir };
 
   function pageHref(nextPage: number, overrides: Record<string, string | undefined> = {}) {
     const merged = { ...baseParams, ...overrides };
     const sp = new URLSearchParams();
     if (merged.status) sp.set("status", merged.status);
+    if (merged.deliveryStatus) sp.set("deliveryStatus", merged.deliveryStatus);
     if (merged.q) sp.set("q", merged.q);
     if (merged.fieldKey) sp.set("fieldKey", merged.fieldKey);
     if (merged.fieldValue) sp.set("fieldValue", merged.fieldValue);
@@ -108,6 +127,7 @@ export default async function RegistrantsPage({
 
   const exportSp = new URLSearchParams();
   if (status) exportSp.set("status", status);
+  if (deliveryStatus) exportSp.set("deliveryStatus", deliveryStatus);
   if (q) exportSp.set("q", q);
   if (fieldKey) exportSp.set("fieldKey", fieldKey);
   if (fieldValue) exportSp.set("fieldValue", fieldValue);
@@ -134,6 +154,7 @@ export default async function RegistrantsPage({
           <span className="ml-2 text-sm font-normal text-gray-400">{total} total</span>
         </h1>
         <div className="flex items-center gap-3">
+          <BulkDeliveryStatusButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
           <BulkSendButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
           <a
             href={exportHref}
@@ -169,6 +190,18 @@ export default async function RegistrantsPage({
             </option>
           ))}
         </select>
+        <select
+          name="deliveryStatus"
+          defaultValue={deliveryStatus ?? ""}
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+        >
+          <option value="">การรับรูปทั้งหมด</option>
+          {Object.values(DeliveryStatus).map((s) => (
+            <option key={s} value={s}>
+              {DELIVERY_STATUS_LABEL[s]}
+            </option>
+          ))}
+        </select>
         <select name="fieldKey" defaultValue={fieldKey ?? ""} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm">
           <option value="">Filter by field…</option>
           {university.formFields.map((f) => (
@@ -197,6 +230,7 @@ export default async function RegistrantsPage({
         </summary>
         <form className="mt-3 space-y-2" method="get">
           {status && <input type="hidden" name="status" value={status} />}
+          {deliveryStatus && <input type="hidden" name="deliveryStatus" value={deliveryStatus} />}
           {q && <input type="hidden" name="q" value={q} />}
           {fieldKey && <input type="hidden" name="fieldKey" value={fieldKey} />}
           {fieldValue && <input type="hidden" name="fieldValue" value={fieldValue} />}
@@ -279,9 +313,12 @@ export default async function RegistrantsPage({
               return (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="whitespace-nowrap px-4 py-2">
-                    {r.lineUserId && r.channelId && (
-                      <input type="checkbox" name="registrantIds" value={r.id} aria-label={`Select ${r.displayName ?? r.id}`} />
-                    )}
+                    {/* Selectable regardless of LINE-link status — bulk delivery-status set
+                        (BulkDeliveryStatusButton) applies to anyone, including legacy/paper
+                        registrants with no LINE account at all. sendBulkMessage itself already
+                        filters out non-messageable rows server-side, so gating the checkbox here
+                        would only have blocked the newer bulk-status use case for no reason. */}
+                    <input type="checkbox" name="registrantIds" value={r.id} aria-label={`Select ${r.displayName ?? r.id}`} />
                   </td>
                   <td className="whitespace-nowrap px-4 py-2">
                     <Link href={`/admin/universities/${universityId}/registrants/${r.id}`} className="text-gray-900 hover:text-indigo-600 hover:underline">
@@ -300,6 +337,11 @@ export default async function RegistrantsPage({
                   <td className="whitespace-nowrap px-4 py-2 text-gray-500">{r.isFriend ? "Yes" : "No"}</td>
                   <td className="whitespace-nowrap px-4 py-2">
                     <StatusBadge status={r.status} />
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2">
+                    <span className={`rounded px-1.5 py-0.5 text-xs ${DELIVERY_STATUS_CLASS[r.deliveryStatus]}`}>
+                      {DELIVERY_STATUS_LABEL[r.deliveryStatus]}
+                    </span>
                   </td>
                   <td className="whitespace-nowrap px-4 py-2 text-gray-500">{r.registeredAt.toLocaleDateString()}</td>
                 </tr>

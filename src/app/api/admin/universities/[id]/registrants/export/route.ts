@@ -31,6 +31,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const sp = request.nextUrl.searchParams;
   const where = buildRegistrantWhere(universityId, {
     status: sp.get("status") ?? undefined,
+    deliveryStatus: sp.get("deliveryStatus") ?? undefined,
     q: sp.get("q") ?? undefined,
     fieldKey: sp.get("fieldKey") ?? undefined,
     fieldValue: sp.get("fieldValue") ?? undefined,
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     { header: "LINE Channel", key: "channel", width: 20 },
     { header: "Friend", key: "friend", width: 10 },
     { header: "Status", key: "status", width: 12 },
+    { header: "Delivery Status", key: "deliveryStatus", width: 16 },
     { header: "Registered", key: "registered", width: 20 },
   ];
   sheet.getRow(1).font = { bold: true };
@@ -80,6 +82,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       channel: r.channel?.name ?? "",
       friend: r.isFriend ? "Yes" : "No",
       status: r.status,
+      deliveryStatus: r.deliveryStatus,
       registered: r.registeredAt.toLocaleString(),
       ...Object.fromEntries(university.formFields.map((f) => [f.key, data[f.key] ?? ""])),
     });
