@@ -4,7 +4,7 @@ import { useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { uploadLargePhoto } from "@/lib/groupPhoto/uploadLargePhoto";
 import { createGroupPhoto } from "@/lib/actions/groupPhotos";
-import { getDefaultPhotoEventId } from "@/lib/actions/photoEvents";
+import type { PhotoEventListItem } from "@/lib/actions/photoEvents";
 import { startGroupPhotoAutoTag } from "@/lib/actions/groupPhotoAutoTag";
 import { MobileCropTool } from "./MobileCropTool";
 
@@ -30,10 +30,21 @@ function StepHeading({ step, children }: { step: "1" | "2" | "3"; children: Reac
   );
 }
 
-export function QuickTagWizard({ universities }: { universities: University[] }) {
+export function QuickTagWizard({
+  universities,
+  eventsByUniversity,
+  defaultEventIdByUniversity,
+}: {
+  universities: University[];
+  eventsByUniversity: Record<string, PhotoEventListItem[]>;
+  defaultEventIdByUniversity: Record<string, string>;
+}) {
   const [step, setStep] = useState<Step>(universities.length === 1 ? "upload" : "select-university");
   const [universityId, setUniversityId] = useState<string | null>(
     universities.length === 1 ? universities[0].id : null,
+  );
+  const [photoEventId, setPhotoEventId] = useState<string | null>(
+    universities.length === 1 ? defaultEventIdByUniversity[universities[0].id] : null,
   );
   const [title, setTitle] = useState("");
   const [bitmap, setBitmap] = useState<ImageBitmap | null>(null);
@@ -42,6 +53,7 @@ export function QuickTagWizard({ universities }: { universities: University[] })
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const university = universities.find((u) => u.id === universityId);
+  const events = universityId ? (eventsByUniversity[universityId] ?? []) : [];
 
   function resetForNextPhoto() {
     setTitle("");
@@ -64,15 +76,12 @@ export function QuickTagWizard({ universities }: { universities: University[] })
   }
 
   async function handleCropConfirm(blob: Blob, width: number, height: number) {
-    if (!universityId) return;
+    if (!universityId || !photoEventId) return;
     setStep("saving");
     setError(null);
     try {
       const file = new File([blob], "cropped.jpg", { type: "image/jpeg" });
-      const [{ url }, photoEventId] = await Promise.all([
-        uploadLargePhoto(universityId, file),
-        getDefaultPhotoEventId(universityId),
-      ]);
+      const { url } = await uploadLargePhoto(universityId, file);
       const { id: groupPhotoId } = await createGroupPhoto(universityId, photoEventId, {
         name: title.trim() || "ไม่ระบุชื่อ",
         imageUrl: url,
@@ -130,6 +139,7 @@ export function QuickTagWizard({ universities }: { universities: University[] })
                     type="button"
                     onClick={() => {
                       setUniversityId(u.id);
+                      setPhotoEventId(defaultEventIdByUniversity[u.id]);
                       setStep("upload");
                     }}
                     className="w-full rounded-lg border border-gray-300 bg-white px-4 py-4 text-left text-base font-medium text-gray-900 hover:bg-gray-50"
@@ -156,6 +166,23 @@ export function QuickTagWizard({ universities }: { universities: University[] })
               >
                 เปลี่ยนมหาวิทยาลัย
               </button>
+            )}
+            {events.length > 1 && (
+              <label className="mb-4 block">
+                <span className="mb-1 block text-sm font-medium text-gray-700">งานถ่ายรูป</span>
+                <select
+                  value={photoEventId ?? ""}
+                  onChange={(e) => setPhotoEventId(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2.5 text-base"
+                >
+                  {events.map((ev) => (
+                    <option key={ev.id} value={ev.id}>
+                      {ev.code}
+                      {ev.label ? ` — ${ev.label}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
             <label className="mb-4 block">
               <span className="mb-1 block text-sm font-medium text-gray-700">ชื่อรูป (เช่น ชื่อคณะ)</span>
