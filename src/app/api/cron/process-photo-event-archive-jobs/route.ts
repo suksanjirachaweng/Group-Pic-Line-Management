@@ -5,8 +5,11 @@ import { isAuthorizedCronRequest } from "@/lib/cronAuth";
 import { buildEventArchiveData } from "@/lib/photoEvent/buildEventArchiveData";
 import { uploadArchiveDataJson, copyImageToArchive } from "@/lib/photoEvent/archiveStorage";
 import { isPcPhotoServerConfigured, embedFace } from "@/lib/pcPhotoServer";
+import { recordCronHeartbeat } from "@/lib/cronHeartbeat";
 import { PhotoEventStatus } from "@/generated/prisma/enums";
 import type { PhotoEventArchiveJob } from "@/generated/prisma/client";
+
+const JOB_KEY = "process-photo-event-archive-jobs";
 
 // Hobby-plan cap — the COPYING_IMAGES/EMBEDDING_FACES stages' own soft time budget below stays
 // comfortably under this so the route always returns a real response instead of getting killed
@@ -244,25 +247,36 @@ async function handle(request: NextRequest) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  const job = await claimJob();
-  if (!job) return NextResponse.json({ processed: false });
-
   try {
-    if (job.stage === "EXPORTING_DATA") {
-      await processExportingDataStage(job);
-    } else if (job.stage === "COPYING_IMAGES") {
-      await processCopyingImagesStage(job);
-    } else if (job.stage === "EMBEDDING_FACES") {
-      await processEmbeddingFacesStage(job);
+    const job = await claimJob();
+    if (!job) {
+      await recordCronHeartbeat(JOB_KEY, "OK");
+      return NextResponse.json({ processed: false });
     }
-    return NextResponse.json({ processed: true, jobId: job.id, stage: job.stage });
+
+    try {
+      if (job.stage === "EXPORTING_DATA") {
+        await processExportingDataStage(job);
+      } else if (job.stage === "COPYING_IMAGES") {
+        await processCopyingImagesStage(job);
+      } else if (job.stage === "EMBEDDING_FACES") {
+        await processEmbeddingFacesStage(job);
+      }
+      await recordCronHeartbeat(JOB_KEY, "OK");
+      return NextResponse.json({ processed: true, jobId: job.id, stage: job.stage });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await prisma.photoEventArchiveJob.update({
+        where: { id: job.id },
+        data: { stage: "FAILED", errorMessage: message },
+      });
+      await recordCronHeartbeat(JOB_KEY, "OK");
+      return NextResponse.json({ processed: true, jobId: job.id, failed: true, error: message });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await prisma.photoEventArchiveJob.update({
-      where: { id: job.id },
-      data: { stage: "FAILED", errorMessage: message },
-    });
-    return NextResponse.json({ processed: true, jobId: job.id, failed: true, error: message });
+    await recordCronHeartbeat(JOB_KEY, "ERROR", message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 

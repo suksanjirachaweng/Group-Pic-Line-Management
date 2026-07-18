@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { issueChannelAccessToken, revokeChannelAccessToken } from "@/lib/line";
 import { isAuthorizedCronRequest } from "@/lib/cronAuth";
+import { recordCronHeartbeat } from "@/lib/cronHeartbeat";
+
+const JOB_KEY = "refresh-channel-tokens";
 
 // Auto-issued tokens are valid ~30 days — refresh anything expiring within the next 3 to
 // leave headroom if this cron's schedule slips a run or two.
@@ -13,6 +16,16 @@ async function handle(request: NextRequest) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
+  try {
+    return await run();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await recordCronHeartbeat(JOB_KEY, "ERROR", message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function run() {
   // Only channels we've issued a token for ourselves (accessTokenExpiresAt set) are managed
   // here — manually-issued long-lived tokens (expiresAt null) never expire and are left alone.
   const channels = await prisma.channel.findMany({
@@ -75,6 +88,7 @@ async function handle(request: NextRequest) {
     }
   }
 
+  await recordCronHeartbeat(JOB_KEY, "OK");
   return NextResponse.json({ checked: channels.length + (lineLoginChannel ? 1 : 0), refreshed, failed });
 }
 

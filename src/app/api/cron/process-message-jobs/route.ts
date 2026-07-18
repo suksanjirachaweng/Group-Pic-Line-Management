@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { pushTextMessage } from "@/lib/line";
 import { currentYearMonth } from "@/lib/quota";
 import { isAuthorizedCronRequest } from "@/lib/cronAuth";
+import { recordCronHeartbeat } from "@/lib/cronHeartbeat";
+
+const JOB_KEY = "process-message-jobs";
 
 const BATCH_SIZE = 50;
 
@@ -29,8 +32,19 @@ async function handle(request: NextRequest) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
+  try {
+    return await run();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await recordCronHeartbeat(JOB_KEY, "ERROR", message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function run() {
   const claimedIds = await claimBatch();
   if (claimedIds.length === 0) {
+    await recordCronHeartbeat(JOB_KEY, "OK");
     return NextResponse.json({ processed: 0, sent: 0, failed: 0, skippedQuota: 0 });
   }
 
@@ -111,6 +125,7 @@ async function handle(request: NextRequest) {
     }
   }
 
+  await recordCronHeartbeat(JOB_KEY, "OK");
   return NextResponse.json({ processed: jobs.length, sent, failed, skippedQuota });
 }
 

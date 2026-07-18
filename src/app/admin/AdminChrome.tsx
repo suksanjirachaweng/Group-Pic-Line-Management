@@ -55,6 +55,14 @@ export function AdminChrome({
                   LINE Channels
                 </Link>
               )}
+              {isSuperadmin && (
+                <Link
+                  href="/admin/system-status"
+                  className="text-indigo-100 transition-colors hover:text-white"
+                >
+                  สถานะระบบ
+                </Link>
+              )}
             </nav>
           </div>
           <span className="flex items-center gap-2 text-sm text-indigo-100">

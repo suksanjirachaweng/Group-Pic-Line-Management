@@ -8,8 +8,11 @@ import { OCR_UPLOAD_SIZE, CONCURRENCY, computeTiles } from "@/lib/groupPhoto/til
 import { resolveRowsForNewPoints, applyRowOrderShift, clusterIntoRows } from "@/lib/groupPhoto/rowClustering";
 import { runCardGridOcr } from "@/lib/actions/bulkCardOcr";
 import { createGroupPhotoTagCore } from "@/lib/actions/groupPhotos";
+import { recordCronHeartbeat } from "@/lib/cronHeartbeat";
 import { TagMatchSource } from "@/generated/prisma/enums";
 import type { GroupPhoto, GroupPhotoAutoTagJob } from "@/generated/prisma/client";
+
+const JOB_KEY = "process-group-photo-auto-tag-jobs";
 
 // Hobby-plan cap — the OCR stage's own soft time budget below stays comfortably under this so the
 // route always returns a real response instead of getting killed mid-tick.
@@ -216,25 +219,39 @@ async function handle(request: NextRequest) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  const job = await claimJob();
-  if (!job) return NextResponse.json({ processed: false });
-
   try {
-    if (job.stage === "OCR") {
-      await processOcrStage(job);
-    } else if (job.stage === "ACCEPTING") {
-      await processAcceptingStage(job);
-    } else if (job.stage === "FIXING_ORDER") {
-      await processFixingOrderStage(job);
+    const job = await claimJob();
+    if (!job) {
+      await recordCronHeartbeat(JOB_KEY, "OK");
+      return NextResponse.json({ processed: false });
     }
-    return NextResponse.json({ processed: true, jobId: job.id, stage: job.stage });
+
+    try {
+      if (job.stage === "OCR") {
+        await processOcrStage(job);
+      } else if (job.stage === "ACCEPTING") {
+        await processAcceptingStage(job);
+      } else if (job.stage === "FIXING_ORDER") {
+        await processFixingOrderStage(job);
+      }
+      await recordCronHeartbeat(JOB_KEY, "OK");
+      return NextResponse.json({ processed: true, jobId: job.id, stage: job.stage });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await prisma.groupPhotoAutoTagJob.update({
+        where: { id: job.id },
+        data: { stage: "FAILED", errorMessage: message },
+      });
+      await recordCronHeartbeat(JOB_KEY, "OK");
+      return NextResponse.json({ processed: true, jobId: job.id, failed: true, error: message });
+    }
   } catch (err) {
+    // An error here (e.g. claimJob's own query failing) is an infra-level failure, not a single
+    // job failing gracefully — that's the one case that should actually flip this cron's health
+    // status to ERROR on the system-status page.
     const message = err instanceof Error ? err.message : String(err);
-    await prisma.groupPhotoAutoTagJob.update({
-      where: { id: job.id },
-      data: { stage: "FAILED", errorMessage: message },
-    });
-    return NextResponse.json({ processed: true, jobId: job.id, failed: true, error: message });
+    await recordCronHeartbeat(JOB_KEY, "ERROR", message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 

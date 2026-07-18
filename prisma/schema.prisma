@@ -749,3 +749,31 @@ model FacultyFaceProfile {
 
   @@map("faculty_face_profiles")
 }
+
+// ---------------------------------------------------------------------------
+// Cron / background-job health monitoring
+// ---------------------------------------------------------------------------
+
+enum CronHeartbeatStatus {
+  OK
+  ERROR
+}
+
+/// One row per scheduled cron route (keyed by jobKey, e.g. "process-message-jobs"), upserted on
+/// every authorized invocation by lib/cronHeartbeat.ts. Exists because cron-job.org silently
+/// flips a job to "Inactive" after consecutive failures and never auto-re-enables it — a real
+/// incident (2026-07-18/19) left process-message-jobs (real LINE sends) dead for ~2 days with zero
+/// in-app symptom, only discovered by chance while debugging something else. The system-status
+/// admin page reads this table to flag any job whose lastRunAt is older than its expected cadence
+/// allows, so that kind of silent failure surfaces on its own instead of needing to be stumbled
+/// into again.
+model CronHeartbeat {
+  id         String              @id @default(cuid())
+  jobKey     String              @unique
+  lastRunAt  DateTime
+  lastStatus CronHeartbeatStatus
+  lastError  String?
+  updatedAt  DateTime            @updatedAt
+
+  @@map("cron_heartbeats")
+}
