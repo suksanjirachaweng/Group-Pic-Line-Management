@@ -255,18 +255,19 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
     doc.restore();
 
     if (includeFillIn && includeQr) {
-      // Leaves the arrow section (fillInWidth is the only free variable here — QR is a fixed
-      // square, MARGIN/gaps are constants) enough room for "SCAN TO REGISTER" at a readable size;
-      // 0.55 left it too narrow and the label was clipping.
-      const fillInWidth = contentWidth * 0.48;
-      drawFillInBox(doc, MARGIN, bottomBandY, fillInWidth);
-
       const qrSize = bottomBandHeight;
+      // The arrow only needs its own narrow column in the top ~18pt of the band — the fill-in
+      // lines (rows below the checkbox row) start well under that and can run much wider, all the
+      // way up to the QR, instead of stopping at the same boundary the arrow's column uses.
+      const arrowColumnWidth = contentWidth * 0.48;
+      const fillInLineWidth = contentWidth - qrSize - 10;
+      drawFillInBox(doc, MARGIN, bottomBandY, fillInLineWidth);
+
       // A small gap before the QR — with 0 gap the arrow's point visually fused into the QR's own
       // edge instead of reading as a separate arrowhead pointing at it.
       const arrowGap = 6;
-      const arrowW = contentWidth - fillInWidth - 14 - qrSize - arrowGap;
-      const arrowX = MARGIN + fillInWidth + 14;
+      const arrowW = contentWidth - arrowColumnWidth - 14 - qrSize - arrowGap;
+      const arrowX = MARGIN + arrowColumnWidth + 14;
       // Top-aligned with the checkbox row / QR's top edge, not centered in the whole band —
       // centered left too much empty space below and read as floating too low.
       drawScanArrow(doc, arrowX, bottomBandY, arrowW, 18);
