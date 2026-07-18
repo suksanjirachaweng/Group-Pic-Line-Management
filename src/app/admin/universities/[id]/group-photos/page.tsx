@@ -151,9 +151,14 @@ export default async function GroupPhotosPage({
     <div className="mx-auto max-w-5xl p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">{university.name} — รูปหมู่</h1>
-        <Link href={`/admin/universities/${universityId}`} className="text-sm text-gray-500 hover:text-gray-700 hover:underline">
-          ตั้งค่ามหาวิทยาลัย / LINE Channel
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href={`/admin/universities/${universityId}/events`} className="text-sm text-gray-500 hover:text-gray-700 hover:underline">
+            งานถ่ายรูป (Events)
+          </Link>
+          <Link href={`/admin/universities/${universityId}`} className="text-sm text-gray-500 hover:text-gray-700 hover:underline">
+            ตั้งค่ามหาวิทยาลัย / LINE Channel
+          </Link>
+        </div>
       </div>
 
       <div className="mb-6 border-b border-gray-200">

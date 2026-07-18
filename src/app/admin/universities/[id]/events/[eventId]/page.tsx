@@ -1,0 +1,143 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authOptions, canAccessUniversity } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { PhotoEventStatus } from "@/generated/prisma/enums";
+import { StartArchiveButton } from "./StartArchiveButton";
+import { DeleteEventDataButton } from "./DeleteEventDataButton";
+import { ReimportArchiveButton } from "./ReimportArchiveButton";
+
+const STATUS_LABEL: Record<PhotoEventStatus, string> = {
+  ACTIVE: "กำลังดำเนินการ",
+  ARCHIVE_READY: "สำรองข้อมูลแล้ว รอลบ",
+  ARCHIVED: "ปิดงานแล้ว (ลบข้อมูลแล้ว)",
+};
+
+const STATUS_CLASS: Record<PhotoEventStatus, string> = {
+  ACTIVE: "bg-green-100 text-green-700",
+  ARCHIVE_READY: "bg-amber-100 text-amber-700",
+  ARCHIVED: "bg-gray-100 text-gray-500",
+};
+
+const ARCHIVE_STAGE_LABEL: Record<string, string> = {
+  EXPORTING_DATA: "กำลังบันทึกข้อมูล",
+  COPYING_IMAGES: "กำลังคัดลอกรูปภาพ",
+  DONE: "เสร็จสิ้น",
+  FAILED: "ล้มเหลว",
+};
+
+export default async function PhotoEventDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string; eventId: string }>;
+}) {
+  const { id: universityId, eventId } = await params;
+
+  const session = await getServerSession(authOptions);
+  const user = session!.user;
+  if (!canAccessUniversity(user, universityId)) notFound();
+
+  const event = await prisma.photoEvent.findUnique({ where: { id: eventId, universityId } });
+  if (!event) notFound();
+
+  const [registrantCount, groupPhotoCount, legacyReferenceCount, latestJob] = await Promise.all([
+    prisma.registrant.count({ where: { photoEventId: eventId } }),
+    prisma.groupPhoto.count({ where: { photoEventId: eventId } }),
+    prisma.groupPhotoLegacyReference.count({ where: { photoEventId: eventId } }),
+    prisma.photoEventArchiveJob.findFirst({ where: { photoEventId: eventId }, orderBy: { createdAt: "desc" } }),
+  ]);
+
+  const jobInProgress = latestJob && (latestJob.stage === "EXPORTING_DATA" || latestJob.stage === "COPYING_IMAGES");
+
+  return (
+    <div className="mx-auto max-w-3xl p-6">
+      <Link
+        href={`/admin/universities/${universityId}/events`}
+        className="text-sm text-gray-500 hover:text-gray-700 hover:underline"
+      >
+        ← กลับไปรายการงาน
+      </Link>
+
+      <div className="mt-2 mb-4 flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-gray-900">
+          {event.code}
+          {event.label && <span className="ml-2 text-base font-normal text-gray-500">({event.label})</span>}
+        </h1>
+        <span className={`rounded px-2 py-1 text-xs ${STATUS_CLASS[event.status]}`}>{STATUS_LABEL[event.status]}</span>
+      </div>
+
+      <div className="mb-6 grid grid-cols-2 gap-4 rounded-lg border border-gray-200 bg-white p-4 text-sm sm:grid-cols-4">
+        <div>
+          <dt className="text-xs text-gray-400">ช่วงวันที่</dt>
+          <dd className="mt-0.5 text-gray-900">
+            {new Date(event.startDate).toLocaleDateString("th-TH")} – {new Date(event.endDate).toLocaleDateString("th-TH")}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-gray-400">ผู้ลงทะเบียน</dt>
+          <dd className="mt-0.5 text-gray-900">{registrantCount.toLocaleString()} คน</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-gray-400">รูปหมู่</dt>
+          <dd className="mt-0.5 text-gray-900">{groupPhotoCount.toLocaleString()} รูป</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-gray-400">ข้อมูลอ้างอิงเดิม</dt>
+          <dd className="mt-0.5 text-gray-900">{legacyReferenceCount.toLocaleString()} รายการ</dd>
+        </div>
+      </div>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">ปิดงาน / สำรองข้อมูล</h2>
+        <p className="mb-3 text-xs text-gray-500">
+          บันทึกข้อมูลผู้ลงทะเบียน รูปหมู่ และแท็กทั้งหมดของงานนี้ลงไฟล์สำรองที่กู้คืนได้ภายหลัง จากนั้นจึงลบข้อมูลออกจากฐานข้อมูลจริงเพื่อลดภาระของ server
+        </p>
+
+        {latestJob && (
+          <div className="mb-3 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            สถานะการสำรองข้อมูลล่าสุด: <span className="font-medium">{ARCHIVE_STAGE_LABEL[latestJob.stage]}</span>
+            {latestJob.stage === "COPYING_IMAGES" && (
+              <span>
+                {" "}
+                ({latestJob.imagesDone}/{latestJob.imagesTotal} รูป)
+              </span>
+            )}
+            {latestJob.stage === "FAILED" && latestJob.errorMessage && (
+              <span className="ml-1 text-red-600">— {latestJob.errorMessage}</span>
+            )}
+            {jobInProgress && (
+              <>
+                {" "}
+                <Link href={`/admin/universities/${universityId}/events/${eventId}`} className="text-indigo-600 hover:underline">
+                  รีเฟรชสถานะ
+                </Link>
+              </>
+            )}
+          </div>
+        )}
+
+        {event.archiveFileUrl && (
+          <p className="mb-3 text-xs text-gray-500">
+            ไฟล์ manifest:{" "}
+            <a href={event.archiveFileUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+              data.json
+            </a>
+          </p>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          {event.status === "ACTIVE" && !jobInProgress && (
+            <StartArchiveButton universityId={universityId} photoEventId={eventId} />
+          )}
+          {event.status === "ARCHIVE_READY" && (
+            <DeleteEventDataButton universityId={universityId} photoEventId={eventId} eventCode={event.code} />
+          )}
+          {event.status === "ARCHIVED" && (
+            <ReimportArchiveButton universityId={universityId} photoEventId={eventId} />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}

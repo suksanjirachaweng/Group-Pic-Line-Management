@@ -435,9 +435,42 @@ model PhotoEvent {
   groupPhotos      GroupPhoto[]
   legacyReferences GroupPhotoLegacyReference[]
   registrants      Registrant[]
+  archiveJobs      PhotoEventArchiveJob[]
 
   @@unique([universityId, code])
   @@map("photo_events")
+}
+
+enum PhotoEventArchiveStage {
+  EXPORTING_DATA
+  COPYING_IMAGES
+  DONE
+  FAILED
+}
+
+/// Close-out archive job: builds a durable, self-contained backup of one PhotoEvent (a data.json
+/// manifest with every DB row + copies of every GroupPhoto image, parked under its own
+/// archives/<eventId>/ Blob prefix independent of the live GroupPhoto.imageUrl) so the live DB
+/// rows can be safely deleted afterward to reduce server load, and so the event can be fully
+/// reimported later. Processed a tick at a time by api/cron/process-photo-event-archive-jobs
+/// (same claim-one-job pattern as GroupPhotoAutoTagJob) since a real event's images can total
+/// hundreds of MB — too large to safely build in memory within one serverless invocation.
+model PhotoEventArchiveJob {
+  id           String                 @id @default(cuid())
+  photoEventId String
+  stage        PhotoEventArchiveStage @default(EXPORTING_DATA)
+  imagesTotal  Int                    @default(0)
+  imagesDone   Int                    @default(0)
+  errorMessage String?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  completedAt  DateTime?
+
+  photoEvent PhotoEvent @relation(fields: [photoEventId], references: [id], onDelete: Cascade)
+
+  @@index([stage])
+  @@index([photoEventId])
+  @@map("photo_event_archive_jobs")
 }
 
 // ---------------------------------------------------------------------------
