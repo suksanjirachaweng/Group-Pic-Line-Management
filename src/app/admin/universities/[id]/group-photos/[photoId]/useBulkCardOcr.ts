@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { ocrCardGrid } from "@/lib/actions/bulkCardOcr";
 import { extractRectCrop } from "@/lib/groupPhoto/coordinateMapping";
-import { OCR_UPLOAD_SIZE, CONCURRENCY, computeTiles } from "@/lib/groupPhoto/tileGeometry";
+import { CONCURRENCY, computeTiles, computeOcrUploadScale } from "@/lib/groupPhoto/tileGeometry";
 
 export type BulkOcrCandidate = { id: string; code: string; x: number; y: number; confident: boolean };
 
@@ -65,7 +65,7 @@ export function useBulkCardOcr() {
           const tileIndex = next++;
           const tile = tiles[tileIndex];
           try {
-            const scale = Math.min(1, OCR_UPLOAD_SIZE / Math.max(tile.width, tile.height));
+            const scale = computeOcrUploadScale(tile);
             const blob = await extractRectCrop(
               fullBitmap,
               tile.left,

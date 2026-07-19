@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isAuthorizedCronRequest } from "@/lib/cronAuth";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { buildTagMatchMaps, resolveTagMatch } from "@/lib/groupPhoto/resolveTagMatch";
-import { OCR_UPLOAD_SIZE, CONCURRENCY, computeTiles } from "@/lib/groupPhoto/tileGeometry";
+import { CONCURRENCY, computeTiles, computeOcrUploadScale } from "@/lib/groupPhoto/tileGeometry";
 import { resolveRowsForNewPoints, applyRowOrderShift, clusterIntoRows } from "@/lib/groupPhoto/rowClustering";
 import { runCardGridOcr } from "@/lib/actions/bulkCardOcr";
 import { createGroupPhotoTagCore } from "@/lib/actions/groupPhotos";
@@ -62,7 +62,7 @@ async function processOcrStage(job: ClaimedJob) {
       const tileIndex = next++;
       const tile = tiles[tileIndex];
       try {
-        const scale = Math.min(1, OCR_UPLOAD_SIZE / Math.max(tile.width, tile.height));
+        const scale = computeOcrUploadScale(tile);
         const tileBuf = await sharp(fullBuf)
           .extract({ left: tile.left, top: tile.top, width: tile.width, height: tile.height })
           .resize({ width: Math.round(tile.width * scale), height: Math.round(tile.height * scale) })

@@ -13,6 +13,15 @@ export const TILE_OVERLAP = 150;
 // never actually saw the extra native detail anyway, just paid more input tokens for it. Below
 // 1568px real accuracy starts dropping (96.8% at 1200px, 89.2% at 800px in the same test).
 export const OCR_UPLOAD_SIZE = 1568;
+// Below this short-edge length, printed card digits get too small to read reliably regardless of
+// the long edge — same accuracy cliff referenced above (89.2% at 800px). A tile only gets this
+// short unless the SOURCE photo itself is unusually short relative to TILE_SIZE (e.g. a panoramic
+// photo with few rows, or one uploaded at a much lower resolution than normal — real incident:
+// 2026-07-19, a photo manually shrunk to 4091×784 before upload, vs. ~2400-4900px tall for every
+// other photo from the same event, tiled down to a crushed 1568×480 and came back 67% low-
+// confidence). computeOcrUploadScale() below floors the short edge instead of letting the
+// long-edge cap crush it.
+const MIN_OCR_SHORT_EDGE = 1000;
 // Bounds how many tile requests are in flight at once — used identically by the client-driven
 // bulk-OCR hook and the background auto-tag cron job's own worker pool.
 export const CONCURRENCY = 8;
@@ -38,6 +47,27 @@ export function tileStarts(size: number, tile: number, overlap: number): number[
     s = next + tile > size ? size - tile : next;
   }
   return starts;
+}
+
+/**
+ * How much to downscale a tile before sending it for OCR — same math for the client-driven
+ * bulk-OCR hook and the server-side background auto-tag job. Normally just caps the long edge at
+ * OCR_UPLOAD_SIZE (Claude resizes to that internally anyway, so uploading more only costs tokens).
+ * But a tile whose short edge is already small (a wide, short crop from a short source photo)
+ * would get crushed even further by a pure long-edge cap — floor the short edge at
+ * MIN_OCR_SHORT_EDGE instead, even if that means the long edge ends up bigger than
+ * OCR_UPLOAD_SIZE. Never upscales past the tile's own native resolution (Math.min(1, …) both
+ * places) — a genuinely low-resolution source photo still can't be rescued this way, only the
+ * unnecessary extra loss from resizing-by-the-wrong-edge is.
+ */
+export function computeOcrUploadScale(tile: { width: number; height: number }): number {
+  const longEdge = Math.max(tile.width, tile.height);
+  const shortEdge = Math.min(tile.width, tile.height);
+  const scale = Math.min(1, OCR_UPLOAD_SIZE / longEdge);
+  if (shortEdge * scale < MIN_OCR_SHORT_EDGE) {
+    return Math.min(1, MIN_OCR_SHORT_EDGE / shortEdge);
+  }
+  return scale;
 }
 
 /** Full tile list for a photo of the given dimensions — same math for the client-driven bulk-OCR
