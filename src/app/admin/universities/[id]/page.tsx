@@ -64,9 +64,9 @@ export default async function UniversityDetailPage({
   return (
     <div className="max-w-3xl space-y-8">
       <div>
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-lg font-semibold text-gray-900">{university.name}</h1>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link
               href={`/admin/universities/${university.id}/preview`}
               target="_blank"
@@ -154,7 +154,7 @@ export default async function UniversityDetailPage({
               className="max-h-40 w-full rounded-md object-cover"
             />
           )}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <ImageUploadForm
               action={uploadUniversityHeaderImage.bind(null, university.id)}
               fieldName="headerImage"
@@ -253,7 +253,7 @@ export default async function UniversityDetailPage({
                 </button>
               </form>
             </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 {f.imageUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={f.imageUrl} alt="" className="h-16 w-auto rounded-md border border-gray-200 object-cover" />

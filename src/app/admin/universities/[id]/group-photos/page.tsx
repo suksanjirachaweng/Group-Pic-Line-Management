@@ -177,7 +177,7 @@ export default async function GroupPhotosPage({
 
   return (
     <div className="mx-auto max-w-5xl p-6">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold text-gray-900">
           {university.name} — รูปหมู่
         </h1>
@@ -761,12 +761,12 @@ async function PhotosTab({
           selectFormId={PHOTO_SELECT_FORM_ID}
           photos={photos.map((p) => ({ id: p.id, name: p.name }))}
         />
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs text-gray-500">เรียงตาม:</span>
-          <div className="flex items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
+          <div className="flex flex-wrap items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
             <Link
               href={photoSortHref("upload")}
-              className={`flex items-center gap-1 rounded px-2 py-1 font-medium ${
+              className={`flex items-center gap-1 whitespace-nowrap rounded px-2 py-1 font-medium ${
                 photoSort === "upload"
                   ? "bg-indigo-600 text-white"
                   : "text-gray-600 hover:bg-sky-50"
@@ -779,7 +779,7 @@ async function PhotosTab({
             </Link>
             <Link
               href={photoSortHref("name")}
-              className={`flex items-center gap-1 rounded px-2 py-1 font-medium ${
+              className={`flex items-center gap-1 whitespace-nowrap rounded px-2 py-1 font-medium ${
                 photoSort === "name"
                   ? "bg-indigo-600 text-white"
                   : "text-gray-600 hover:bg-sky-50"

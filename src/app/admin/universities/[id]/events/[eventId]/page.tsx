@@ -66,7 +66,7 @@ export default async function PhotoEventDetailPage({
         ← กลับไปรายการงาน
       </Link>
 
-      <div className="mt-2 mb-4 flex items-center justify-between">
+      <div className="mt-2 mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold text-gray-900">
           {event.code}
           {event.label && <span className="ml-2 text-base font-normal text-gray-500">({event.label})</span>}

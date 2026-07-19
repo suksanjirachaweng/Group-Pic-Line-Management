@@ -45,7 +45,7 @@ export default async function ChannelsPage() {
         issueTokenAction={issueLineLoginChannelToken}
       />
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#06C755]" />
           LINE Channels
@@ -76,7 +76,7 @@ export default async function ChannelsPage() {
                     <img src={qrInfo.qrDataUrl} alt="" className="h-12 w-12 shrink-0 rounded border-2 border-[#06C755] p-0.5" />
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                       <span>
                         {c.name} <span className="text-gray-400">({c.lineChannelId})</span>
                         {!c.isActive && (
@@ -85,7 +85,7 @@ export default async function ChannelsPage() {
                           </span>
                         )}
                       </span>
-                      <span className="flex items-center gap-3 text-gray-500">
+                      <span className="flex flex-wrap items-center gap-3 text-gray-500">
                         <span className="text-xs">
                           Recommended: <span className="font-medium text-gray-700">{recommended.name}</span> (฿
                           {recommended.projectedCost}/mo)

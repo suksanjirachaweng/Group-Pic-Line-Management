@@ -82,7 +82,7 @@ export default async function ChannelDetailPage({
       )}
 
       <div className="rounded-md border-t-4 border-[#06C755] border-x border-b border-gray-200 bg-white p-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
             <span className="inline-block h-2 w-2 rounded-full bg-[#06C755]" />
             LINE Bot info (from LINE)

@@ -49,7 +49,10 @@ export function UniversitySubNav({
         <span className="text-gray-900">{universityName}</span>
       </div>
 
-      <nav className="mb-6 flex gap-1 border-b border-gray-200">
+      {/* overflow-x-auto + whitespace-nowrap on each tab — without it, a narrow viewport wraps
+          every multi-word label onto its own stack of lines instead of scrolling, turning a
+          one-line tab bar into a tall, hard-to-read grid. */}
+      <nav className="mb-6 flex gap-1 overflow-x-auto border-b border-gray-200">
         {TABS.map((tab) => {
           const href = tab.slug ? `${base}/${tab.slug}` : base;
           const active = tab.slug
@@ -61,8 +64,8 @@ export function UniversitySubNav({
               href={href}
               className={
                 active
-                  ? "border-b-2 border-indigo-600 px-3 py-2 text-sm font-medium text-indigo-600"
-                  : "border-b-2 border-transparent px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700"
+                  ? "shrink-0 whitespace-nowrap border-b-2 border-indigo-600 px-3 py-2 text-sm font-medium text-indigo-600"
+                  : "shrink-0 whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700"
               }
             >
               {tab.label}

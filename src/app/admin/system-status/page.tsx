@@ -102,10 +102,10 @@ export default async function SystemStatusPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="text-xs text-gray-400">
-                <th className="pb-2 pr-3 font-normal">งาน</th>
-                <th className="pb-2 pr-3 font-normal">รันล่าสุด</th>
-                <th className="pb-2 pr-3 font-normal">สถานะ</th>
-                <th className="pb-2 font-normal">รายละเอียด</th>
+                <th className="whitespace-nowrap pb-2 pr-3 font-normal">งาน</th>
+                <th className="whitespace-nowrap pb-2 pr-3 font-normal">รันล่าสุด</th>
+                <th className="whitespace-nowrap pb-2 pr-3 font-normal">สถานะ</th>
+                <th className="whitespace-nowrap pb-2 font-normal">รายละเอียด</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -119,19 +119,19 @@ export default async function SystemStatusPage() {
                       : { text: "ปกติ", cls: "bg-green-100 text-green-700" };
                 return (
                   <tr key={job.key}>
-                    <td className="py-2 pr-3 text-gray-900">
+                    <td className="whitespace-nowrap py-2 pr-3 text-gray-900">
                       {job.label}
                       <div className="text-xs text-gray-400">
                         {job.key} · ทุก {job.expectedIntervalMinutes >= 60 ? `${job.expectedIntervalMinutes / 60} ชม.` : `${job.expectedIntervalMinutes} นาที`}
                       </div>
                     </td>
-                    <td className="py-2 pr-3 text-gray-600">
+                    <td className="whitespace-nowrap py-2 pr-3 text-gray-600">
                       {job.lastRunAt ? timeAgoThai(job.lastRunAt) : "—"}
                     </td>
-                    <td className="py-2 pr-3">
+                    <td className="whitespace-nowrap py-2 pr-3">
                       <span className={`rounded px-2 py-0.5 text-xs ${badge.cls}`}>{badge.text}</span>
                     </td>
-                    <td className="py-2 text-xs text-red-600">{job.lastError ?? ""}</td>
+                    <td className="whitespace-nowrap py-2 text-xs text-red-600">{job.lastError ?? ""}</td>
                   </tr>
                 );
               })}

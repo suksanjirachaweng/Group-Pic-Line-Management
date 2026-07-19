@@ -21,9 +21,9 @@ export default async function RulesPage({ params }: { params: Promise<{ id: stri
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold text-gray-900">{university.name} — Rules</h1>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <Link
             href={`/admin/universities/${universityId}/rules/new`}
             className="rounded-md bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white"

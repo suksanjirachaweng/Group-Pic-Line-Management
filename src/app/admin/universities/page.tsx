@@ -19,9 +19,9 @@ export default async function UniversitiesPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-2">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold text-gray-900">Universities</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/admin/quick-tag"
             className="rounded-md bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white"
