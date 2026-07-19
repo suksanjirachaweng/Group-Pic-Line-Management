@@ -34,13 +34,13 @@ export function AdminChrome({
                 alt="Newsalon"
                 className="h-5 w-auto sm:h-6"
               />
-              <span className="hidden px-1 py-0.1 text-orange-700 sm:inline"> NEWSALON</span>
+              <span className="hidden px-1 py-0.1 text-orange-700 sm:inline">
+                {" "}
+                NEWSALON
+              </span>
             </span>
-            <span className="hidden sm:inline">Group Pic Registration{" "}</span>
-            <span className="text-indigo-200">— Admin</span>
-          </span>
-          <span className="flex shrink-0 items-center gap-2 text-xs text-indigo-100 sm:order-none sm:text-sm">
-            <span className="hidden sm:inline">{email}</span>
+            <span className="hidden sm:inline">ระบบจัดการรูปหมู่ </span>
+            <span className="text-orange-300">{email}</span>
             <span
               className={
                 isSuperadmin
@@ -51,6 +51,7 @@ export function AdminChrome({
               {role}
             </span>
           </span>
+          <span className="flex shrink-0 items-center text-xs text-indigo-100 sm:order-none sm:text-sm"></span>
           {/* order-3 + w-full forces this onto its own row on mobile (flex-wrap does the rest);
               sm:w-auto puts it back inline with the brand/email row on desktop, matching the
               original single-row layout exactly. Horizontal scroll (not wrap) on mobile so tab
