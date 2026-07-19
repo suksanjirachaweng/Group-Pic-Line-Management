@@ -30,10 +30,19 @@ const STATUS_MESSAGE: Record<Exclude<FaceBankSearchResult["status"], "ok">, stri
 export function FacultyFaceBankBrowser({ profiles }: { profiles: FacultyFaceProfileListItem[] }) {
   const [nameFilter, setNameFilter] = useState("");
   const [facultyFilter, setFacultyFilter] = useState("");
+  const [universityFilter, setUniversityFilter] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchResult, searchAction] = useActionState<FaceBankSearchResult | null, FormData>(
     searchFaceBankByUpload,
     null,
+  );
+
+  const universityOptions = useMemo(
+    () =>
+      [...new Set(profiles.map((p) => p.universityName).filter((n): n is string => !!n))].sort((a, b) =>
+        a.localeCompare(b, "th"),
+      ),
+    [profiles],
   );
 
   const filtered = useMemo(() => {
@@ -42,9 +51,10 @@ export function FacultyFaceBankBrowser({ profiles }: { profiles: FacultyFaceProf
     return profiles.filter(
       (p) =>
         (!n || p.name.toLowerCase().includes(n)) &&
-        (!f || (p.facultyName ?? "").toLowerCase().includes(f)),
+        (!f || (p.facultyName ?? "").toLowerCase().includes(f)) &&
+        (!universityFilter || p.universityName === universityFilter),
     );
-  }, [profiles, nameFilter, facultyFilter]);
+  }, [profiles, nameFilter, facultyFilter, universityFilter]);
 
   return (
     <div>
@@ -70,12 +80,28 @@ export function FacultyFaceBankBrowser({ profiles }: { profiles: FacultyFaceProf
               className="mt-1 block w-48 min-w-0 max-w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
             />
           </label>
-          {(nameFilter || facultyFilter) && (
+          <label className="text-xs text-gray-600">
+            มหาวิทยาลัย
+            <select
+              value={universityFilter}
+              onChange={(e) => setUniversityFilter(e.target.value)}
+              className="mt-1 block w-48 min-w-0 max-w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm"
+            >
+              <option value="">ทั้งหมด</option>
+              {universityOptions.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(nameFilter || facultyFilter || universityFilter) && (
             <button
               type="button"
               onClick={() => {
                 setNameFilter("");
                 setFacultyFilter("");
+                setUniversityFilter("");
               }}
               className="text-xs text-gray-400 hover:text-gray-600 hover:underline"
             >
