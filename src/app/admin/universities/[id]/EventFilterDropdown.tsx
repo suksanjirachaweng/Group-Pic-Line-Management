@@ -32,7 +32,7 @@ export function EventFilterDropdown({
     <select
       value={selectedEventId}
       onChange={(e) => handleChange(e.target.value)}
-      className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm"
+      className="w-full min-w-0 max-w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm sm:w-auto"
       aria-label="เลือกงานถ่ายรูป"
     >
       {events.map((e) => (

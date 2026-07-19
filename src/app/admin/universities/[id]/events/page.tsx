@@ -47,46 +47,48 @@ export default async function PhotoEventsPage({ params }: { params: Promise<{ id
       </div>
 
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
-            <tr>
-              <th className="px-4 py-2">รหัสงาน</th>
-              <th className="px-4 py-2">คำอธิบาย</th>
-              <th className="px-4 py-2">ช่วงวันที่</th>
-              <th className="px-4 py-2">สถานะ</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {events.map((e) => (
-              <tr key={e.id}>
-                <td className="px-4 py-2">
-                  <Link
-                    href={`/admin/universities/${universityId}/events/${e.id}`}
-                    className="font-medium text-indigo-600 hover:underline"
-                  >
-                    {e.code}
-                  </Link>
-                </td>
-                <td className="px-4 py-2 text-gray-600">{e.label ?? "—"}</td>
-                <td className="px-4 py-2 text-gray-600">
-                  {new Date(e.startDate).toLocaleDateString("th-TH")} – {new Date(e.endDate).toLocaleDateString("th-TH")}
-                </td>
-                <td className="px-4 py-2">
-                  <span className={`rounded px-1.5 py-0.5 text-xs ${STATUS_CLASS[e.status]}`}>
-                    {STATUS_LABEL[e.status]}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {events.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
               <tr>
-                <td colSpan={4} className="px-4 py-3 text-gray-400">
-                  ยังไม่มีงานที่สร้างไว้
-                </td>
+                <th className="whitespace-nowrap px-4 py-2">รหัสงาน</th>
+                <th className="whitespace-nowrap px-4 py-2">คำอธิบาย</th>
+                <th className="whitespace-nowrap px-4 py-2">ช่วงวันที่</th>
+                <th className="whitespace-nowrap px-4 py-2">สถานะ</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {events.map((e) => (
+                <tr key={e.id}>
+                  <td className="whitespace-nowrap px-4 py-2">
+                    <Link
+                      href={`/admin/universities/${universityId}/events/${e.id}`}
+                      className="font-medium text-indigo-600 hover:underline"
+                    >
+                      {e.code}
+                    </Link>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-gray-600">{e.label ?? "—"}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-gray-600">
+                    {new Date(e.startDate).toLocaleDateString("th-TH")} – {new Date(e.endDate).toLocaleDateString("th-TH")}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2">
+                    <span className={`rounded px-1.5 py-0.5 text-xs ${STATUS_CLASS[e.status]}`}>
+                      {STATUS_LABEL[e.status]}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {events.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-3 text-gray-400">
+                    ยังไม่มีงานที่สร้างไว้
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
