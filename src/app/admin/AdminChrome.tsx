@@ -78,6 +78,14 @@ export function AdminChrome({
                 สถานะระบบ
               </Link>
             )}
+            {isSuperadmin && (
+              <Link
+                href="/admin/faculty-face-bank"
+                className="shrink-0 whitespace-nowrap text-indigo-100 transition-colors hover:text-white"
+              >
+                คลังใบหน้าอาจารย์
+              </Link>
+            )}
           </nav>
         </div>
       </header>

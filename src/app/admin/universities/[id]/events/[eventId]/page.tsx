@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PhotoEventStatus } from "@/generated/prisma/enums";
+import { AdminRole, PhotoEventStatus } from "@/generated/prisma/enums";
 import { StartArchiveButton } from "./StartArchiveButton";
 import { DeleteEventDataButton } from "./DeleteEventDataButton";
 import { ReimportArchiveButton } from "./ReimportArchiveButton";
@@ -182,9 +182,19 @@ export default async function PhotoEventDetailPage({
           </div>
         )}
 
-        {event.status !== "ARCHIVED" && !faceBankJobInProgress && (
-          <BuildFaceBankButton universityId={universityId} photoEventId={eventId} />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {event.status !== "ARCHIVED" && !faceBankJobInProgress && (
+            <BuildFaceBankButton universityId={universityId} photoEventId={eventId} />
+          )}
+          {user.role === AdminRole.SUPERADMIN && (
+            <Link
+              href="/admin/faculty-face-bank"
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              จัดการคลังใบหน้า (ดูทั้งหมด/ค้นหา)
+            </Link>
+          )}
+        </div>
       </section>
     </div>
   );

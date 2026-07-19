@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess } from "@/lib/authz";
 import { embedFace, isPcPhotoServerConfigured } from "@/lib/pcPhotoServer";
+import { cosineSimilarity } from "@/lib/groupPhoto/faceMatching";
 
 // Same generous crop window validated in the de-risk spike (pc-photo-server/spike-face-recognition)
 // against real, extremely high-resolution production photos — see EMBEDDING_FACES stage's own
@@ -17,16 +18,6 @@ export type FaceSearchResult =
   | { status: "no_face_detected" }
   | { status: "ok"; candidates: FaceSearchCandidate[] }
   | { status: "error"; message: string };
-
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
-  }
-  return dot / (Math.sqrt(na) * Math.sqrt(nb));
-}
 
 /**
  * Crops a generous window around (x, y) on the given photo, embeds it via the self-hosted PC
