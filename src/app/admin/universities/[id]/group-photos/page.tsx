@@ -756,11 +756,17 @@ async function PhotosTab({
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <SharePhotoLinksButton
-          selectFormId={PHOTO_SELECT_FORM_ID}
-          photos={photos.map((p) => ({ id: p.id, name: p.name }))}
-        />
+      <div className="mb-4 flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <SharePhotoLinksButton
+            selectFormId={PHOTO_SELECT_FORM_ID}
+            photos={photos.map((p) => ({ id: p.id, name: p.name }))}
+          />
+          <UploadGroupPhotoButton
+            universityId={universityId}
+            photoEventId={photoEventId}
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs text-gray-500">เรียงตาม:</span>
           <div className="flex flex-wrap items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
@@ -791,10 +797,6 @@ async function PhotosTab({
               )}
             </Link>
           </div>
-          <UploadGroupPhotoButton
-            universityId={universityId}
-            photoEventId={photoEventId}
-          />
         </div>
       </div>
 

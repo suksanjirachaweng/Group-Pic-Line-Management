@@ -98,46 +98,37 @@ export default async function SystemStatusPage() {
 
       <section className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-900">Cron Jobs</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="text-xs text-gray-400">
-                <th className="whitespace-nowrap pb-2 pr-3 font-normal">งาน</th>
-                <th className="whitespace-nowrap pb-2 pr-3 font-normal">รันล่าสุด</th>
-                <th className="whitespace-nowrap pb-2 pr-3 font-normal">สถานะ</th>
-                <th className="whitespace-nowrap pb-2 font-normal">รายละเอียด</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {cronJobs.map((job) => {
-                const badge = job.neverRan
-                  ? { text: "ไม่เคยรัน", cls: "bg-gray-100 text-gray-500" }
-                  : job.isOverdue
-                    ? { text: "ค้าง / ไม่รันตามกำหนด", cls: "bg-red-100 text-red-700" }
-                    : job.lastStatus === "ERROR"
-                      ? { text: "เกิดข้อผิดพลาด", cls: "bg-amber-100 text-amber-700" }
-                      : { text: "ปกติ", cls: "bg-green-100 text-green-700" };
-                return (
-                  <tr key={job.key}>
-                    <td className="whitespace-nowrap py-2 pr-3 text-gray-900">
-                      {job.label}
-                      <div className="text-xs text-gray-400">
-                        {job.key} · ทุก {job.expectedIntervalMinutes >= 60 ? `${job.expectedIntervalMinutes / 60} ชม.` : `${job.expectedIntervalMinutes} นาที`}
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-gray-600">
-                      {job.lastRunAt ? timeAgoThai(job.lastRunAt) : "—"}
-                    </td>
-                    <td className="whitespace-nowrap py-2 pr-3">
-                      <span className={`rounded px-2 py-0.5 text-xs ${badge.cls}`}>{badge.text}</span>
-                    </td>
-                    <td className="whitespace-nowrap py-2 text-xs text-red-600">{job.lastError ?? ""}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {/* Card list instead of a <table> — a 4-column table has no good mobile answer (squeezed
+            columns or a horizontal scroll with no visible scrollbar on iOS Safari, both of which
+            read as broken); stacking each job's fields works cleanly at every width instead. */}
+        <ul className="space-y-2">
+          {cronJobs.map((job) => {
+            const badge = job.neverRan
+              ? { text: "ไม่เคยรัน", cls: "bg-gray-100 text-gray-500" }
+              : job.isOverdue
+                ? { text: "ค้าง / ไม่รันตามกำหนด", cls: "bg-red-100 text-red-700" }
+                : job.lastStatus === "ERROR"
+                  ? { text: "เกิดข้อผิดพลาด", cls: "bg-amber-100 text-amber-700" }
+                  : { text: "ปกติ", cls: "bg-green-100 text-green-700" };
+            return (
+              <li key={job.key} className="rounded-md border border-gray-100 bg-gray-50/50 p-3 text-sm">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div className="font-medium text-gray-900">{job.label}</div>
+                    <div className="text-xs text-gray-400">
+                      {job.key} · ทุก {job.expectedIntervalMinutes >= 60 ? `${job.expectedIntervalMinutes / 60} ชม.` : `${job.expectedIntervalMinutes} นาที`}
+                    </div>
+                  </div>
+                  <span className={`shrink-0 rounded px-2 py-0.5 text-xs ${badge.cls}`}>{badge.text}</span>
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  รันล่าสุด: {job.lastRunAt ? timeAgoThai(job.lastRunAt) : "—"}
+                </div>
+                {job.lastError && <div className="mt-1 text-xs text-red-600">{job.lastError}</div>}
+              </li>
+            );
+          })}
+        </ul>
       </section>
 
       <section className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
