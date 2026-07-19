@@ -1,6 +1,8 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { requireSuperadmin } from "@/lib/authz";
 import { embedFace, isPcPhotoServerConfigured } from "@/lib/pcPhotoServer";
 import { cosineSimilarity } from "@/lib/groupPhoto/faceMatching";
@@ -104,4 +106,45 @@ export async function searchFaceBankByUpload(
     .slice(0, TOP_CANDIDATES);
 
   return { status: "ok", candidates: ranked };
+}
+
+export type FaceBankProfileActionState = { error: string } | { success: true } | null;
+
+export async function renameFacultyFaceProfile(
+  id: string,
+  _prevState: FaceBankProfileActionState,
+  formData: FormData,
+): Promise<FaceBankProfileActionState> {
+  await requireSuperadmin();
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "กรุณากรอกชื่อ" };
+
+  try {
+    await prisma.facultyFaceProfile.update({ where: { id }, data: { name } });
+  } catch (err) {
+    // name is @unique — renaming to a name another profile already has is a real, expected user
+    // error (e.g. merging two entries manually isn't supported, so this surfaces instead of
+    // silently overwriting the other row).
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return { error: `มีชื่อ "${name}" อยู่ในคลังแล้ว` };
+    }
+    return { error: err instanceof Error ? err.message : "บันทึกไม่สำเร็จ" };
+  }
+
+  revalidatePath("/admin/faculty-face-bank");
+  return { success: true };
+}
+
+export async function deleteFacultyFaceProfile(id: string): Promise<{ error: string } | { success: true }> {
+  await requireSuperadmin();
+
+  try {
+    await prisma.facultyFaceProfile.delete({ where: { id } });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "ลบไม่สำเร็จ" };
+  }
+
+  revalidatePath("/admin/faculty-face-bank");
+  return { success: true };
 }
