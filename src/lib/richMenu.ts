@@ -4,7 +4,11 @@ import path from "node:path";
 import { messagingApi } from "@line/bot-sdk";
 import { decryptSecret } from "@/lib/crypto";
 
-const RICH_MENU_IMAGE_PATH = path.join(process.cwd(), "public", "richmenu.png");
+// JPEG, not PNG — LINE's rich menu image upload rejects anything over 1MB (413 Request Entity Too
+// Large), and this artwork is a detailed photo illustration that PNG can't compress under that
+// limit (came out ~2MB as PNG); JPEG at quality 90 lands comfortably under it (~380KB) with no
+// visible quality loss on the text/icons.
+const RICH_MENU_IMAGE_PATH = path.join(process.cwd(), "public", "richmenu.jpg");
 
 // This operator's own photo-ordering site — the same for every university this system serves.
 const ORDER_PHOTOS_URL = "https://www.newsalon1999.com/booking.html";
@@ -25,7 +29,7 @@ export async function publishRichMenu(
   const client = new messagingApi.MessagingApiClient({ channelAccessToken });
   const blobClient = new messagingApi.MessagingApiBlobClient({ channelAccessToken });
 
-  // Large-format canvas (2500x1686) — matches richmenu.png's own layout: a big left-hand
+  // Large-format canvas (2500x1686) — matches richmenu.jpg's own layout: a big left-hand
   // registration button spanning the full height (~70.6% of the width), with "order photos" /
   // "track status" stacked in the remaining right-hand column. Switched from the old compact
   // (2500x843) equal-thirds layout because the redesigned artwork's proportions don't fit a short
@@ -43,7 +47,7 @@ export async function publishRichMenu(
   });
 
   const imageBuffer = await fs.readFile(RICH_MENU_IMAGE_PATH);
-  await blobClient.setRichMenuImage(richMenuId, new Blob([new Uint8Array(imageBuffer)], { type: "image/png" }));
+  await blobClient.setRichMenuImage(richMenuId, new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" }));
   await client.setDefaultRichMenu(richMenuId);
 
   if (previousRichMenuId && previousRichMenuId !== richMenuId) {
