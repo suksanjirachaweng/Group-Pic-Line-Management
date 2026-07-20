@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess, AuthzError } from "@/lib/authz";
 import { generateCardsPdf } from "@/lib/cardGenerator/generateCardsPdf";
+import { getChannelQrInfo } from "@/lib/lineQr";
 
 // One generation request stays comfortably inside a serverless function timeout even at this cap
 // — pdfkit renders a simple page (one number + a cached QR image) in well under a millisecond.
@@ -30,21 +31,41 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return new NextResponse(`Range too large — max ${MAX_CARDS} cards per generation`, { status: 400 });
   }
 
-  const origin = sp.get("origin");
-  if (!origin) return new NextResponse("Missing origin", { status: 400 });
+  const includeQr = sp.get("qr") === "1";
+  let qrUrl: string | null = null;
+  if (includeQr) {
+    const channelId = sp.get("channelId");
+    const pool = await prisma.universityChannelPool.findMany({
+      where: { universityId, isActive: true, channel: { isActive: true } },
+      include: { channel: true },
+    });
+    const entry = channelId ? pool.find((p) => p.channelId === channelId) : pool[0];
+    if (!entry) {
+      return new NextResponse(
+        channelId ? "Selected LINE channel not found for this university" : "This university has no LINE channel",
+        { status: 400 },
+      );
+    }
+    const qrInfo = await getChannelQrInfo(entry.channel);
+    if (!qrInfo) {
+      return new NextResponse("Couldn't fetch this LINE channel's add-friend info — check its access token", {
+        status: 502,
+      });
+    }
+    qrUrl = qrInfo.addFriendUrl;
+  }
 
   let buffer: Buffer;
   try {
     buffer = await generateCardsPdf({
       startCode,
       endCode,
-      includeQr: sp.get("qr") === "1",
+      includeQr,
       includeFillIn: sp.get("fillIn") === "1",
       includeBrand: sp.get("brand") === "1",
       eventName: sp.get("eventName") ?? "",
       year: sp.get("year") ?? "",
-      origin,
-      universitySlug: university.slug,
+      qrUrl,
     });
   } catch (err) {
     console.error("generateCardsPdf failed", err);

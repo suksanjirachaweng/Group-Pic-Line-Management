@@ -13,6 +13,13 @@ export default async function CardGeneratorPage({ params }: { params: Promise<{ 
   const university = await prisma.university.findUnique({ where: { id: universityId } });
   if (!university) notFound();
 
+  const pool = await prisma.universityChannelPool.findMany({
+    where: { universityId, isActive: true, channel: { isActive: true } },
+    include: { channel: { select: { id: true, name: true } } },
+    orderBy: { channel: { name: "asc" } },
+  });
+  const channels = pool.map((p) => ({ id: p.channel.id, name: p.channel.name }));
+
   return (
     <div className="max-w-xl">
       <div className="mb-4 flex items-center justify-between">
@@ -22,7 +29,7 @@ export default async function CardGeneratorPage({ params }: { params: Promise<{ 
         สร้างไฟล์ PDF แผ่นป้ายเบอร์ถ่ายภาพหมู่ ขนาด 6x4 นิ้ว หน้าละ 1 ใบ — เลือกช่วงเบอร์แล้วกด
         &quot;สร้าง PDF&quot; เพื่อดาวน์โหลด
       </p>
-      <CardGeneratorForm universityId={universityId} />
+      <CardGeneratorForm universityId={universityId} channels={channels} />
     </div>
   );
 }

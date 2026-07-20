@@ -4,10 +4,19 @@ import { useState } from "react";
 
 const CURRENT_BE_YEAR = String(new Date().getFullYear() + 543);
 
-export function CardGeneratorForm({ universityId }: { universityId: string }) {
+type ChannelOption = { id: string; name: string };
+
+export function CardGeneratorForm({
+  universityId,
+  channels,
+}: {
+  universityId: string;
+  channels: ChannelOption[];
+}) {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
-  const [includeQr, setIncludeQr] = useState(true);
+  const [includeQr, setIncludeQr] = useState(channels.length > 0);
+  const [channelId, setChannelId] = useState(channels[0]?.id ?? "");
   const [includeFillIn, setIncludeFillIn] = useState(true);
   const [includeBrand, setIncludeBrand] = useState(true);
   const [includeEventName, setIncludeEventName] = useState(false);
@@ -29,6 +38,10 @@ export function CardGeneratorForm({ universityId }: { universityId: string }) {
       setError(`ช่วงเบอร์กว้างเกินไป (${count} ใบ) — สร้างได้ครั้งละไม่เกิน 3000 ใบ`);
       return;
     }
+    if (includeQr && !channelId) {
+      setError("กรุณาเลือก LINE Channel สำหรับ QR code");
+      return;
+    }
     setError(null);
 
     const params = new URLSearchParams({
@@ -39,8 +52,8 @@ export function CardGeneratorForm({ universityId }: { universityId: string }) {
       brand: includeBrand ? "1" : "0",
       eventName: includeEventName ? eventName.trim() : "",
       year: includeYear ? year.trim() : "",
-      origin: window.location.origin,
     });
+    if (includeQr && channelId) params.set("channelId", channelId);
     window.location.href = `/api/admin/universities/${universityId}/cards?${params.toString()}`;
   }
 
@@ -70,10 +83,37 @@ export function CardGeneratorForm({ universityId }: { universityId: string }) {
         {rangeValid && <p className="mt-1 text-xs text-gray-400">{count} ใบ</p>}
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-gray-700">
-        <input type="checkbox" checked={includeQr} onChange={(e) => setIncludeQr(e.target.checked)} />
-        2. ใส่ QR code (ของ LINE) สำหรับสแกนลงทะเบียน
-      </label>
+      <div>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={includeQr}
+            disabled={channels.length === 0}
+            onChange={(e) => setIncludeQr(e.target.checked)}
+          />
+          2. ใส่ QR code (ของ LINE Channel มหาลัยนี้) สำหรับสแกนแอดไลน์
+        </label>
+        {channels.length === 0 ? (
+          <p className="mt-1 ml-6 text-xs text-amber-600">
+            มหาลัยนี้ยังไม่มี LINE Channel ผูกไว้ — ไปตั้งค่าที่หน้า LINE Channels ก่อน
+          </p>
+        ) : (
+          includeQr &&
+          channels.length > 1 && (
+            <select
+              value={channelId}
+              onChange={(e) => setChannelId(e.target.value)}
+              className="mt-1.5 ml-6 w-full max-w-xs rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            >
+              {channels.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )
+        )}
+      </div>
 
       <label className="flex items-center gap-2 text-sm text-gray-700">
         <input

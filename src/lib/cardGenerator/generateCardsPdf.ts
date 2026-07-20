@@ -33,11 +33,11 @@ export type CardGeneratorOptions = {
   includeBrand: boolean;
   eventName: string;
   year: string;
-  /** Absolute origin (e.g. https://group-pic-line-management.vercel.app) the QR code should point
-   * registration at — read from the browser at request time (`window.location.origin`), same
-   * pattern already used by SharePhotoLinksButton, rather than a hardcoded/env-derived value. */
-  origin: string;
-  universitySlug: string;
+  /** The LINE channel's own "add friend" URL (same link/QR shown on the channel management page,
+   * e.g. https://line.me/R/ti/p/@xxxxx) — scanning it opens LINE directly and adds the studio's OA
+   * as a friend, which is what a phone camera scan of a printed card needs (a plain /register/
+   * link opens in an external browser instead of LINE). Required whenever includeQr is true. */
+  qrUrl: string | null;
 };
 
 /** Shrink-to-fit the largest font size (in 1pt steps) whose rendered width fits maxWidth. */
@@ -163,11 +163,10 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
     includeBrand,
     eventName,
     year,
-    origin,
-    universitySlug,
+    qrUrl,
   } = options;
 
-  const qrBuffer = includeQr ? await buildQrBuffer(`${origin}/register/${universitySlug}`) : null;
+  const qrBuffer = includeQr && qrUrl ? await buildQrBuffer(qrUrl) : null;
 
   // `font: null` skips pdfkit's default-font init, which reads a bundled Helvetica .afm metrics
   // file from a path that doesn't survive Next.js/Turbopack bundling (ENOENT at runtime) — we
@@ -196,6 +195,9 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
   const bottomBandY = 200;
   const bottomBandHeight = PAGE_HEIGHT - bottomBandY - MARGIN;
   const contentWidth = PAGE_WIDTH - MARGIN * 2;
+  // qrBuffer is null if includeQr was requested but no qrUrl was resolvable (e.g. university has
+  // no LINE channel yet) — falls back to the fill-in-only/no-QR layout rather than drawing a blank box.
+  const showQr = includeQr && !!qrBuffer;
 
   for (let code = startCode; code <= endCode; code++) {
     doc.addPage({ size: [PAGE_WIDTH, PAGE_HEIGHT], margin: 0 });
@@ -254,7 +256,7 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
       .text(codeStr, MARGIN, codeY, { width: contentWidth, align: "center", fill: true, stroke: true });
     doc.restore();
 
-    if (includeFillIn && includeQr) {
+    if (includeFillIn && showQr) {
       const qrSize = bottomBandHeight;
       // The arrow only needs its own narrow column in the top ~18pt of the band — the fill-in
       // lines (rows below the checkbox row) start well under that and can run much wider, all the
@@ -282,7 +284,7 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
       });
     } else if (includeFillIn) {
       drawFillInBox(doc, MARGIN, bottomBandY, contentWidth);
-    } else if (includeQr) {
+    } else if (showQr) {
       const qrSize = bottomBandHeight;
       const arrowGap = 6;
       const arrowW = contentWidth - qrSize - 14 - arrowGap;
