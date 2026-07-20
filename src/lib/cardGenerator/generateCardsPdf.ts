@@ -202,6 +202,13 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
   // qrBuffer is null if includeQr was requested but no qrUrl was resolvable (e.g. university has
   // no LINE channel yet) — falls back to the fill-in-only/no-QR layout rather than drawing a blank box.
   const showQr = includeQr && !!qrBuffer;
+  // With no fill-in box, the QR/arrow don't need to share a bottom band with anything — moves them
+  // to a dedicated band near the top instead, freeing the rest of the card for a bigger number
+  // (per the user's own reference layout, 2026-07-20). The combined fill-in+QR layout below is
+  // unaffected — that one still needs the QR anchored to the fill-in box it's paired with.
+  const qrOnlyTopLayout = showQr && !includeFillIn;
+  const TOP_SCAN_BAND_Y = 38;
+  const TOP_SCAN_BAND_HEIGHT = 66;
 
   for (let code = startCode; code <= endCode; code++) {
     doc.addPage({ size: [PAGE_WIDTH, PAGE_HEIGHT], margin: 0 });
@@ -224,12 +231,26 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
         .text(headerRight, MARGIN, MARGIN, { width: contentWidth, align: "right", lineBreak: false });
     }
 
-    // Fills the whole space between the header row and the fill-in/QR band, not a fixed
-    // (previously 150pt-capped) size — the fixed cap left a lot of unused vertical room, and
-    // fitFontSize's width-only check had also been measuring against the *regular* font (it ran
-    // before `.font("Sarabun-Bold")` was set below), which under-fits since bold glyphs are wider.
-    const numberTop = 40;
-    const numberBottom = bottomBandY - 14;
+    if (qrOnlyTopLayout) {
+      const qrSize = TOP_SCAN_BAND_HEIGHT;
+      const arrowGap = 8;
+      const arrowH = 30;
+      const arrowY = TOP_SCAN_BAND_Y + (TOP_SCAN_BAND_HEIGHT - arrowH) / 2;
+      const arrowW = contentWidth - qrSize - arrowGap;
+      drawScanArrow(doc, MARGIN, arrowY, arrowW, arrowH);
+      doc.image(Buffer.from(qrBuffer!), PAGE_WIDTH - MARGIN - qrSize, TOP_SCAN_BAND_Y, {
+        width: qrSize,
+        height: qrSize,
+      });
+    }
+
+    // Fills the whole space between the header row (or the top scan band, in QR-only layout) and
+    // the fill-in/QR band, not a fixed (previously 150pt-capped) size — the fixed cap left a lot
+    // of unused vertical room, and fitFontSize's width-only check had also been measuring against
+    // the *regular* font (it ran before `.font("Sarabun-Bold")` was set below), which under-fits
+    // since bold glyphs are wider.
+    const numberTop = qrOnlyTopLayout ? TOP_SCAN_BAND_Y + TOP_SCAN_BAND_HEIGHT + 14 : 40;
+    const numberBottom = qrOnlyTopLayout ? PAGE_HEIGHT - MARGIN : bottomBandY - 14;
     const codeStr = String(code);
     doc.font("Sarabun-Bold");
     const codeSize = fitFontSizeBox(doc, codeStr, contentWidth - 16, numberBottom - numberTop, 400, 40) * CODE_SIZE_SCALE;
@@ -257,7 +278,14 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
       // stroke weight alone still read as fairly light, per the user's own comparison against a
       // hand-drawn reference box.
       .lineWidth(Math.max(1, codeSize * 0.02))
-      .text(codeStr, MARGIN, codeY, { width: contentWidth, align: "center", fill: true, stroke: true });
+      // `height` isn't a real layout constraint here (codeY is already solved by hand above via
+      // cap-height centering) — it's there purely to stop PDFKit's own auto-pagination, which
+      // checks the text's *nominal* ascender-to-descender line height (much taller than a digit's
+      // visual cap-height) against the page bottom and silently inserts an extra blank/overflow
+      // page if that nominal box would extend past it, even though nothing visually overflows.
+      // Only ever surfaced once codeY was placed close enough to the bottom margin (the top-QR
+      // layout) for the nominal line height to spill past page 288 — bit us as a real 2-page PDF.
+      .text(codeStr, MARGIN, codeY, { width: contentWidth, height: PAGE_HEIGHT, align: "center", fill: true, stroke: true });
     doc.restore();
 
     if (includeFillIn && showQr) {
@@ -288,16 +316,8 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
       });
     } else if (includeFillIn) {
       drawFillInBox(doc, MARGIN, bottomBandY, contentWidth);
-    } else if (showQr) {
-      const qrSize = bottomBandHeight;
-      const arrowGap = 6;
-      const arrowW = contentWidth - qrSize - 14 - arrowGap;
-      drawScanArrow(doc, MARGIN, bottomBandY, arrowW, 18);
-      doc.image(Buffer.from(qrBuffer!), PAGE_WIDTH - MARGIN - qrSize, bottomBandY, {
-        width: qrSize,
-        height: qrSize,
-      });
     }
+    // showQr-only (no fill-in) is already drawn above, in the dedicated top scan band.
   }
 
   doc.end();
