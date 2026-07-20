@@ -17,6 +17,7 @@ import { EventFilterDropdown } from "../EventFilterDropdown";
 import { SelectAllCheckbox } from "./SelectAllCheckbox";
 import { BulkSendButton } from "./BulkSendButton";
 import { BulkDeliveryStatusButton } from "./BulkDeliveryStatusButton";
+import { BulkMoveEventButton } from "./BulkMoveEventButton";
 
 const SELECT_FORM_ID = "bulk-select-form";
 
@@ -167,11 +168,15 @@ export default async function RegistrantsPage({
           <Link href={`/admin/universities/${universityId}/group-photos`} className="text-sm font-normal text-gray-500 hover:text-gray-700">
             ← กลับ
           </Link>
+          <span className="inline-flex items-center rounded-full bg-green-500 px-2 py-0.5 text-xs font-semibold text-white">
+            LINE
+          </span>
           {university.name} — Registrants
           <span className="ml-2 text-sm font-normal text-gray-400">{total} total</span>
         </h1>
         <div className="flex flex-wrap items-center gap-2">
           <EventFilterDropdown events={events} selectedEventId={selectedPhotoEventId} />
+          <BulkMoveEventButton universityId={universityId} selectFormId={SELECT_FORM_ID} events={events} />
           <BulkDeliveryStatusButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
           <BulkSendButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
           <a
@@ -235,7 +240,7 @@ export default async function RegistrantsPage({
         {sortBy && <input type="hidden" name="sortBy" value={sortBy} />}
         {sortDir && <input type="hidden" name="sortDir" value={sortDir} />}
         {eventId && <input type="hidden" name="eventId" value={eventId} />}
-        <button type="submit" className="rounded-md bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white">
+        <button type="submit" className="rounded-md bg-green-600 hover:bg-green-700 px-3 py-1.5 text-sm font-medium text-white">
           Filter
         </button>
       </form>
@@ -288,7 +293,7 @@ export default async function RegistrantsPage({
               />
             </div>
           ))}
-          <button type="submit" className="rounded-md bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white">
+          <button type="submit" className="rounded-md bg-green-600 hover:bg-green-700 px-3 py-1.5 text-sm font-medium text-white">
             Apply advanced filter
           </button>
         </form>
@@ -338,7 +343,7 @@ export default async function RegistrantsPage({
                     <input type="checkbox" name="registrantIds" value={r.id} aria-label={`Select ${r.displayName ?? r.id}`} />
                   </td>
                   <td className="whitespace-nowrap px-4 py-2">
-                    <Link href={`/admin/universities/${universityId}/registrants/${r.id}`} className="text-gray-900 hover:text-indigo-600 hover:underline">
+                    <Link href={`/admin/universities/${universityId}/registrants/${r.id}`} className="text-gray-900 hover:text-green-600 hover:underline">
                       {r.displayName ?? "(no name)"}
                     </Link>
                   </td>

@@ -58,13 +58,22 @@ export function UniversitySubNav({
           const active = tab.slug
             ? pathname.startsWith(href)
             : pathname === base;
+          // "LINE Registrants" gets the LINE-green accent instead of the usual indigo when active —
+          // ties it visually to the green "ผู้ลงทะเบียนผ่าน LINE" panel on the group-photos page.
+          // Two full literal class strings (not a template-interpolated color name) — Tailwind's
+          // build-time scanner only generates CSS for class names it can find as literal substrings
+          // in the source, so `border-${color}-600` would silently produce no CSS at all.
+          const activeClass =
+            tab.slug === "registrants"
+              ? "shrink-0 whitespace-nowrap border-b-2 border-green-600 px-3 py-2 text-sm font-medium text-green-600"
+              : "shrink-0 whitespace-nowrap border-b-2 border-indigo-600 px-3 py-2 text-sm font-medium text-indigo-600";
           return (
             <Link
               key={tab.label}
               href={href}
               className={
                 active
-                  ? "shrink-0 whitespace-nowrap border-b-2 border-indigo-600 px-3 py-2 text-sm font-medium text-indigo-600"
+                  ? activeClass
                   : "shrink-0 whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700"
               }
             >

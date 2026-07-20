@@ -74,7 +74,7 @@ export function BulkSendButton({ universityId, selectFormId }: { universityId: s
       <button
         type="button"
         onClick={handleOpen}
-        className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
+        className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
       >
         ส่งข้อความให้ที่เลือก
       </button>
@@ -185,7 +185,7 @@ export function BulkSendButton({ universityId, selectFormId }: { universityId: s
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                  className="rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                 >
                   {isPending ? "กำลังส่ง..." : "ยืนยันส่ง"}
                 </button>

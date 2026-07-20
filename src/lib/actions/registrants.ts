@@ -77,6 +77,39 @@ export async function bulkSetDeliveryStatus(
   return { success: true, count: result.count };
 }
 
+export type BulkMoveEventState = { success: true; count: number } | { success: false; error: string } | null;
+
+/**
+ * Manual override for which PhotoEvent a registrant belongs to — normally `photoEventId` is only
+ * ever set automatically (bootstrap-then-stick: stamped the first time a tag match succeeds, see
+ * resolveTagMatch.ts), with no way to fix a wrong auto-match. This is that escape hatch, e.g. when
+ * two events' code ranges/dates overlap and the wrong one claimed a registrant first.
+ */
+export async function bulkMoveRegistrantsToEvent(
+  universityId: string,
+  _prevState: BulkMoveEventState,
+  formData: FormData,
+): Promise<BulkMoveEventState> {
+  await requireUniversityAccess(universityId);
+
+  const registrantIds = formData.getAll("registrantIds").map(String);
+  if (registrantIds.length === 0) return { success: false, error: "ยังไม่ได้เลือกผู้รับ" };
+
+  const photoEventId = String(formData.get("photoEventId") ?? "");
+  if (!photoEventId) return { success: false, error: "กรุณาเลือกงาน (event)" };
+
+  const event = await prisma.photoEvent.findUnique({ where: { id: photoEventId, universityId }, select: { id: true } });
+  if (!event) return { success: false, error: "ไม่พบงานนี้ในมหาวิทยาลัยนี้" };
+
+  const result = await prisma.registrant.updateMany({
+    where: { id: { in: registrantIds }, universityId },
+    data: { photoEventId },
+  });
+
+  revalidatePath(`/admin/universities/${universityId}/registrants`);
+  return { success: true, count: result.count };
+}
+
 export async function sendManualMessage(
   universityId: string,
   registrantId: string,

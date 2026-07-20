@@ -1,32 +1,32 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { bulkSetDeliveryStatus, type BulkDeliveryStatusState } from "@/lib/actions/registrants";
-import { DeliveryStatus } from "@/generated/prisma/enums";
-
-const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
-  REGISTERED: "ลงทะเบียนแล้ว",
-  PHOTO_ORDERED: "สั่งจองรูปแล้ว",
-  PHOTO_RECEIVED: "ได้รับรูปแล้ว",
-  NO_SHOW: "ยกเลิกไม่เข้ารับ",
-  OTHER: "อื่นๆ",
-};
+import { bulkMoveRegistrantsToEvent, type BulkMoveEventState } from "@/lib/actions/registrants";
+import type { PhotoEventListItem } from "@/lib/actions/photoEvents";
 
 /**
- * Bulk-sets delivery status for whatever's checked in the registrants list's shared select-form —
- * a sibling to BulkSendButton, reading the exact same `registrantIds` checkboxes, since setting
- * status and messaging are two separate admin intents that just happen to share the same
- * "select some rows first" UI.
+ * Manual override for which PhotoEvent the selected registrants belong to — a sibling to
+ * BulkDeliveryStatusButton, reading the same shared `registrantIds` checkboxes. Exists because
+ * photoEventId is otherwise only ever set automatically (bootstrap-then-stick matching), with no
+ * way for an admin to fix a mis-assigned registrant when two events' code ranges/dates overlap.
  */
-export function BulkDeliveryStatusButton({ universityId, selectFormId }: { universityId: string; selectFormId: string }) {
+export function BulkMoveEventButton({
+  universityId,
+  selectFormId,
+  events,
+}: {
+  universityId: string;
+  selectFormId: string;
+  events: PhotoEventListItem[];
+}) {
   const [open, setOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [status, setStatus] = useState<DeliveryStatus>(DeliveryStatus.PHOTO_ORDERED);
+  const [photoEventId, setPhotoEventId] = useState(events[0]?.id ?? "");
 
-  const [, formAction, isPending] = useActionState<BulkDeliveryStatusState, FormData>(async (prevState, formData) => {
-    const result = await bulkSetDeliveryStatus(universityId, prevState, formData);
+  const [, formAction, isPending] = useActionState<BulkMoveEventState, FormData>(async (prevState, formData) => {
+    const result = await bulkMoveRegistrantsToEvent(universityId, prevState, formData);
     if (result?.success) {
-      window.alert(`ตั้งสถานะ "${DELIVERY_STATUS_LABEL[status]}" ให้ ${result.count} คนแล้ว`);
+      window.alert(`ย้าย ${result.count} คนไป event นี้แล้ว`);
       setOpen(false);
     } else if (result) {
       window.alert(`ไม่สำเร็จ: ${result.error}`);
@@ -46,14 +46,16 @@ export function BulkDeliveryStatusButton({ universityId, selectFormId }: { unive
     setOpen(true);
   }
 
+  if (events.length < 2) return null; // nothing to move between with 0-1 events
+
   return (
     <>
       <button
         type="button"
         onClick={handleOpen}
-        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        className="rounded-md border border-green-300 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-50"
       >
-        ตั้งสถานะการรับรูป
+        ย้าย event
       </button>
 
       {open && (
@@ -67,18 +69,18 @@ export function BulkDeliveryStatusButton({ universityId, selectFormId }: { unive
               <input key={id} type="hidden" name="registrantIds" value={id} />
             ))}
             <h3 className="mb-3 text-sm font-semibold text-gray-900">
-              ตั้งสถานะการรับรูปให้ {selectedIds.length} คนที่เลือก
+              ย้าย {selectedIds.length} คนที่เลือกไป event
             </h3>
 
             <select
-              name="deliveryStatus"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as DeliveryStatus)}
+              name="photoEventId"
+              value={photoEventId}
+              onChange={(e) => setPhotoEventId(e.target.value)}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             >
-              {Object.values(DeliveryStatus).map((s) => (
-                <option key={s} value={s}>
-                  {DELIVERY_STATUS_LABEL[s]}
+              {events.map((ev) => (
+                <option key={ev.id} value={ev.id}>
+                  {ev.label ? `${ev.code} — ${ev.label}` : ev.code}
                 </option>
               ))}
             </select>
@@ -96,7 +98,7 @@ export function BulkDeliveryStatusButton({ universityId, selectFormId }: { unive
                 disabled={isPending}
                 className="rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
               >
-                {isPending ? "กำลังบันทึก..." : "ยืนยัน"}
+                {isPending ? "กำลังย้าย..." : "ยืนยัน"}
               </button>
             </div>
           </form>
