@@ -25,6 +25,7 @@ import { UploadGroupPhotoButton } from "./UploadGroupPhotoButton";
 import { DeleteGroupPhotoButton } from "./DeleteGroupPhotoButton";
 import { PhotoSelectAll } from "./PhotoSelectAll";
 import { SharePhotoLinksButton } from "./SharePhotoLinksButton";
+import { PhotoSortDropdown } from "./PhotoSortDropdown";
 import { EventFilterDropdown } from "../EventFilterDropdown";
 
 const PAGE_SIZE = 50;
@@ -88,7 +89,15 @@ const ACTIVE_PHOTOS_TAB_CLASS =
 const INACTIVE_PHOTOS_TAB_CLASS =
   "border-b-2 border-transparent px-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700";
 
-type PhotoSortKey = "upload" | "name";
+type PhotoSortKey = "upload" | "name" | "status";
+
+// Workflow-priority order, not alphabetical — "เริ่มดำเนินการ" (not started yet) sorts first since
+// that's the status most likely to need an admin's attention, "แก้ไขเสร็จแล้ว" (done) sorts last.
+const PHOTO_STATUS_SORT_RANK: Record<GroupPhotoStatus, number> = {
+  NOT_STARTED: 0,
+  NEEDS_EDIT: 1,
+  DONE: 2,
+};
 
 export default async function GroupPhotosPage({
   params,
@@ -128,7 +137,8 @@ export default async function GroupPhotosPage({
   const dir: "asc" | "desc" = dirParam === "desc" ? "desc" : "asc";
   // Separate `psort`/`pdir` query params (not `sort`/`dir`) so switching tabs never carries the
   // other tab's sort state along by accident.
-  const photoSort: PhotoSortKey = psortParam === "name" ? "name" : "upload";
+  const photoSort: PhotoSortKey =
+    psortParam === "name" ? "name" : psortParam === "status" ? "status" : "upload";
   const photoDir: "asc" | "desc" = pdirParam === "desc" ? "desc" : "asc";
 
   const session = await getServerSession(authOptions);
@@ -235,7 +245,6 @@ export default async function GroupPhotosPage({
           photoEventId={selectedPhotoEventId}
           photoSort={photoSort}
           photoDir={photoDir}
-          eventIdParam={eventIdParam}
         />
       )}
     </div>
@@ -705,20 +714,29 @@ async function PhotosTab({
   photoEventId,
   photoSort,
   photoDir,
-  eventIdParam,
 }: {
   universityId: string;
   photoEventId: string;
   photoSort: PhotoSortKey;
   photoDir: "asc" | "desc";
-  eventIdParam: string | undefined;
 }) {
-  const photos = await prisma.groupPhoto.findMany({
+  // "status" has no natural DB column order (the enum's alphabetical order isn't the workflow
+  // order we want — see PHOTO_STATUS_SORT_RANK) — fetched in a stable order, then re-sorted in JS.
+  // Fine at this app's scale (a university typically has ~10-24 group photos).
+  const photosRaw = await prisma.groupPhoto.findMany({
     where: { universityId, photoEventId },
     orderBy:
-      photoSort === "name" ? { name: photoDir } : { sortOrder: photoDir },
+      photoSort === "name"
+        ? { name: photoDir }
+        : photoSort === "status"
+          ? { name: "asc" }
+          : { sortOrder: photoDir },
     include: { _count: { select: { tags: true } } },
   });
+  const photos =
+    photoSort === "status"
+      ? [...photosRaw].sort((a, b) => PHOTO_STATUS_SORT_RANK[a.status] - PHOTO_STATUS_SORT_RANK[b.status])
+      : photosRaw;
 
   // Only the mobile quick-tag flow's background pipeline creates these — a small badge here
   // closes the loop on "the admin doesn't need to watch it", since they can check back on any
@@ -745,59 +763,19 @@ async function PhotosTab({
       activeAutoTagByPhoto.set(job.groupPhotoId, job);
   }
 
-  function photoSortHref(key: PhotoSortKey) {
-    const sp = new URLSearchParams();
-    sp.set("tab", "photos");
-    if (eventIdParam) sp.set("eventId", eventIdParam);
-    sp.set("psort", key);
-    sp.set("pdir", photoSort === key && photoDir === "asc" ? "desc" : "asc");
-    return `?${sp.toString()}`;
-  }
-
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <SharePhotoLinksButton
-            selectFormId={PHOTO_SELECT_FORM_ID}
-            photos={photos.map((p) => ({ id: p.id, name: p.name }))}
-          />
-          <UploadGroupPhotoButton
-            universityId={universityId}
-            photoEventId={photoEventId}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs text-gray-500">เรียงตาม:</span>
-          <div className="flex flex-wrap items-center gap-1 rounded-md border border-gray-300 p-0.5 text-xs">
-            <Link
-              href={photoSortHref("upload")}
-              className={`flex items-center gap-1 whitespace-nowrap rounded px-2 py-1 font-medium ${
-                photoSort === "upload"
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-600 hover:bg-sky-50"
-              }`}
-            >
-              ลำดับอัปโหลด
-              {photoSort === "upload" && (
-                <span aria-hidden>{photoDir === "asc" ? "▲" : "▼"}</span>
-              )}
-            </Link>
-            <Link
-              href={photoSortHref("name")}
-              className={`flex items-center gap-1 whitespace-nowrap rounded px-2 py-1 font-medium ${
-                photoSort === "name"
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-600 hover:bg-sky-50"
-              }`}
-            >
-              ชื่อ
-              {photoSort === "name" && (
-                <span aria-hidden>{photoDir === "asc" ? "▲" : "▼"}</span>
-              )}
-            </Link>
-          </div>
-        </div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <SharePhotoLinksButton
+          selectFormId={PHOTO_SELECT_FORM_ID}
+          photos={photos.map((p) => ({ id: p.id, name: p.name }))}
+        />
+        <span className="text-xs text-gray-500">เรียงตาม:</span>
+        <PhotoSortDropdown value={photoSort} />
+        <UploadGroupPhotoButton
+          universityId={universityId}
+          photoEventId={photoEventId}
+        />
       </div>
 
       {photos.length === 0 ? (
