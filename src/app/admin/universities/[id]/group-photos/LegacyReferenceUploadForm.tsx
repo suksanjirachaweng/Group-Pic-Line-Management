@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useActionState } from "react";
 import {
   importLegacyReferences,
@@ -11,11 +10,9 @@ import {
 export function LegacyReferenceUploadForm({
   universityId,
   photoEventId,
-  registrantCount,
 }: {
   universityId: string;
   photoEventId: string;
-  registrantCount: number;
 }) {
   const fileAction = importLegacyReferences.bind(null, universityId, photoEventId);
   const [fileState, fileFormAction, fileIsPending] = useActionState<LegacyImportState, FormData>(fileAction, null);
@@ -117,30 +114,6 @@ export function LegacyReferenceUploadForm({
           <p className="w-full text-xs text-green-600">นำเข้าแล้ว {sheetState.count} รายการ</p>
         )}
       </form>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-green-200 bg-green-50 p-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="inline-flex w-fit flex-none items-center rounded-full bg-green-500 px-2 py-0.5 text-xs font-semibold text-white">
-            LINE
-          </span>
-          <div>
-            <label className="block text-xs font-medium text-gray-700">ผู้ลงทะเบียนผ่าน LINE</label>
-            <p className="mt-0.5 max-w-md text-xs text-gray-500">
-              ข้อมูลชื่อ/CODE ของผู้ที่ลงทะเบียนผ่านระบบ LINE โดยตรง ไม่ต้องนำเข้าเอง — อัปเดตอัตโนมัติทันทีที่มีคนลงทะเบียนใหม่
-            </p>
-          </div>
-          <div className="flex-none text-right">
-            <p className="text-2xl font-semibold text-gray-900">{registrantCount.toLocaleString()}</p>
-            <p className="text-xs text-gray-400">คนลงทะเบียนแล้ว</p>
-          </div>
-        </div>
-        <Link
-          href={`/admin/universities/${universityId}/registrants`}
-          className="ml-auto flex-none whitespace-nowrap rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
-        >
-          ดูรายชื่อ / ส่งข้อความ
-        </Link>
-      </div>
     </div>
   );
 }

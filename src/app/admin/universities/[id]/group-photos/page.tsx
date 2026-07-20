@@ -457,7 +457,6 @@ async function DataTab({
       <LegacyReferenceUploadForm
         universityId={universityId}
         photoEventId={photoEventId}
-        registrantCount={registrantRows.length}
       />
 
       <div className="mt-5 border-t border-gray-100 pt-4">
