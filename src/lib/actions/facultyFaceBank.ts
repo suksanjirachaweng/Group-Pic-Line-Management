@@ -18,6 +18,7 @@ export type FacultyFaceProfileListItem = {
   // null once the source tag/event no longer exists, e.g. after an event close-out deletes it).
   facultyName: string | null;
   universityName: string | null;
+  photoEventId: string | null;
   photoEventLabel: string | null;
 };
 
@@ -53,6 +54,7 @@ export async function listFacultyFaceProfiles(): Promise<FacultyFaceProfileListI
       updatedAt: p.updatedAt.toISOString(),
       facultyName: tag?.groupPhoto.name ?? null,
       universityName: tag?.groupPhoto.university.name ?? null,
+      photoEventId: p.lastSeenPhotoEventId,
       photoEventLabel: event ? (event.label ? `${event.code} — ${event.label}` : event.code) : null,
     };
   });

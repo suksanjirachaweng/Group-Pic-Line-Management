@@ -95,6 +95,7 @@ export function FacultyFaceBankBrowser({ profiles }: { profiles: FacultyFaceProf
   const [nameFilter, setNameFilter] = useState("");
   const [facultyFilter, setFacultyFilter] = useState("");
   const [universityFilter, setUniversityFilter] = useState("");
+  const [eventFilter, setEventFilter] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("name");
   const [viewMode, setViewMode] = useState<ViewMode>("content");
   const [editingProfile, setEditingProfile] = useState<FacultyFaceProfileListItem | null>(null);
@@ -112,6 +113,31 @@ export function FacultyFaceBankBrowser({ profiles }: { profiles: FacultyFaceProf
     [profiles],
   );
 
+  // Only events belonging to the currently-selected university — matches the same universityName
+  // join key the university filter itself already uses (photoEventId isn't tied to a university
+  // by a real FK, so there's nothing more precise to join on here anyway; see the list item's own
+  // docstring for why these lookups are all best-effort).
+  const eventOptions = useMemo(() => {
+    if (!universityFilter) return [];
+    const seen = new Map<string, string>();
+    for (const p of profiles) {
+      if (p.universityName === universityFilter && p.photoEventId && p.photoEventLabel) {
+        seen.set(p.photoEventId, p.photoEventLabel);
+      }
+    }
+    return [...seen.entries()]
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, "th"));
+  }, [profiles, universityFilter]);
+
+  function handleUniversityFilterChange(value: string) {
+    setUniversityFilter(value);
+    // A previously-selected event may not belong to the newly-selected university (or "ทั้งหมด")
+    // — clearing it avoids silently filtering by a now-irrelevant event ID the dropdown no longer
+    // even shows.
+    setEventFilter("");
+  }
+
   const filtered = useMemo(() => {
     const n = nameFilter.trim().toLowerCase();
     const f = facultyFilter.trim().toLowerCase();
@@ -119,9 +145,10 @@ export function FacultyFaceBankBrowser({ profiles }: { profiles: FacultyFaceProf
       (p) =>
         (!n || p.name.toLowerCase().includes(n)) &&
         (!f || (p.facultyName ?? "").toLowerCase().includes(f)) &&
-        (!universityFilter || p.universityName === universityFilter),
+        (!universityFilter || p.universityName === universityFilter) &&
+        (!eventFilter || p.photoEventId === eventFilter),
     );
-  }, [profiles, nameFilter, facultyFilter, universityFilter]);
+  }, [profiles, nameFilter, facultyFilter, universityFilter, eventFilter]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -171,7 +198,7 @@ export function FacultyFaceBankBrowser({ profiles }: { profiles: FacultyFaceProf
             มหาวิทยาลัย
             <select
               value={universityFilter}
-              onChange={(e) => setUniversityFilter(e.target.value)}
+              onChange={(e) => handleUniversityFilterChange(e.target.value)}
               className="mt-1 block w-48 min-w-0 max-w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm"
             >
               <option value="">ทั้งหมด</option>
@@ -182,13 +209,31 @@ export function FacultyFaceBankBrowser({ profiles }: { profiles: FacultyFaceProf
               ))}
             </select>
           </label>
-          {(nameFilter || facultyFilter || universityFilter) && (
+          {eventOptions.length > 0 && (
+            <label className="text-xs text-gray-600">
+              งานถ่ายรูป
+              <select
+                value={eventFilter}
+                onChange={(e) => setEventFilter(e.target.value)}
+                className="mt-1 block w-48 min-w-0 max-w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm"
+              >
+                <option value="">ทุกงาน</option>
+                {eventOptions.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {(nameFilter || facultyFilter || universityFilter || eventFilter) && (
             <button
               type="button"
               onClick={() => {
                 setNameFilter("");
                 setFacultyFilter("");
                 setUniversityFilter("");
+                setEventFilter("");
               }}
               className="text-xs text-gray-400 hover:text-gray-600 hover:underline"
             >
