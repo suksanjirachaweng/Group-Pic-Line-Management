@@ -168,9 +168,6 @@ export default async function RegistrantsPage({
           <Link href={`/admin/universities/${universityId}/group-photos`} className="text-sm font-normal text-gray-500 hover:text-gray-700">
             ← กลับ
           </Link>
-          <span className="inline-flex items-center rounded-full bg-green-500 px-2 py-0.5 text-xs font-semibold text-white">
-            LINE
-          </span>
           {university.name} — Registrants
           <span className="ml-2 text-sm font-normal text-gray-400">{total} total</span>
         </h1>

@@ -8,6 +8,10 @@ import QRCode from "qrcode";
 const PAGE_WIDTH = 432;
 const PAGE_HEIGHT = 288;
 const MARGIN = 14;
+// fitFontSizeBox() below fills the number's box as fully as possible — this trims that back down
+// a bit, since the max-fit size read as slightly too large/close to the box edge against a real
+// printed sample (user comparison, 2026-07-19).
+const CODE_SIZE_SCALE = 0.92;
 
 const FONT_DIR = path.join(process.cwd(), "src/lib/cardGenerator/fonts");
 const FONT_REGULAR = path.join(FONT_DIR, "THSarabun.ttf");
@@ -228,7 +232,7 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
     const numberBottom = bottomBandY - 14;
     const codeStr = String(code);
     doc.font("Sarabun-Bold");
-    const codeSize = fitFontSizeBox(doc, codeStr, contentWidth - 16, numberBottom - numberTop, 400, 40);
+    const codeSize = fitFontSizeBox(doc, codeStr, contentWidth - 16, numberBottom - numberTop, 400, 40) * CODE_SIZE_SCALE;
     doc.fontSize(codeSize);
     // PDFKit positions .text()'s y as the top of the ascender box, with the baseline at
     // y + ascender. Centering by cap-height (not currentLineHeight) means we have to place the
