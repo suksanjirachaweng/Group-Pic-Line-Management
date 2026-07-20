@@ -75,6 +75,12 @@ export default async function ChannelsPage() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={qrInfo.qrDataUrl} alt="" className="h-12 w-12 shrink-0 rounded border-2 border-[#06C755] p-0.5" />
                   )}
+                  {qrInfo?.pictureUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={qrInfo.pictureUrl} alt="" className="h-8 w-8 shrink-0 rounded-full border border-gray-200" />
+                  ) : (
+                    <span className="h-8 w-8 shrink-0 rounded-full bg-gray-100" />
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                       <span>
@@ -82,6 +88,11 @@ export default async function ChannelsPage() {
                         {!c.isActive && (
                           <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
                             inactive
+                          </span>
+                        )}
+                        {qrInfo && (
+                          <span className="ml-2 text-xs text-gray-400">
+                            {qrInfo.displayName || "(no display name)"} · {qrInfo.basicId}
                           </span>
                         )}
                       </span>
