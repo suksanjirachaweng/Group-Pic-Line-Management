@@ -426,6 +426,12 @@ model PhotoEvent {
   codeRangeMin   Int? // informational sanity-check hint only — never hard-enforced, ranges legitimately overlap across events
   codeRangeMax   Int?
   status         PhotoEventStatus @default(ACTIVE)
+  // Freely toggleable on/off — independent of `status`. Lets an admin hide a superseded-but-still-
+  // ACTIVE event's registrant entries from the student-facing LIFF list (e.g. a professor who
+  // registered last year under an old event, then registers again this year under a new one —
+  // last year's entry should stop appearing) without running the heavier one-way archive/delete
+  // pipeline. See buildLiffVisibleEventIds in the registrations route for how this is applied.
+  hiddenFromLiff Boolean          @default(false)
   archiveFileUrl String? // set once a close-out archive job succeeds
   archivedAt     DateTime?
   createdAt      DateTime         @default(now())

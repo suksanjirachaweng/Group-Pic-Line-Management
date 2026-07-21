@@ -9,6 +9,7 @@ import { DeleteEventDataButton } from "./DeleteEventDataButton";
 import { ReimportArchiveButton } from "./ReimportArchiveButton";
 import { BuildFaceBankButton } from "./BuildFaceBankButton";
 import { EditPhotoEventForm } from "./EditPhotoEventForm";
+import { ToggleLiffVisibilityButton } from "../ToggleLiffVisibilityButton";
 
 const STATUS_LABEL: Record<PhotoEventStatus, string> = {
   ACTIVE: "กำลังดำเนินการ",
@@ -73,6 +74,11 @@ export default async function PhotoEventDetailPage({
           {event.label && <span className="ml-2 text-base font-normal text-gray-500">({event.label})</span>}
         </h1>
         <span className={`rounded px-2 py-1 text-xs ${STATUS_CLASS[event.status]}`}>{STATUS_LABEL[event.status]}</span>
+      </div>
+
+      <div className="mb-4 flex items-center gap-2">
+        <span className="text-xs text-gray-500">แสดงรายการลงทะเบียนของงานนี้ในหน้า LINE ของนักศึกษา:</span>
+        <ToggleLiffVisibilityButton universityId={universityId} photoEventId={eventId} hiddenFromLiff={event.hiddenFromLiff} />
       </div>
 
       <div className="mb-4">

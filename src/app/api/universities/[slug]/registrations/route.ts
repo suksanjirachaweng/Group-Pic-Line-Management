@@ -29,8 +29,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   // filter, yet the LIFF list still showed a matched photo link).
   const events = await prisma.photoEvent.findMany({
     where: { universityId: university.id },
-    select: { id: true, startDate: true, endDate: true },
+    select: { id: true, startDate: true, endDate: true, hiddenFromLiff: true },
   });
+  const hiddenEventIds = new Set(events.filter((e) => e.hiddenFromLiff).map((e) => e.id));
 
   // `null` here means "no restriction" (every tag is eligible), used only when the university has
   // zero PhotoEvent rows at all — e.g. every event has been archived-and-deleted (see the
@@ -46,6 +47,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
     );
   }
   const eligibleEventsByRegistrant = new Map(registrants.map((r) => [r.id, eligibleEventIds(r)]));
+
+  // A registrant whose ONLY possible event(s) are all admin-hidden (PhotoEvent.hiddenFromLiff)
+  // should disappear from the list entirely, not just lose its photo matches — e.g. a professor
+  // who registered last year under an old, now-superseded event, then registered again this year
+  // under a new one; last year's entry shouldn't show at all once the admin hides that old event.
+  // A registrant eligible for a MIX of hidden and visible events (overlapping-date case) still
+  // shows, just without matching the hidden event's photos (handled in the tag loop below). A
+  // registrant with an empty or null eligible set (genuine gap / zero-events pool) is untouched —
+  // hiding is only for a deliberately-superseded event, not for "no event data at all."
+  const excludedRegistrantIds = new Set<string>();
+  for (const r of registrants) {
+    const eligible = eligibleEventsByRegistrant.get(r.id);
+    if (eligible && eligible.size > 0 && [...eligible].every((id) => hiddenEventIds.has(id))) {
+      excludedRegistrantIds.add(r.id);
+    }
+  }
 
   // Matched by each registrant's *current* group_photo_index, not by a tag's stored registrantId
   // — that link is only ever refreshed when an admin re-opens the tagging page, so it goes stale
@@ -83,8 +100,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
     const registrantIds = codeToRegistrantIds.get(t.normalizedCode);
     if (!registrantIds) continue;
     for (const registrantId of registrantIds) {
+      if (excludedRegistrantIds.has(registrantId)) continue;
       const eligible = eligibleEventsByRegistrant.get(registrantId);
       if (eligible !== null && !eligible?.has(t.groupPhoto.photoEventId)) continue;
+      if (hiddenEventIds.has(t.groupPhoto.photoEventId)) continue;
       const list = taggedPhotosByRegistrant.get(registrantId) ?? [];
       list.push({ groupPhotoId: t.groupPhoto.id, tagId: t.id, photoName: t.groupPhoto.name });
       taggedPhotosByRegistrant.set(registrantId, list);
@@ -92,11 +111,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   }
 
   return NextResponse.json({
-    registrations: registrants.map((r) => ({
-      id: r.id,
-      registeredAt: r.registeredAt,
-      data: r.data,
-      taggedPhotos: taggedPhotosByRegistrant.get(r.id) ?? [],
-    })),
+    registrations: registrants
+      .filter((r) => !excludedRegistrantIds.has(r.id))
+      .map((r) => ({
+        id: r.id,
+        registeredAt: r.registeredAt,
+        data: r.data,
+        taggedPhotos: taggedPhotosByRegistrant.get(r.id) ?? [],
+      })),
   });
 }

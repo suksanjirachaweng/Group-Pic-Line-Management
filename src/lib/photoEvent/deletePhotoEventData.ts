@@ -49,7 +49,7 @@ export async function deletePhotoEventData(photoEventId: string): Promise<{ dele
 
   await prisma.photoEvent.update({
     where: { id: photoEventId },
-    data: { status: PhotoEventStatus.ARCHIVED },
+    data: { status: PhotoEventStatus.ARCHIVED, hiddenFromLiff: true },
   });
 
   // Best-effort — a failed blob delete shouldn't undo the DB cleanup that already succeeded above.

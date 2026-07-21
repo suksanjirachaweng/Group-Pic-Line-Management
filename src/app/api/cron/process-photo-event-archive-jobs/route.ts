@@ -43,9 +43,13 @@ async function claimJob(): Promise<PhotoEventArchiveJob | null> {
 }
 
 async function finishArchive(photoEventId: string) {
+  // Also hides the event from the student-facing LIFF list — a closed-out event has no reason to
+  // keep showing there, and leaving it visible would surface registrants whose data is about to be
+  // deleted entirely. Independent of `hiddenFromLiff`'s normal manual toggle (see
+  // setPhotoEventLiffVisibility), but reuses the same field.
   await prisma.photoEvent.update({
     where: { id: photoEventId },
-    data: { status: PhotoEventStatus.ARCHIVE_READY, archivedAt: new Date() },
+    data: { status: PhotoEventStatus.ARCHIVE_READY, archivedAt: new Date(), hiddenFromLiff: true },
   });
 }
 
@@ -65,10 +69,7 @@ async function processExportingDataStage(job: PhotoEventArchiveJob) {
     }),
   ]);
   if (bundle.groupPhotos.length === 0) {
-    await prisma.photoEvent.update({
-      where: { id: job.photoEventId },
-      data: { status: PhotoEventStatus.ARCHIVE_READY, archivedAt: new Date() },
-    });
+    await finishArchive(job.photoEventId);
   }
 }
 

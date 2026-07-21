@@ -234,7 +234,7 @@ export async function reimportEventArchive(photoEventId: string): Promise<Reimpo
 
   await prisma.photoEvent.update({
     where: { id: event.id },
-    data: { status: PhotoEventStatus.ACTIVE },
+    data: { status: PhotoEventStatus.ACTIVE, hiddenFromLiff: false },
   });
 
   return summary;

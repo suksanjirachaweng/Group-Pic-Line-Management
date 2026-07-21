@@ -28,6 +28,7 @@ export type PhotoEventListItem = {
   codeRangeMin: number | null;
   codeRangeMax: number | null;
   status: PhotoEventStatus;
+  hiddenFromLiff: boolean;
 };
 
 /**
@@ -101,6 +102,7 @@ export async function listPhotoEvents(universityId: string): Promise<PhotoEventL
     codeRangeMin: r.codeRangeMin,
     codeRangeMax: r.codeRangeMax,
     status: r.status,
+    hiddenFromLiff: r.hiddenFromLiff,
   }));
 }
 
@@ -245,4 +247,25 @@ export async function updatePhotoEventStatus(
     data: { status },
   });
   revalidatePath(`/admin/universities/${universityId}/events`);
+}
+
+/**
+ * Freely toggleable, independent of the one-way ACTIVE→ARCHIVE_READY→ARCHIVED lifecycle above —
+ * for hiding a superseded-but-still-ACTIVE event's registrants from the student-facing LIFF list
+ * (e.g. a professor who registered last year under an old event registers again this year under a
+ * new one; last year's entry should stop showing) without running the heavier archive/delete flow.
+ * Purely a display toggle: doesn't touch any Registrant/GroupPhoto row.
+ */
+export async function setPhotoEventLiffVisibility(
+  universityId: string,
+  photoEventId: string,
+  hiddenFromLiff: boolean,
+): Promise<void> {
+  await requireUniversityAccess(universityId);
+  await prisma.photoEvent.update({
+    where: { id: photoEventId, universityId },
+    data: { hiddenFromLiff },
+  });
+  revalidatePath(`/admin/universities/${universityId}/events`);
+  revalidatePath(`/admin/universities/${universityId}/events/${photoEventId}`);
 }

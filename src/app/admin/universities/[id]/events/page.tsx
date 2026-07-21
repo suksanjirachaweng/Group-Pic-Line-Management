@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { listPhotoEvents } from "@/lib/actions/photoEvents";
 import { PhotoEventStatus } from "@/generated/prisma/enums";
 import { CreatePhotoEventForm } from "./CreatePhotoEventForm";
+import { ToggleLiffVisibilityButton } from "./ToggleLiffVisibilityButton";
 
 const STATUS_LABEL: Record<PhotoEventStatus, string> = {
   ACTIVE: "กำลังดำเนินการ",
@@ -55,6 +56,7 @@ export default async function PhotoEventsPage({ params }: { params: Promise<{ id
                 <th className="whitespace-nowrap px-4 py-2">คำอธิบาย</th>
                 <th className="whitespace-nowrap px-4 py-2">ช่วงวันที่</th>
                 <th className="whitespace-nowrap px-4 py-2">สถานะ</th>
+                <th className="whitespace-nowrap px-4 py-2">หน้า LINE นักศึกษา</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -77,11 +79,18 @@ export default async function PhotoEventsPage({ params }: { params: Promise<{ id
                       {STATUS_LABEL[e.status]}
                     </span>
                   </td>
+                  <td className="whitespace-nowrap px-4 py-2">
+                    <ToggleLiffVisibilityButton
+                      universityId={universityId}
+                      photoEventId={e.id}
+                      hiddenFromLiff={e.hiddenFromLiff}
+                    />
+                  </td>
                 </tr>
               ))}
               {events.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-3 text-gray-400">
+                  <td colSpan={5} className="px-4 py-3 text-gray-400">
                     ยังไม่มีงานที่สร้างไว้
                   </td>
                 </tr>
