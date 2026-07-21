@@ -1,6 +1,9 @@
 import { Prisma, RegistrantStatus, DeliveryStatus } from "@/generated/prisma/client";
 import { matchesConditionTree, type Condition, type ConditionGroup, type ConditionOperator } from "@/lib/rules/evaluate";
 import { buildEventScopedRegistrantWhere } from "@/lib/groupPhoto/resolveTagMatch";
+import { UNASSIGNED_EVENT_FILTER } from "@/lib/registrantEventFilterSentinel";
+
+export { UNASSIGNED_EVENT_FILTER };
 
 export const CONDITION_OPERATORS: { value: ConditionOperator; label: string }[] = [
   { value: "eq", label: "=" },
@@ -126,11 +129,17 @@ export type RegistrantFilterParams = {
  * place, so this just takes what they already have. Combined via `AND` (not spread) with the
  * base filter because both `buildEventScopedRegistrantWhere`'s bootstrap logic and the `q` search
  * above independently need the `OR` key — spreading them would silently drop one.
+ *
+ * `allEventWindows` is only used when `photoEventId === UNASSIGNED_EVENT_FILTER` — every other
+ * event's own date window, so "unassigned" can exclude anyone who's merely unstamped-but-still-
+ * bootstrap-eligible for a real event (the normal, expected pre-tagging state) and only surface
+ * registrants truly outside every window.
  */
 export function buildRegistrantWhere(
   universityId: string,
   { status, deliveryStatus, q, fieldKey, fieldValue, photoEventId }: RegistrantFilterParams,
   eventWindow?: { startDate: Date; endDate: Date },
+  allEventWindows?: { startDate: Date; endDate: Date }[],
 ): Prisma.RegistrantWhereInput {
   const base: Prisma.RegistrantWhereInput = {
     universityId,
@@ -153,6 +162,17 @@ export function buildRegistrantWhere(
         }
       : {}),
   };
+
+  if (photoEventId === UNASSIGNED_EVENT_FILTER) {
+    const windows = allEventWindows ?? [];
+    return {
+      AND: [
+        base,
+        { photoEventId: null },
+        ...windows.map((w) => ({ NOT: { registeredAt: { gte: w.startDate, lte: w.endDate } } })),
+      ],
+    };
+  }
 
   if (!photoEventId || !eventWindow) return base;
   return { AND: [base, buildEventScopedRegistrantWhere(universityId, photoEventId, eventWindow)] };

@@ -10,6 +10,7 @@ import {
   buildAdvancedConditionGroup,
   filterByAdvancedConditions,
   CONDITION_OPERATORS,
+  UNASSIGNED_EVENT_FILTER,
   type AdvancedConditionRow,
 } from "@/lib/registrantFilters";
 import { resolveSelectedPhotoEventId, listPhotoEvents } from "@/lib/actions/photoEvents";
@@ -18,6 +19,7 @@ import { SelectAllCheckbox } from "./SelectAllCheckbox";
 import { BulkSendButton } from "./BulkSendButton";
 import { BulkDeliveryStatusButton } from "./BulkDeliveryStatusButton";
 import { BulkMoveEventButton } from "./BulkMoveEventButton";
+import { MergeDuplicatesButton } from "./MergeDuplicatesButton";
 
 const SELECT_FORM_ID = "bulk-select-form";
 
@@ -70,14 +72,17 @@ export default async function RegistrantsPage({
   });
   if (!university) notFound();
 
+  const isUnassignedFilter = eventId === UNASSIGNED_EVENT_FILTER;
   const [selectedPhotoEventId, events] = await Promise.all([
-    resolveSelectedPhotoEventId(universityId, eventId),
+    isUnassignedFilter ? Promise.resolve(UNASSIGNED_EVENT_FILTER) : resolveSelectedPhotoEventId(universityId, eventId),
     listPhotoEvents(universityId),
   ]);
-  const selectedEvent = await prisma.photoEvent.findUniqueOrThrow({
-    where: { id: selectedPhotoEventId },
-    select: { startDate: true, endDate: true },
-  });
+  const selectedEvent = isUnassignedFilter
+    ? null
+    : await prisma.photoEvent.findUniqueOrThrow({
+        where: { id: selectedPhotoEventId },
+        select: { startDate: true, endDate: true },
+      });
 
   const page = Math.max(1, Number(pageParam) || 1);
   const formFieldKeys = new Set(university.formFields.map((f) => f.key));
@@ -92,7 +97,8 @@ export default async function RegistrantsPage({
   const where = buildRegistrantWhere(
     universityId,
     { status, deliveryStatus, q, fieldKey, fieldValue, photoEventId: selectedPhotoEventId },
-    selectedEvent,
+    selectedEvent ?? undefined,
+    isUnassignedFilter ? events.map((e) => ({ startDate: new Date(e.startDate), endDate: new Date(e.endDate) })) : undefined,
   );
 
   const matched = await prisma.registrant.findMany({
@@ -172,10 +178,11 @@ export default async function RegistrantsPage({
           <span className="ml-2 text-sm font-normal text-gray-400">{total} total</span>
         </h1>
         <div className="flex flex-wrap items-center gap-2">
-          <EventFilterDropdown events={events} selectedEventId={selectedPhotoEventId} />
+          <EventFilterDropdown events={events} selectedEventId={selectedPhotoEventId} includeUnassignedOption />
           <BulkMoveEventButton universityId={universityId} selectFormId={SELECT_FORM_ID} events={events} />
           <BulkDeliveryStatusButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
           <BulkSendButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
+          <MergeDuplicatesButton universityId={universityId} />
           <a
             href={exportHref}
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"

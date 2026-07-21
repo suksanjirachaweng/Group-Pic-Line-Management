@@ -7,9 +7,10 @@ import {
   sortRegistrants,
   buildAdvancedConditionGroup,
   filterByAdvancedConditions,
+  UNASSIGNED_EVENT_FILTER,
   type AdvancedConditionRow,
 } from "@/lib/registrantFilters";
-import { resolveSelectedPhotoEventId } from "@/lib/actions/photoEvents";
+import { resolveSelectedPhotoEventId, listPhotoEvents } from "@/lib/actions/photoEvents";
 
 const ADVANCED_FILTER_ROWS = 3;
 
@@ -30,11 +31,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!university) return new NextResponse("University not found", { status: 404 });
 
   const sp = request.nextUrl.searchParams;
-  const selectedPhotoEventId = await resolveSelectedPhotoEventId(universityId, sp.get("eventId") ?? undefined);
-  const selectedEvent = await prisma.photoEvent.findUniqueOrThrow({
-    where: { id: selectedPhotoEventId },
-    select: { startDate: true, endDate: true },
-  });
+  const isUnassignedFilter = sp.get("eventId") === UNASSIGNED_EVENT_FILTER;
+  const selectedPhotoEventId = isUnassignedFilter
+    ? UNASSIGNED_EVENT_FILTER
+    : await resolveSelectedPhotoEventId(universityId, sp.get("eventId") ?? undefined);
+  const selectedEvent = isUnassignedFilter
+    ? null
+    : await prisma.photoEvent.findUniqueOrThrow({
+        where: { id: selectedPhotoEventId },
+        select: { startDate: true, endDate: true },
+      });
   const where = buildRegistrantWhere(
     universityId,
     {
@@ -45,7 +51,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       fieldValue: sp.get("fieldValue") ?? undefined,
       photoEventId: selectedPhotoEventId,
     },
-    selectedEvent,
+    selectedEvent ?? undefined,
+    isUnassignedFilter
+      ? (await listPhotoEvents(universityId)).map((e) => ({ startDate: new Date(e.startDate), endDate: new Date(e.endDate) }))
+      : undefined,
   );
 
   const matched = await prisma.registrant.findMany({

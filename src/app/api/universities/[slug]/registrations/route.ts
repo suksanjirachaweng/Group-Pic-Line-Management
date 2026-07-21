@@ -19,34 +19,76 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
     orderBy: { registeredAt: "asc" },
   });
 
+  // Every event this university has ever run, so an unstamped registrant's eligible event(s) can
+  // be resolved the same "bootstrap" way the admin matching logic already does (see
+  // buildEventScopedRegistrantWhere in resolveTagMatch.ts): a registrant with no photoEventId yet
+  // is only a candidate for an event whose [startDate,endDate] window actually contains their
+  // registeredAt. Without this, a registrant whose registeredAt falls in a gap between events (or
+  // after the last one) would match tags from EVERY event's photos by code alone — the exact bug
+  // reported 2026-07-21 (a registrant invisible on the admin Registrants page under any event
+  // filter, yet the LIFF list still showed a matched photo link).
+  const events = await prisma.photoEvent.findMany({
+    where: { universityId: university.id },
+    select: { id: true, startDate: true, endDate: true },
+  });
+
+  // `null` here means "no restriction" (every tag is eligible), used only when the university has
+  // zero PhotoEvent rows at all — e.g. every event has been archived-and-deleted (see the
+  // PhotoEventArchiveJob close-out flow) and a new one hasn't been created yet. With truly no
+  // events to bootstrap against, treating unstamped registrants as belonging to nothing would be
+  // wrong (there's nothing to scope against, not a genuine gap) — they're one merged pool until a
+  // new event exists to bootstrap into, same as a single wide-open event would behave.
+  function eligibleEventIds(r: (typeof registrants)[number]): Set<string> | null {
+    if (r.photoEventId) return new Set([r.photoEventId]);
+    if (events.length === 0) return null;
+    return new Set(
+      events.filter((e) => r.registeredAt >= e.startDate && r.registeredAt <= e.endDate).map((e) => e.id),
+    );
+  }
+  const eligibleEventsByRegistrant = new Map(registrants.map((r) => [r.id, eligibleEventIds(r)]));
+
   // Matched by each registrant's *current* group_photo_index, not by a tag's stored registrantId
   // — that link is only ever refreshed when an admin re-opens the tagging page, so it goes stale
   // the moment someone corrects their code in LINE after already being tagged. A registrant's code
   // can also be tagged in more than one group photo (e.g. photographed with more than one
   // faculty), so this is a one-to-many lookup, not a single match.
-  const codeToRegistrantId = new Map<string, string>();
+  //
+  // A single code can also map to MORE THAN ONE registrant — e.g. someone submits the form twice
+  // without changing their group-photo number (to fix a typo, or by mistake). Real incident,
+  // 2026-07-21: this used to be a single-value map (`.set()` overwriting on collision), so the
+  // newer of two same-code registrations silently stole every matched photo and the older one
+  // showed "photo not found" even though its code genuinely matched real tags. Every registrant
+  // sharing a code must see the same matched photos, not just whichever one happened to be last.
+  const codeToRegistrantIds = new Map<string, string[]>();
   for (const r of registrants) {
     const data = (r.data ?? {}) as Record<string, unknown>;
     const rawCode = data.group_photo_index;
     if (typeof rawCode !== "string" || !rawCode.trim()) continue;
     const normalizedCode = normalizeCode(rawCode);
-    if (normalizedCode) codeToRegistrantId.set(normalizedCode, r.id);
+    if (!normalizedCode) continue;
+    const list = codeToRegistrantIds.get(normalizedCode) ?? [];
+    list.push(r.id);
+    codeToRegistrantIds.set(normalizedCode, list);
   }
 
   const tags = await prisma.groupPhotoTag.findMany({
     where: {
-      normalizedCode: { in: [...codeToRegistrantId.keys()] },
+      normalizedCode: { in: [...codeToRegistrantIds.keys()] },
       groupPhoto: { universityId: university.id },
     },
-    include: { groupPhoto: { select: { id: true, name: true } } },
+    include: { groupPhoto: { select: { id: true, name: true, photoEventId: true } } },
   });
   const taggedPhotosByRegistrant = new Map<string, { groupPhotoId: string; tagId: string; photoName: string }[]>();
   for (const t of tags) {
-    const registrantId = codeToRegistrantId.get(t.normalizedCode);
-    if (!registrantId) continue;
-    const list = taggedPhotosByRegistrant.get(registrantId) ?? [];
-    list.push({ groupPhotoId: t.groupPhoto.id, tagId: t.id, photoName: t.groupPhoto.name });
-    taggedPhotosByRegistrant.set(registrantId, list);
+    const registrantIds = codeToRegistrantIds.get(t.normalizedCode);
+    if (!registrantIds) continue;
+    for (const registrantId of registrantIds) {
+      const eligible = eligibleEventsByRegistrant.get(registrantId);
+      if (eligible !== null && !eligible?.has(t.groupPhoto.photoEventId)) continue;
+      const list = taggedPhotosByRegistrant.get(registrantId) ?? [];
+      list.push({ groupPhotoId: t.groupPhoto.id, tagId: t.id, photoName: t.groupPhoto.name });
+      taggedPhotosByRegistrant.set(registrantId, list);
+    }
   }
 
   return NextResponse.json({

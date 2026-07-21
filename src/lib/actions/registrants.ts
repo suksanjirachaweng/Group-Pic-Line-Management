@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess } from "@/lib/authz";
 import { RegistrantStatus, DeliveryStatus } from "@/generated/prisma/enums";
+import { mergeDuplicateRegistrantsForUniversity } from "@/lib/registrantDedupe";
 
 export async function updateRegistrantStatus(
   universityId: string,
@@ -108,6 +109,29 @@ export async function bulkMoveRegistrantsToEvent(
 
   revalidatePath(`/admin/universities/${universityId}/registrants`);
   return { success: true, count: result.count };
+}
+
+export type MergeDuplicatesState =
+  | { success: true; groupsFound: number; registrantsMerged: number }
+  | { success: false; error: string }
+  | null;
+
+/**
+ * One-time cleanup trigger for the pre-existing-duplicate case (see registrantDedupe.ts) — a
+ * manual, admin-triggered action rather than something that runs silently, since it deletes real
+ * registrant rows (and cascades their message history). New duplicates are already prevented going
+ * forward by the check in /api/register; this only cleans up ones that already exist.
+ */
+export async function mergeDuplicateRegistrants(
+  universityId: string,
+  _prevState: MergeDuplicatesState,
+): Promise<MergeDuplicatesState> {
+  await requireUniversityAccess(universityId);
+
+  const { groupsFound, registrantsMerged } = await mergeDuplicateRegistrantsForUniversity(universityId);
+
+  revalidatePath(`/admin/universities/${universityId}/registrants`);
+  return { success: true, groupsFound, registrantsMerged };
 }
 
 export async function sendManualMessage(

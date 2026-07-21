@@ -157,6 +157,83 @@ export async function createPhotoEvent(
   return { success: true, id: created.id };
 }
 
+export type UpdatePhotoEventState = { error: string } | { success: true; assignedCount: number } | null;
+
+/**
+ * Edits an existing event's code/label/date-range/code-range — was previously create-only, with
+ * no way to fix a mistake (e.g. a too-narrow end date cutting off graduates who register after
+ * the ceremony's original window, see the 2026-07-21 report: a registrant with no photoEventId
+ * yet falls outside every event's [startDate,endDate] and becomes invisible on the Registrants
+ * page under any event filter until the window is widened or they get tag-matched).
+ *
+ * After saving the new window, also stamps any still-unassigned registrant (photoEventId null)
+ * in this university whose `registeredAt` now falls inside it — the same bootstrap-then-stick
+ * rule `buildEventScopedRegistrantWhere` already uses to *display* such registrants under this
+ * event's filter, applied here so widening a date range actually claims them instead of just
+ * making them visible. Never touches a registrant already stamped to a (possibly different)
+ * event — stamping is one-way per the existing sticky-flag convention.
+ */
+export async function updatePhotoEvent(
+  universityId: string,
+  photoEventId: string,
+  _prevState: UpdatePhotoEventState,
+  formData: FormData,
+): Promise<UpdatePhotoEventState> {
+  await requireUniversityAccess(universityId);
+
+  const parsed = photoEventSchema.safeParse({
+    code: formData.get("code"),
+    label: formData.get("label") || undefined,
+    startDate: formData.get("startDate"),
+    endDate: formData.get("endDate"),
+    codeRangeMin: formData.get("codeRangeMin") || undefined,
+    codeRangeMax: formData.get("codeRangeMax") || undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  }
+  const { code, label, startDate, endDate, codeRangeMin, codeRangeMax } = parsed.data;
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return { error: "วันที่ไม่ถูกต้อง" };
+  }
+  if (start > end) {
+    return { error: "วันที่เริ่มต้นต้องมาก่อนวันที่สิ้นสุด" };
+  }
+
+  const existing = await prisma.photoEvent.findUnique({
+    where: { universityId_code: { universityId, code } },
+    select: { id: true },
+  });
+  if (existing && existing.id !== photoEventId) {
+    return { error: `รหัสงาน "${code}" ถูกใช้ไปแล้วในมหาวิทยาลัยนี้` };
+  }
+
+  await prisma.photoEvent.update({
+    where: { id: photoEventId, universityId },
+    data: {
+      code,
+      label: label || null,
+      startDate: start,
+      endDate: end,
+      codeRangeMin: codeRangeMin ? Number(codeRangeMin) : null,
+      codeRangeMax: codeRangeMax ? Number(codeRangeMax) : null,
+    },
+  });
+
+  const { count: assignedCount } = await prisma.registrant.updateMany({
+    where: { universityId, photoEventId: null, registeredAt: { gte: start, lte: end } },
+    data: { photoEventId },
+  });
+
+  revalidatePath(`/admin/universities/${universityId}/events`);
+  revalidatePath(`/admin/universities/${universityId}/events/${photoEventId}`);
+  revalidatePath(`/admin/universities/${universityId}/registrants`);
+  return { success: true, assignedCount };
+}
+
 export async function updatePhotoEventStatus(
   universityId: string,
   photoEventId: string,

@@ -8,6 +8,7 @@ import { StartArchiveButton } from "./StartArchiveButton";
 import { DeleteEventDataButton } from "./DeleteEventDataButton";
 import { ReimportArchiveButton } from "./ReimportArchiveButton";
 import { BuildFaceBankButton } from "./BuildFaceBankButton";
+import { EditPhotoEventForm } from "./EditPhotoEventForm";
 
 const STATUS_LABEL: Record<PhotoEventStatus, string> = {
   ACTIVE: "กำลังดำเนินการ",
@@ -72,6 +73,19 @@ export default async function PhotoEventDetailPage({
           {event.label && <span className="ml-2 text-base font-normal text-gray-500">({event.label})</span>}
         </h1>
         <span className={`rounded px-2 py-1 text-xs ${STATUS_CLASS[event.status]}`}>{STATUS_LABEL[event.status]}</span>
+      </div>
+
+      <div className="mb-4">
+        <EditPhotoEventForm
+          universityId={universityId}
+          photoEventId={eventId}
+          code={event.code}
+          label={event.label}
+          startDate={event.startDate.toISOString()}
+          endDate={event.endDate.toISOString()}
+          codeRangeMin={event.codeRangeMin}
+          codeRangeMax={event.codeRangeMax}
+        />
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-4 rounded-lg border border-gray-200 bg-white p-4 text-sm sm:grid-cols-4">

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { evaluateOnRegistrationRules } from "@/lib/rules/trigger";
 import { syncRegistrantGroupPhotoTags } from "@/lib/groupPhoto/syncRegistrantTags";
+import { findDuplicateRegistrant } from "@/lib/registrantDedupe";
 
 const registerSchema = z.object({
   universitySlug: z.string().min(1),
@@ -67,16 +68,29 @@ export async function POST(request: Request) {
       data: { channelId: channel.id, displayName, isFriend, data: cleanData },
     });
   } else {
-    registrant = await prisma.registrant.create({
-      data: {
-        universityId: university.id,
-        channelId: channel.id,
-        lineUserId,
-        displayName,
-        isFriend,
-        data: cleanData,
-      },
-    });
+    // Guards against accidental duplicate submissions (e.g. tapping "ลงทะเบียนเพิ่ม" instead of
+    // "แก้ไข" for an entry that already exists) — if this exact LINE user already has a
+    // registration with the identical name+code, update that row instead of creating another one
+    // the LIFF list would then have to reconcile (see registrantDedupeKey's own docs; real
+    // incident, 2026-07-21). Never matches across different LINE users.
+    const duplicate = await findDuplicateRegistrant(university.id, lineUserId, cleanData);
+    if (duplicate) {
+      registrant = await prisma.registrant.update({
+        where: { id: duplicate.id },
+        data: { channelId: channel.id, displayName, isFriend, data: cleanData },
+      });
+    } else {
+      registrant = await prisma.registrant.create({
+        data: {
+          universityId: university.id,
+          channelId: channel.id,
+          lineUserId,
+          displayName,
+          isFriend,
+          data: cleanData,
+        },
+      });
+    }
   }
 
   // Best-effort: keep this registrant's group-photo tag(s) in sync with their (possibly just
