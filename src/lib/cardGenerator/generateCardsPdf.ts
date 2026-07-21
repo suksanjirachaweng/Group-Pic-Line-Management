@@ -27,6 +27,12 @@ const LOGO_NATIVE_W = 154;
 const LOGO_NATIVE_H = 60;
 const LOGO_HEIGHT = 18;
 const LOGO_WIDTH = (LOGO_HEIGHT * LOGO_NATIVE_W) / LOGO_NATIVE_H;
+// QR-only layout (no fill-in box) uses a bigger logo/brand text than every other layout — its
+// header is a single compact row instead of sharing space with a fill-in box, so there's room to
+// make the brand mark more prominent (2026-07-20 request).
+const QR_LAYOUT_LOGO_HEIGHT = 26;
+const QR_LAYOUT_LOGO_WIDTH = (QR_LAYOUT_LOGO_HEIGHT * LOGO_NATIVE_W) / LOGO_NATIVE_H;
+const QR_LAYOUT_BRAND_FONT_SIZE = 14;
 const TITLE_CHECKBOXES = ["ศ", "รศ", "ผศ", "ดร", "อ"];
 
 export type CardGeneratorOptions = {
@@ -207,50 +213,85 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
   // (per the user's own reference layout, 2026-07-20). The combined fill-in+QR layout below is
   // unaffected — that one still needs the QR anchored to the fill-in box it's paired with.
   const qrOnlyTopLayout = showQr && !includeFillIn;
-  const TOP_SCAN_BAND_Y = 38;
-  const TOP_SCAN_BAND_HEIGHT = 66;
+  // QR-only layout: everything (bigger logo/brand text, a shortened scan arrow, and a small QR)
+  // shares one compact top row instead of the brand block and QR each getting their own dedicated
+  // band — frees up far more vertical room for the number below. Event name/year moves to the
+  // bottom-right corner since the top row has no space left for it (2026-07-20 redesign).
+  const QR_TOP_ROW_Y = 12;
+  const QR_TOP_ROW_H = 30;
+  // Bigger than the row height on purpose (2026-07-20 follow-ups: "a bit bigger", then "bigger
+  // still") — the QR is top-aligned with the row and allowed to extend below it; numberTop
+  // (below) accounts for whichever of the row height or QR size is taller, so the number never
+  // overlaps it.
+  const QR_TOP_ROW_QR_SIZE = 58;
+  const QR_TOP_ROW_ARROW_W = 110;
+  const QR_TOP_ROW_ARROW_H = 20;
+  const topRowContentH = Math.max(QR_TOP_ROW_H, QR_TOP_ROW_QR_SIZE);
+  const hasEventFooter = qrOnlyTopLayout && (eventName.trim() || year.trim());
+  const EVENT_FOOTER_H = 20;
 
   for (let code = startCode; code <= endCode; code++) {
     doc.addPage({ size: [PAGE_WIDTH, PAGE_HEIGHT], margin: 0 });
 
-    if (includeBrand) {
-      doc.image(LOGO_PATH, MARGIN, MARGIN - 2, { height: LOGO_HEIGHT });
-      doc
-        .font("Sarabun")
-        .fontSize(11)
-        .fillColor("#000000")
-        .text(`${SHOP_NAME}  ${SHOP_PHONE}`, MARGIN + LOGO_WIDTH + 8, MARGIN, { lineBreak: false });
-    }
-
-    if (eventName.trim() || year.trim()) {
-      const headerRight = [eventName.trim(), year.trim()].filter(Boolean).join("  ");
-      doc
-        .font("Sarabun")
-        .fontSize(11)
-        .fillColor("#000000")
-        .text(headerRight, MARGIN, MARGIN, { width: contentWidth, align: "right", lineBreak: false });
-    }
-
     if (qrOnlyTopLayout) {
-      const qrSize = TOP_SCAN_BAND_HEIGHT;
+      if (includeBrand) {
+        doc.image(LOGO_PATH, MARGIN, QR_TOP_ROW_Y + (QR_TOP_ROW_H - QR_LAYOUT_LOGO_HEIGHT) / 2, {
+          height: QR_LAYOUT_LOGO_HEIGHT,
+        });
+        doc
+          .font("Sarabun")
+          .fontSize(QR_LAYOUT_BRAND_FONT_SIZE)
+          .fillColor("#000000")
+          .text(`${SHOP_NAME}  ${SHOP_PHONE}`, MARGIN + QR_LAYOUT_LOGO_WIDTH + 8, QR_TOP_ROW_Y + (QR_TOP_ROW_H - QR_LAYOUT_BRAND_FONT_SIZE) / 2, {
+            lineBreak: false,
+          });
+      }
+
+      const qrX = PAGE_WIDTH - MARGIN - QR_TOP_ROW_QR_SIZE;
       const arrowGap = 8;
-      const arrowH = 30;
-      const arrowY = TOP_SCAN_BAND_Y + (TOP_SCAN_BAND_HEIGHT - arrowH) / 2;
-      const arrowW = contentWidth - qrSize - arrowGap;
-      drawScanArrow(doc, MARGIN, arrowY, arrowW, arrowH);
-      doc.image(Buffer.from(qrBuffer!), PAGE_WIDTH - MARGIN - qrSize, TOP_SCAN_BAND_Y, {
-        width: qrSize,
-        height: qrSize,
+      const arrowX = qrX - arrowGap - QR_TOP_ROW_ARROW_W;
+      const arrowY = QR_TOP_ROW_Y + (QR_TOP_ROW_H - QR_TOP_ROW_ARROW_H) / 2;
+      drawScanArrow(doc, arrowX, arrowY, QR_TOP_ROW_ARROW_W, QR_TOP_ROW_ARROW_H);
+      doc.image(Buffer.from(qrBuffer!), qrX, QR_TOP_ROW_Y, {
+        width: QR_TOP_ROW_QR_SIZE,
+        height: QR_TOP_ROW_QR_SIZE,
       });
+
+      if (hasEventFooter) {
+        const headerRight = [eventName.trim(), year.trim()].filter(Boolean).join("  ");
+        doc
+          .font("Sarabun")
+          .fontSize(11)
+          .fillColor("#000000")
+          .text(headerRight, MARGIN, PAGE_HEIGHT - MARGIN - 13, { width: contentWidth, align: "right", lineBreak: false });
+      }
+    } else {
+      if (includeBrand) {
+        doc.image(LOGO_PATH, MARGIN, MARGIN - 2, { height: LOGO_HEIGHT });
+        doc
+          .font("Sarabun")
+          .fontSize(11)
+          .fillColor("#000000")
+          .text(`${SHOP_NAME}  ${SHOP_PHONE}`, MARGIN + LOGO_WIDTH + 8, MARGIN, { lineBreak: false });
+      }
+
+      if (eventName.trim() || year.trim()) {
+        const headerRight = [eventName.trim(), year.trim()].filter(Boolean).join("  ");
+        doc
+          .font("Sarabun")
+          .fontSize(11)
+          .fillColor("#000000")
+          .text(headerRight, MARGIN, MARGIN, { width: contentWidth, align: "right", lineBreak: false });
+      }
     }
 
-    // Fills the whole space between the header row (or the top scan band, in QR-only layout) and
-    // the fill-in/QR band, not a fixed (previously 150pt-capped) size — the fixed cap left a lot
-    // of unused vertical room, and fitFontSize's width-only check had also been measuring against
-    // the *regular* font (it ran before `.font("Sarabun-Bold")` was set below), which under-fits
-    // since bold glyphs are wider.
-    const numberTop = qrOnlyTopLayout ? TOP_SCAN_BAND_Y + TOP_SCAN_BAND_HEIGHT + 14 : 40;
-    const numberBottom = qrOnlyTopLayout ? PAGE_HEIGHT - MARGIN : bottomBandY - 14;
+    // Fills the whole space between the header row (or the top QR row, in QR-only layout) and the
+    // fill-in/QR band (or the bottom-right event footer, in QR-only layout), not a fixed
+    // (previously 150pt-capped) size — the fixed cap left a lot of unused vertical room, and
+    // fitFontSize's width-only check had also been measuring against the *regular* font (it ran
+    // before `.font("Sarabun-Bold")` was set below), which under-fits since bold glyphs are wider.
+    const numberTop = qrOnlyTopLayout ? QR_TOP_ROW_Y + topRowContentH + 14 : 40;
+    const numberBottom = qrOnlyTopLayout ? PAGE_HEIGHT - MARGIN - (hasEventFooter ? EVENT_FOOTER_H : 0) : bottomBandY - 14;
     const codeStr = String(code);
     doc.font("Sarabun-Bold");
     const codeSize = fitFontSizeBox(doc, codeStr, contentWidth - 16, numberBottom - numberTop, 400, 40) * CODE_SIZE_SCALE;
