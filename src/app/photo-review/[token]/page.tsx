@@ -2,6 +2,15 @@ import { prisma } from "@/lib/prisma";
 import { validateTags } from "@/lib/groupPhoto/validateTags";
 import { PhotoReviewView } from "./PhotoReviewView";
 
+// This page uses only `params` (no cookies/headers/searchParams), which Next.js would otherwise
+// treat as eligible for the Full Route Cache — meaning the FIRST visit to a given token gets
+// frozen and served to every later visit until something calls revalidatePath for this exact
+// path. Tag matches change constantly (registration auto-sync, admin edits) independent of any
+// action taken on this page itself, so a cached render can show a stale name (e.g. "ยังไม่มีชื่อ")
+// even after the DB is correct — confirmed 2026-07-21: a tag matched via registration showed
+// unmatched here until an unrelated edit's own revalidatePath call happened to bust the cache.
+export const dynamic = "force-dynamic";
+
 export default async function PhotoReviewPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
 

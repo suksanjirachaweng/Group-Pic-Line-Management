@@ -39,6 +39,14 @@ LC_ALL="en_US.UTF-8" /usr/local/opt/postgresql@16/bin/pg_ctl \
 
 ## Critical gotchas
 
+- **The system-default `node` is v16** (`/usr/local/bin/node`), but Prisma 7.x requires Node 18+
+  and fails with `CompileError: WebAssembly.Module(): invalid value type 'externref'` under v16.
+  `npm run dev`/`build` already resolve the right Node via `.claude/launch.json`, but any `npx
+  prisma ...` command run directly in a plain terminal (e.g. `prisma migrate deploy` against
+  production) needs the v20.20.2 install prefixed onto `PATH` explicitly:
+  ```bash
+  PATH="/Users/suksanjirachaweng/.nvm/versions/node/v20.20.2/bin:$PATH" npx prisma migrate deploy
+  ```
 - **Never `rm -rf .next` while the dev server is running** — it corrupts the Turbopack cache
   and the server starts throwing `ENOENT`/`MODULE_NOT_FOUND`. Stop the server first, then clean.
 - **Middleware lives in `src/proxy.ts`, not `middleware.ts`** — Next.js 16 renamed the

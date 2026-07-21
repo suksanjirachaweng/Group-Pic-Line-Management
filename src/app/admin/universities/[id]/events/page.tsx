@@ -33,7 +33,7 @@ export default async function PhotoEventsPage({ params }: { params: Promise<{ id
   const events = await listPhotoEvents(universityId);
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <div className="mx-auto max-w-5xl p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">{university.name} — งานถ่ายรูป (Events)</h1>
       </div>
