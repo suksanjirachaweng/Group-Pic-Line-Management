@@ -517,10 +517,40 @@ model GroupPhoto {
   shareLinks   GroupPhotoShareLink[]
   titleHistory GroupPhotoTitleHistory[]
   autoTagJobs  GroupPhotoAutoTagJob[]
+  ocrTiles     GroupPhotoOcrTile[]
 
   @@index([universityId])
   @@index([photoEventId])
   @@map("group_photos")
+}
+
+/// Persisted record of exactly what an OCR pass sent to Claude and got back, one row per tile —
+/// from EITHER trigger ("อ่านป้ายอัตโนมัติ" on the desktop tag page, or the mobile quick-tag
+/// background auto-tag pipeline). Previously this only lived in ephemeral client-side React state
+/// (BulkOcrDebugModal's `tileDebug`), gone the instant the tab closed or reloaded — kept here
+/// instead so an admin can go back and visually verify a specific tile's OCR read/position days
+/// later, e.g. while tracking down a row-clustering issue like the 2026-07-21 "1 low res" incident.
+/// Never auto-deleted — purely a manual "delete when I'm done verifying" record per the explicit
+/// request that created this model, so storage only grows until an admin clears it.
+model GroupPhotoOcrTile {
+  id           String   @id @default(cuid())
+  groupPhotoId String
+  tileIndex    Int
+  left         Int
+  top          Int
+  width        Int
+  height       Int
+  uploadWidth  Int
+  uploadHeight Int
+  imageUrl     String // blank when `failed` — no image to persist for a tile whose OCR call itself errored
+  hits         Json // CardOcrHit[], tile-local (upload-space) coordinates — same shape TileDebugInfo already used live
+  failed       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  groupPhoto GroupPhoto @relation(fields: [groupPhotoId], references: [id], onDelete: Cascade)
+
+  @@index([groupPhotoId])
+  @@map("group_photo_ocr_tiles")
 }
 
 enum GroupPhotoAutoTagStage {

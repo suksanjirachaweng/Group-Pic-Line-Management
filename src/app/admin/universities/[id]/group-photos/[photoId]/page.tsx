@@ -12,6 +12,7 @@ import { PhotoStatusSelector } from "./PhotoStatusSelector";
 import { PhotoTitleEditor } from "./PhotoTitleEditor";
 import type { RegistrantLookup, ReferenceLookup } from "./TagEditDialog";
 import { autoSyncGroupPhotoTags } from "@/lib/actions/groupPhotos";
+import { countOcrTiles } from "@/lib/actions/ocrTileDebug";
 import { ExcelExportButton, TextExportButton, WordExportButton } from "@/lib/groupPhoto/ExportButtons";
 
 export default async function GroupPhotoTaggingPage({
@@ -36,7 +37,7 @@ export default async function GroupPhotoTaggingPage({
   });
   if (!photo) notFound();
 
-  const [registrantRows, referenceRows] = await Promise.all([
+  const [registrantRows, referenceRows, ocrTileCount] = await Promise.all([
     prisma.registrant.findMany({
       where: { universityId },
       select: { id: true, displayName: true, lineUserId: true, channelId: true, data: true },
@@ -45,6 +46,7 @@ export default async function GroupPhotoTaggingPage({
       where: { universityId },
       select: { name: true, normalizedCode: true, source: true },
     }),
+    countOcrTiles(universityId, photoId),
   ]);
 
   const registrants: RegistrantLookup[] = registrantRows
@@ -133,6 +135,7 @@ export default async function GroupPhotoTaggingPage({
           initialTags={photo.tags}
           registrants={registrants}
           legacyReferences={legacyReferences}
+          initialOcrTileCount={ocrTileCount}
         />
       </div>
     </div>

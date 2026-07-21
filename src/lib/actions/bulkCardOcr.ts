@@ -3,6 +3,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
 import { requireUniversityAccess } from "@/lib/authz";
+import { prisma } from "@/lib/prisma";
+import { uploadImage } from "@/lib/blob";
 
 const client = new Anthropic();
 
@@ -49,9 +51,16 @@ export type CardOcrHit = { code: string; x: number; y: number; confident: boolea
  * background auto-tag cron job doesn't have (it's authenticated at the request level via
  * CRON_SECRET instead). The actual Claude call lives in `runCardGridOcr` below so the cron route
  * can call it directly, without going through a user-facing action.
+ *
+ * Also persists the tile (image + raw hits) as a `GroupPhotoOcrTile` row — kept indefinitely so an
+ * admin can visually re-verify a specific tile's OCR read/position later, even after the tab
+ * closes (previously this only lived in ephemeral client-side `tileDebug` state). Best-effort: a
+ * failure to persist must never break the live OCR flow the admin is actively watching.
  */
 export async function ocrCardGrid(
   universityId: string,
+  groupPhotoId: string,
+  tile: { tileIndex: number; left: number; top: number; width: number; height: number },
   formData: FormData,
 ): Promise<{ hits: CardOcrHit[]; width: number; height: number }> {
   await requireUniversityAccess(universityId);
@@ -61,7 +70,30 @@ export async function ocrCardGrid(
 
   const buf = Buffer.from(await file.arrayBuffer());
   const mediaType = file.type === "image/png" ? "image/png" : "image/jpeg";
-  return runCardGridOcr(buf, mediaType);
+  const result = await runCardGridOcr(buf, mediaType);
+
+  try {
+    const imageUrl = await uploadImage(file, `ocr-tiles/${groupPhotoId}`);
+    await prisma.groupPhotoOcrTile.create({
+      data: {
+        groupPhotoId,
+        tileIndex: tile.tileIndex,
+        left: Math.round(tile.left),
+        top: Math.round(tile.top),
+        width: Math.round(tile.width),
+        height: Math.round(tile.height),
+        uploadWidth: result.width,
+        uploadHeight: result.height,
+        imageUrl,
+        hits: result.hits,
+        failed: false,
+      },
+    });
+  } catch (err) {
+    console.error("Failed to persist OCR tile debug record:", err);
+  }
+
+  return result;
 }
 
 /** Core OCR call, with no auth check — see `ocrCardGrid`'s comment for why this is separate. */

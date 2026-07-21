@@ -34,6 +34,7 @@ import {
   resolveRowsForNewPoints,
 } from "@/lib/groupPhoto/rowClustering";
 import { BulkOcrDebugModal } from "./BulkOcrDebugModal";
+import { SavedOcrTilesButton } from "./SavedOcrTilesButton";
 import {
   TagEditDialog,
   type DialogInitial,
@@ -200,6 +201,7 @@ export function TagCanvas({
   initialTags,
   registrants,
   legacyReferences,
+  initialOcrTileCount,
 }: {
   universityId: string;
   groupPhotoId: string;
@@ -209,6 +211,7 @@ export function TagCanvas({
   initialTags: TagRecord[];
   registrants: RegistrantLookup[];
   legacyReferences: ReferenceLookup[];
+  initialOcrTileCount: number;
 }) {
   const [tags, setTags] = useState<TagRecord[]>(initialTags);
   const [loaded, setLoaded] = useState(false);
@@ -677,7 +680,7 @@ export function TagCanvas({
     confident: boolean,
   ) {
     dismissBulkOcrCandidate(candidateId);
-    const row = resolveRowsForNewPoints(tags, [{ key: candidateId, x, y }]).get(
+    const row = resolveRowsForNewPoints(tags, [{ key: candidateId, x, y }], imageHeight).get(
       candidateId,
     )!;
     const saved = await saveBulkOcrCandidate(tags, { code, x, y, confident }, row);
@@ -703,6 +706,7 @@ export function TagCanvas({
       const rows = resolveRowsForNewPoints(
         tags,
         toSave.map((c) => ({ key: c.id, x: c.x, y: c.y })),
+        imageHeight,
       );
       let running = tags;
       for (const candidate of toSave) {
@@ -745,7 +749,7 @@ export function TagCanvas({
       // resolveRowsForNewPoints. There's nothing else to infer a direction from here, since this
       // recomputes every tag's row at once rather than adding a few new ones to what's already
       // correctly numbered.
-      const clusters = clusterIntoRows(tags);
+      const clusters = clusterIntoRows(tags, imageHeight);
       const ordered = [...clusters].sort(
         (a, b) =>
           b.reduce((s, t) => s + t.y, 0) / b.length -
@@ -1573,7 +1577,7 @@ export function TagCanvas({
               disabled={!loaded || isBulkOcrRunning}
               onClick={() => {
                 if (!fullBitmapRef.current) return;
-                void runBulkOcr(fullBitmapRef.current, universityId);
+                void runBulkOcr(fullBitmapRef.current, universityId, groupPhotoId);
               }}
               title="อ่านตัวเลขบนป้ายทั้งภาพโดยตรง — ตำแหน่งที่ได้เป็นค่าประมาณ ควรตรวจสอบก่อนบันทึกจริง"
               className="flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
@@ -1604,6 +1608,12 @@ export function TagCanvas({
                 ตรวจสอบผล OCR ({bulkOcrTileDebug.length} tile)
               </button>
             )}
+
+            <SavedOcrTilesButton
+              universityId={universityId}
+              groupPhotoId={groupPhotoId}
+              initialCount={initialOcrTileCount}
+            />
 
             {newBulkOcrCandidates.length > 0 && (
               <button

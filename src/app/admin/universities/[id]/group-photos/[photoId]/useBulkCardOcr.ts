@@ -40,7 +40,7 @@ export function useBulkCardOcr() {
   const [failedTiles, setFailedTiles] = useState(0);
   const [tileDebug, setTileDebug] = useState<TileDebugInfo[]>([]);
 
-  const detect = useCallback(async (fullBitmap: ImageBitmap, universityId: string) => {
+  const detect = useCallback(async (fullBitmap: ImageBitmap, universityId: string, groupPhotoId: string) => {
     setIsDetecting(true);
     setCandidates([]);
     setFailedTiles(0);
@@ -79,6 +79,8 @@ export function useBulkCardOcr() {
             fd.set("crop", blob, "tile.jpg");
             const { hits, width: uploadWidth, height: uploadHeight } = await ocrCardGrid(
               universityId,
+              groupPhotoId,
+              { tileIndex, left: tile.left, top: tile.top, width: tile.width, height: tile.height },
               fd,
             );
             // Kept for the "ตรวจสอบผล OCR" debug view — the exact image sent plus the raw,

@@ -9,6 +9,7 @@ import { resolveRowsForNewPoints, applyRowOrderShift, clusterIntoRows } from "@/
 import { runCardGridOcr } from "@/lib/actions/bulkCardOcr";
 import { createGroupPhotoTagCore } from "@/lib/actions/groupPhotos";
 import { recordCronHeartbeat } from "@/lib/cronHeartbeat";
+import { uploadImageBuffer } from "@/lib/blob";
 import { TagMatchSource } from "@/generated/prisma/enums";
 import type { GroupPhoto, GroupPhotoAutoTagJob } from "@/generated/prisma/client";
 
@@ -81,6 +82,30 @@ async function processOcrStage(job: ClaimedJob) {
             })),
           });
         }
+
+        // Best-effort — persisted purely so an admin can visually re-verify this tile's OCR
+        // read/position later, mirroring what the desktop "อ่านป้ายอัตโนมัติ" flow now also saves
+        // (see ocrCardGrid). Never blocks the job on a storage hiccup.
+        try {
+          const imageUrl = await uploadImageBuffer(tileBuf, "tile.jpg", `ocr-tiles/${photo.id}`);
+          await prisma.groupPhotoOcrTile.create({
+            data: {
+              groupPhotoId: photo.id,
+              tileIndex,
+              left: Math.round(tile.left),
+              top: Math.round(tile.top),
+              width: Math.round(tile.width),
+              height: Math.round(tile.height),
+              uploadWidth,
+              uploadHeight,
+              imageUrl,
+              hits,
+              failed: false,
+            },
+          });
+        } catch (err) {
+          console.error(`Auto-tag job ${job.id}: failed to persist OCR tile debug record for tile ${tileIndex}:`, err);
+        }
       } catch (err) {
         // A single tile failing (e.g. a transient API hiccup) shouldn't fail the whole job — same
         // graceful-degradation stance as the client-driven bulk-OCR hook's per-tile catch. The
@@ -134,6 +159,7 @@ async function processAcceptingStage(job: ClaimedJob) {
     const rows = resolveRowsForNewPoints(
       existingTagsFull,
       toCreate.map((c, i) => ({ key: String(i), x: c.x, y: c.y })),
+      photo.imageHeight,
     );
     let running: { id: string; x: number; y: number; row: number; order: number }[] = existingTagsFull.map(
       (t) => ({ id: t.id, x: t.x, y: t.y, row: t.row, order: t.order }),
@@ -190,7 +216,7 @@ async function processFixingOrderStage(job: ClaimedJob) {
   if (tags.length > 0) {
     // Same row-0-is-the-front-row convention as handleFixAllRowsAndOrder — row 0 sits LOWER in
     // the frame (larger Y) than the standing rows behind it.
-    const clusters = clusterIntoRows(tags);
+    const clusters = clusterIntoRows(tags, job.groupPhoto.imageHeight);
     const ordered = [...clusters].sort(
       (a, b) => b.reduce((s, t) => s + t.y, 0) / b.length - a.reduce((s, t) => s + t.y, 0) / a.length,
     );

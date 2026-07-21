@@ -62,6 +62,16 @@ export function applyRowOrderShift<T extends RowClusterable>(
 const ROW_SLOPE_ALPHA = 0.35;
 const ROW_SLOPE_BETA = 40;
 
+// Caps the slope-based tolerance above as a fraction of the photo's own height, for panoramas far
+// wider than they are tall (e.g. a 4103×866 upload, real incident 2026-07-21) — `ALPHA * dx` alone
+// grows without bound as dx grows, so on a very flat photo it can exceed that photo's ENTIRE
+// row-to-row spacing (which shrinks along with overall height) well before dx reaches the far edge,
+// letting the greedy left-to-right walk in clusterIntoRows chain a point into an adjacent row just
+// because it's far enough away horizontally. 12% keeps clear margin below the tightest row spacing
+// seen in real dense photos (~15-20% of height) without tightening the tolerance for normal
+// tall/moderate photos, where ALPHA*dx+BETA never gets remotely close to 12% of height in practice.
+const ROW_SLOPE_HEIGHT_CAP_FRACTION = 0.12;
+
 /**
  * Groups points into physical rows by growing each row left-to-right: a point joins whichever
  * in-progress row it's most nearly level with its rightmost member so far (within the slope
@@ -69,8 +79,13 @@ const ROW_SLOPE_BETA = 40;
  * plain nearest-point breaks down once a photo has many rows close together, since a point
  * directly above/below in the NEXT row over is very often nearer in raw distance than its own
  * row-mate two people away.
+ *
+ * `imageHeight`, when known, caps that slope tolerance at a fraction of the photo's own height —
+ * see ROW_SLOPE_HEIGHT_CAP_FRACTION. Optional (defaults to no cap) since some callers only have a
+ * loose point set with no photo dimensions in hand; every caller that does have them should pass it.
  */
-export function clusterIntoRows<T extends { x: number; y: number }>(points: T[]): T[][] {
+export function clusterIntoRows<T extends { x: number; y: number }>(points: T[], imageHeight?: number): T[][] {
+  const maxDy = imageHeight ? imageHeight * ROW_SLOPE_HEIGHT_CAP_FRACTION : Infinity;
   const byX = [...points].sort((a, b) => a.x - b.x);
   const clusters: T[][] = [];
   for (const p of byX) {
@@ -80,7 +95,8 @@ export function clusterIntoRows<T extends { x: number; y: number }>(points: T[])
       const tail = clusters[i][clusters[i].length - 1];
       const dx = Math.abs(p.x - tail.x);
       const dy = Math.abs(p.y - tail.y);
-      if (dy <= ROW_SLOPE_ALPHA * dx + ROW_SLOPE_BETA && dy < bestDy) {
+      const tolerance = Math.min(ROW_SLOPE_ALPHA * dx + ROW_SLOPE_BETA, maxDy);
+      if (dy <= tolerance && dy < bestDy) {
         bestDy = dy;
         bestCluster = i;
       }
@@ -128,6 +144,7 @@ export function fitLine(points: { x: number; y: number }[]): { a: number; b: num
 export function resolveRowsForNewPoints<T extends RowClusterable>(
   existingTags: T[],
   newPoints: { key: string; x: number; y: number }[],
+  imageHeight?: number,
 ): Map<string, number> {
   const byRow = new Map<number, { x: number; y: number }[]>();
   for (const t of existingTags) {
@@ -161,7 +178,7 @@ export function resolveRowsForNewPoints<T extends RowClusterable>(
   }
 
   if (unmatched.length > 0) {
-    const clusters = clusterIntoRows(unmatched);
+    const clusters = clusterIntoRows(unmatched, imageHeight);
     // Default (no existing tags to infer a direction from): row 0 = sitting front row, which sits
     // LOWER in the frame (larger Y) than the standing rows behind it — confirmed against real
     // sample data, row 0 averaged Y=3387 vs row 8's Y=1419 on an 4870-tall photo. So row number
