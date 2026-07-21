@@ -41,8 +41,8 @@ export async function publishRichMenu(
     chatBarText: "เมนู",
     areas: [
       { bounds: { x: 0, y: 0, width: 1764, height: 1686 }, action: { type: "uri", uri: registerUrl } },
-      { bounds: { x: 1764, y: 0, width: 736, height: 935 }, action: { type: "uri", uri: ORDER_PHOTOS_URL } },
-      { bounds: { x: 1764, y: 935, width: 736, height: 751 }, action: { type: "uri", uri: TRACK_STATUS_URL } },
+      { bounds: { x: 1764, y: 0, width: 736, height: 843 }, action: { type: "uri", uri: ORDER_PHOTOS_URL } },
+      { bounds: { x: 1764, y: 843, width: 736, height: 843 }, action: { type: "uri", uri: TRACK_STATUS_URL } },
     ],
   });
 
