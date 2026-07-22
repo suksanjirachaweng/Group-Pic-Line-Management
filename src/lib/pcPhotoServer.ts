@@ -25,6 +25,24 @@ export function mintPcPhotoServerToken(): { baseUrl: string; token: string } {
   return { baseUrl: baseUrl.replace(/\/+$/, ""), token: `${expiry}.${signature}` };
 }
 
+// Same reasoning as EMBED_FACE_TIMEOUT_MS below — this is a real PC, not managed infra, so
+// callers that are about to depend on it for something hard to reverse (e.g. starting an event
+// close-out, which later gates permanently deleting the live data) should fail fast and loud
+// up front rather than silently discovering mid-job that every image copy is failing.
+const HEALTH_CHECK_TIMEOUT_MS = 5_000;
+
+/** True only if PC photo storage is both configured AND actually reachable right now. */
+export async function isPcPhotoServerReachable(): Promise<boolean> {
+  if (!isPcPhotoServerConfigured()) return false;
+  const baseUrl = process.env.NEXT_PUBLIC_PC_PHOTO_STORAGE_URL!.replace(/\/+$/, "");
+  try {
+    const resp = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS) });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
 export type EmbedFaceResult = { embedding: number[]; score: number; cropUrl: string };
 
 /**

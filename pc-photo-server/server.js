@@ -86,11 +86,18 @@ app.post("/upload", (req, res) => {
     return res.status(413).json({ error: "file too large" });
   }
 
+  // Default behavior adds a random suffix (regular photo uploads want a unique filename every
+  // time). ?exact=1 skips that and writes to the exact requested path, overwriting whatever's
+  // already there — used by the main app's event-archive close-out, whose data.json manifest
+  // references each image's path deterministically (by photo id) before the upload even happens,
+  // so the actual stored file must land at that exact path or the reference breaks.
+  const exact = req.query.exact === "1" || req.query.exact === "true";
   const dir = path.dirname(requestedPath);
   const ext = path.extname(requestedPath) || ".jpg";
   const base = path.basename(requestedPath, ext);
-  const randomSuffix = crypto.randomBytes(8).toString("hex");
-  const relativeFilePath = path.join(dir, `${base}-${randomSuffix}${ext}`);
+  const relativeFilePath = exact
+    ? requestedPath
+    : path.join(dir, `${base}-${crypto.randomBytes(8).toString("hex")}${ext}`);
 
   let destPath;
   try {

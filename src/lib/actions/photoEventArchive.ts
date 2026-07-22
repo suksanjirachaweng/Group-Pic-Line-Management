@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess } from "@/lib/authz";
-import { isPcPhotoServerConfigured } from "@/lib/pcPhotoServer";
+import { isPcPhotoServerConfigured, isPcPhotoServerReachable } from "@/lib/pcPhotoServer";
 import { deletePhotoEventData } from "@/lib/photoEvent/deletePhotoEventData";
 import { reimportEventArchive, type ReimportSummary } from "@/lib/photoEvent/reimportEventArchive";
 
@@ -18,6 +18,14 @@ export async function startPhotoEventArchive(universityId: string, photoEventId:
     where: { photoEventId, stage: { in: ["EXPORTING_DATA", "COPYING_IMAGES"] } },
   });
   if (existingActiveJob) return { error: "กำลังสำรองข้อมูลของงานนี้อยู่แล้ว" };
+
+  // Archive images now go to the PC server whenever it's configured (see archiveStorage.ts) — a
+  // close-out backup that silently fails to copy every image because the PC happened to be off
+  // would still reach ARCHIVE_READY and invite deleting the live data on top of an empty backup,
+  // so fail loudly here instead of leaving that to surface mid-job.
+  if (isPcPhotoServerConfigured() && !(await isPcPhotoServerReachable())) {
+    return { error: "เครื่อง PC เก็บข้อมูลสำรองไม่ตอบสนอง (อาจปิดอยู่หรือไม่ได้เชื่อมต่ออินเทอร์เน็ต) — เปิดเครื่องแล้วลองใหม่อีกครั้ง" };
+  }
 
   await prisma.photoEventArchiveJob.create({ data: { photoEventId } });
   revalidatePath(`/admin/universities/${universityId}/events/${photoEventId}`);
@@ -37,6 +45,9 @@ export async function startFaceBankBuild(universityId: string, photoEventId: str
   if (!event) return { error: "ไม่พบงานนี้" };
 
   if (!isPcPhotoServerConfigured()) return { error: "ยังไม่ได้ตั้งค่าระบบจดจำใบหน้า (PC server)" };
+  if (!(await isPcPhotoServerReachable())) {
+    return { error: "เครื่อง PC ไม่ตอบสนอง (อาจปิดอยู่หรือไม่ได้เชื่อมต่ออินเทอร์เน็ต) — เปิดเครื่องแล้วลองใหม่อีกครั้ง" };
+  }
 
   const existingActiveJob = await prisma.photoEventArchiveJob.findFirst({
     where: { photoEventId, stage: { in: ["EXPORTING_DATA", "COPYING_IMAGES", "EMBEDDING_FACES"] } },
