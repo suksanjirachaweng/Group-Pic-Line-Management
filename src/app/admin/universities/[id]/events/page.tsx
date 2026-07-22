@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { listPhotoEvents } from "@/lib/actions/photoEvents";
+import { listPhotoEvents, listArchivedPhotoEvents } from "@/lib/actions/photoEvents";
 import { PhotoEventStatus } from "@/generated/prisma/enums";
 import { CreatePhotoEventForm } from "./CreatePhotoEventForm";
 import { ToggleLiffVisibilityButton } from "./ToggleLiffVisibilityButton";
@@ -30,12 +30,23 @@ export default async function PhotoEventsPage({ params }: { params: Promise<{ id
   const university = await prisma.university.findUnique({ where: { id: universityId } });
   if (!university) notFound();
 
-  const events = await listPhotoEvents(universityId);
+  const [events, archivedEvents] = await Promise.all([
+    listPhotoEvents(universityId),
+    listArchivedPhotoEvents(universityId),
+  ]);
 
   return (
     <div className="mx-auto max-w-5xl p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">{university.name} — งานถ่ายรูป (Events)</h1>
+        {archivedEvents.length > 0 && (
+          <Link
+            href={`/admin/universities/${universityId}/events/archived`}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            งานที่ปิดแล้ว ({archivedEvents.length})
+          </Link>
+        )}
       </div>
 
       <p className="mb-4 text-sm text-gray-500">

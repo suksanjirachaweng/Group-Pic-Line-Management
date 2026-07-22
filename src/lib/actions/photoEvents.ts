@@ -49,7 +49,7 @@ export async function getDefaultPhotoEventId(universityId: string): Promise<stri
   });
   if (event) return event.id;
   const anyEvent = await prisma.photoEvent.findFirst({
-    where: { universityId },
+    where: { universityId, status: { not: PhotoEventStatus.ARCHIVED } },
     orderBy: { createdAt: "desc" },
     select: { id: true },
   });
@@ -70,16 +70,18 @@ export async function getDefaultPhotoEventId(universityId: string): Promise<stri
 /**
  * Resolves the event a list page (group-photos, registrants) should filter to, given the
  * `?eventId=` query param the admin may have picked from the EventFilterDropdown. Falls back to
- * `getDefaultPhotoEventId` when the param is absent, blank, or doesn't actually belong to this
- * university (e.g. a stale/tampered URL) — never trusts the param without checking ownership.
+ * `getDefaultPhotoEventId` when the param is absent, blank, doesn't actually belong to this
+ * university (e.g. a stale/tampered URL), or points at an ARCHIVED event (its data is gone — an
+ * old bookmarked/shared link shouldn't silently resurrect it as the active filter) — never trusts
+ * the param without checking both.
  */
 export async function resolveSelectedPhotoEventId(
   universityId: string,
   eventIdParam: string | undefined,
 ): Promise<string> {
   if (eventIdParam) {
-    const owned = await prisma.photoEvent.findUnique({
-      where: { id: eventIdParam, universityId },
+    const owned = await prisma.photoEvent.findFirst({
+      where: { id: eventIdParam, universityId, status: { not: PhotoEventStatus.ARCHIVED } },
       select: { id: true },
     });
     if (owned) return owned.id;
@@ -87,13 +89,18 @@ export async function resolveSelectedPhotoEventId(
   return getDefaultPhotoEventId(universityId);
 }
 
-export async function listPhotoEvents(universityId: string): Promise<PhotoEventListItem[]> {
-  await requireUniversityAccess(universityId);
-  const rows = await prisma.photoEvent.findMany({
-    where: { universityId },
-    orderBy: { startDate: "desc" },
-  });
-  return rows.map((r) => ({
+function toListItem(r: {
+  id: string;
+  code: string;
+  label: string | null;
+  startDate: Date;
+  endDate: Date;
+  codeRangeMin: number | null;
+  codeRangeMax: number | null;
+  status: PhotoEventStatus;
+  hiddenFromLiff: boolean;
+}): PhotoEventListItem {
+  return {
     id: r.id,
     code: r.code,
     label: r.label,
@@ -103,7 +110,36 @@ export async function listPhotoEvents(universityId: string): Promise<PhotoEventL
     codeRangeMax: r.codeRangeMax,
     status: r.status,
     hiddenFromLiff: r.hiddenFromLiff,
-  }));
+  };
+}
+
+/**
+ * Every event EXCEPT archived (closed-out + deleted) ones — the list every "which event" surface
+ * in the app should use: the main events table, every EventFilterDropdown (registrants,
+ * group-photos, quick-tag), and the registrants export route. An archived event's data has already
+ * been deleted from the live tables, so surfacing it here just invites picking a filter/target that
+ * silently resolves to nothing. Once an admin restores it (see reimportEventArchive.ts, which flips
+ * status back to ACTIVE), it reappears here automatically. Archived events are only ever reachable
+ * via `listArchivedPhotoEvents` below.
+ */
+export async function listPhotoEvents(universityId: string): Promise<PhotoEventListItem[]> {
+  await requireUniversityAccess(universityId);
+  const rows = await prisma.photoEvent.findMany({
+    where: { universityId, status: { not: PhotoEventStatus.ARCHIVED } },
+    orderBy: { startDate: "desc" },
+  });
+  return rows.map(toListItem);
+}
+
+/** The flip side of `listPhotoEvents` — archived events only, for the dedicated "ปิดงานแล้ว" page
+ * (where the only action available is restoring one back via ReimportArchiveButton). */
+export async function listArchivedPhotoEvents(universityId: string): Promise<PhotoEventListItem[]> {
+  await requireUniversityAccess(universityId);
+  const rows = await prisma.photoEvent.findMany({
+    where: { universityId, status: PhotoEventStatus.ARCHIVED },
+    orderBy: { startDate: "desc" },
+  });
+  return rows.map(toListItem);
 }
 
 export type CreatePhotoEventState = { error: string } | { success: true; id: string } | null;
