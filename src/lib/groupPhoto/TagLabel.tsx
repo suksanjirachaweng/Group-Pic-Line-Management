@@ -32,7 +32,10 @@ export function TagMarker({
         width: size,
         height: size,
         backgroundColor: color,
-        border: "2px solid white",
+        // The white ring only earns its keep as a separator between the dot and an outer `ring`
+        // (selected/highlighted) — with no ring to separate from, it's just clutter on an already
+        // small, busy-photo marker.
+        border: ring ? "2px solid white" : "none",
         borderRadius: "50% 50% 50% 0",
         transform: "rotate(-45deg)",
         transformOrigin: "0% 100%",

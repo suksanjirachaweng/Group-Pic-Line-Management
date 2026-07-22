@@ -42,7 +42,6 @@ import {
   type ReferenceLookup,
   type SavePayload,
 } from "./TagEditDialog";
-import { validateTags, problemTagIds } from "@/lib/groupPhoto/validateTags";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import {
   TagLabel,
@@ -320,8 +319,6 @@ export function TagCanvas({
     return m;
   }, [legacyReferences]);
 
-  const problems = useMemo(() => validateTags(tags), [tags]);
-  const problemIds = useMemo(() => problemTagIds(problems), [problems]);
   const reportedCount = useMemo(
     () => tags.filter((t) => t.reportedProblem).length,
     [tags],
@@ -1253,7 +1250,6 @@ export function TagCanvas({
                   imageWidth,
                   imageHeight,
                 );
-                const isProblem = problemIds.has(t.id);
                 const isHighlighted = t.id === highlightedTagId;
                 const isSelected = t.id === selectedTagId;
                 // Same "gray out everyone else" principle as the validate page — but only while
@@ -1278,19 +1274,13 @@ export function TagCanvas({
                   >
                     <TagMarker
                       color={color}
-                      size={isHighlighted ? 20 : isSelected ? 18 : 14}
+                      size={isHighlighted ? 20 : isSelected ? 18 : 7}
                       ring={
                         isHighlighted
                           ? "0 0 0 4px #6366f1"
                           : isSelected
                             ? "0 0 0 3px #facc15"
-                            : t.reportedProblem
-                              ? "0 0 0 2px #f97316"
-                              : isProblem
-                                ? "0 0 0 2px #ef4444"
-                                : t.ocrLowConfidence
-                                  ? "0 0 0 2px #f59e0b"
-                                  : undefined
+                            : undefined
                       }
                       title={
                         t.reportedProblem

@@ -27,7 +27,7 @@ const POPUP_HEIGHT = 200;
 // edit-history viewer) varies, this just keeps the initial clamp roughly on-screen.
 const CUSTOM_POPUP_WIDTH = 320;
 const CUSTOM_POPUP_MIN_HEIGHT = 160;
-const UNSELECTED_MARKER_SIZE = 9;
+const UNSELECTED_MARKER_SIZE = 4.5;
 const GRAY_MARKER_COLOR = "#9ca3af";
 
 const DEFAULT_DISPLAY_FIELDS = new Set<TagDisplayField>(["code", "line"]);
@@ -704,7 +704,7 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
                     color={color}
                     size={isSolo ? 22 : isSelected ? 20 : UNSELECTED_MARKER_SIZE}
                     pulse={isSelected || isSolo}
-                    ring={isSolo ? "0 0 0 3px #facc15" : isSelected ? "0 0 0 3px #facc15" : t.isProblem ? "0 0 0 2px #ef4444" : undefined}
+                    ring={isSolo || isSelected ? "0 0 0 3px #facc15" : undefined}
                     title={hideLabel ? undefined : `${t.code} — ${t.name}`}
                   />
                   {!hideLabel && (
