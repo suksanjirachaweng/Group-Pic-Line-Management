@@ -32,10 +32,7 @@ export function TagMarker({
         width: size,
         height: size,
         backgroundColor: color,
-        // A thin edge, not a fat ring — without it the dot is the same color as the label
-        // sitting right next to (often overlapping) it and disappears entirely. `ring` markers
-        // get the fuller edge, since their outer boxShadow needs a clean line to sit against.
-        border: ring ? "2px solid white" : "1px solid white",
+        border: ring ? "2px solid white" : "none",
         borderRadius: "50% 50% 50% 0",
         transform: "rotate(-45deg)",
         transformOrigin: "0% 100%",
@@ -118,7 +115,11 @@ export function TagLabel({
   return (
     <div
       className="absolute left-0 top-0 flex origin-left items-center gap-1 rounded-md py-0.5 pl-0.5 pr-1.5 shadow-md ring-1 ring-black/10"
-      style={{ backgroundColor: color, transform: `translateY(-6px) rotate(${angle}deg)` }}
+      // Lifted further than the marker's own size (see TagMarker) so the label body clears the
+      // now-borderless dot instead of sitting right on top of it, hiding it against a same-color
+      // marker — was -6px, which worked back when the marker itself had a white ring to peek
+      // through with.
+      style={{ backgroundColor: color, transform: `translateY(-14px) rotate(${angle}deg)` }}
     >
       {showOrder && (
         <span className="flex h-4 min-w-[16px] items-center justify-center rounded bg-black/25 px-1 text-[10px] font-bold leading-none text-white">
