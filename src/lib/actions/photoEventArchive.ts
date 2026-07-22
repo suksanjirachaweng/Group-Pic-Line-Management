@@ -5,7 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { requireUniversityAccess } from "@/lib/authz";
 import { isPcPhotoServerConfigured, isPcPhotoServerReachable } from "@/lib/pcPhotoServer";
 import { deletePhotoEventData } from "@/lib/photoEvent/deletePhotoEventData";
+import { deleteArchiveFiles } from "@/lib/photoEvent/archiveStorage";
 import { reimportEventArchive, type ReimportSummary } from "@/lib/photoEvent/reimportEventArchive";
+import { PhotoEventStatus } from "@/generated/prisma/enums";
 
 export type ActionResult = { error: string } | { success: true };
 
@@ -88,6 +90,43 @@ export async function confirmDeletePhotoEventData(
   }
   revalidatePath(`/admin/universities/${universityId}/events`);
   revalidatePath(`/admin/universities/${universityId}/events/${photoEventId}`);
+  return { success: true };
+}
+
+/**
+ * "ลบงานถาวร" on the archived-events page — deletes the close-out backup files (data.json + every
+ * copied image, wherever they actually live) and the PhotoEvent row itself, once an operator is
+ * certain this event will never be restored. Unlike confirmDeletePhotoEventData above (which only
+ * deletes the *live* rows and deliberately keeps the PhotoEvent row + backup forever, precisely so
+ * reimport stays possible), this is the true point of no return — only reachable for an event
+ * that's already ARCHIVED (backup exists, live data already gone), gated the same
+ * type-the-event-code way.
+ */
+export async function permanentlyDeletePhotoEventArchive(
+  universityId: string,
+  photoEventId: string,
+  confirmCode: string,
+): Promise<ActionResult> {
+  await requireUniversityAccess(universityId);
+  const event = await prisma.photoEvent.findUnique({ where: { id: photoEventId, universityId } });
+  if (!event) return { error: "ไม่พบงานนี้" };
+  if (event.status !== PhotoEventStatus.ARCHIVED) {
+    return { error: "ลบถาวรได้เฉพาะงานที่ปิดและลบข้อมูลออกจากระบบแล้วเท่านั้น" };
+  }
+  if (confirmCode.trim() !== event.code) return { error: `กรุณาพิมพ์ "${event.code}" ให้ตรงเพื่อยืนยันการลบถาวร` };
+
+  try {
+    if (event.archiveFileUrl) {
+      await deleteArchiveFiles(photoEventId, event.archiveFileUrl);
+    }
+  } catch (err) {
+    return { error: err instanceof Error ? `ลบไฟล์สำรองไม่สำเร็จ: ${err.message}` : "เกิดข้อผิดพลาดขณะลบไฟล์สำรอง" };
+  }
+
+  await prisma.photoEvent.delete({ where: { id: photoEventId } });
+
+  revalidatePath(`/admin/universities/${universityId}/events`);
+  revalidatePath(`/admin/universities/${universityId}/events/archived`);
   return { success: true };
 }
 

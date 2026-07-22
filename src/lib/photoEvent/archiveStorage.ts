@@ -1,5 +1,5 @@
 import "server-only";
-import { put } from "@vercel/blob";
+import { put, list, del } from "@vercel/blob";
 import { isPcPhotoServerConfigured, mintPcPhotoServerToken } from "@/lib/pcPhotoServer";
 import type { PhotoEventArchiveBundle } from "./archiveTypes";
 
@@ -103,6 +103,45 @@ export async function fetchArchiveDataJson(dataJsonUrl: string): Promise<PhotoEv
   const resp = await fetch(dataJsonUrl);
   if (!resp.ok) throw new Error(`Failed to fetch archive manifest (${resp.status})`);
   return (await resp.json()) as PhotoEventArchiveBundle;
+}
+
+function isVercelBlobUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname.endsWith(".public.blob.vercel-storage.com");
+  } catch {
+    return false;
+  }
+}
+
+/** Permanently deletes every file under an event's archives/<eventId> prefix — the data.json
+ * manifest and every copied image, on whichever backend this *particular* event's archive
+ * actually lives on (an old event may still be on Vercel Blob even if the PC server is
+ * configured now — inferred from archiveFileUrl's own host, not the current global switch).
+ * Irreversible; callers must have already confirmed with the operator (see
+ * permanentlyDeletePhotoEventArchive, which requires typing the event code). */
+export async function deleteArchiveFiles(photoEventId: string, archiveFileUrl: string): Promise<void> {
+  const prefix = archivePrefix(photoEventId);
+  if (isVercelBlobUrl(archiveFileUrl)) {
+    let cursor: string | undefined;
+    do {
+      const result = await list({ prefix, cursor, limit: 1000 });
+      if (result.blobs.length > 0) {
+        await del(result.blobs.map((b) => b.url));
+      }
+      cursor = result.hasMore ? result.cursor : undefined;
+    } while (cursor);
+    return;
+  }
+
+  const { baseUrl, token } = mintPcPhotoServerToken();
+  const resp = await fetch(`${baseUrl}/files?path=${encodeURIComponent(prefix)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    throw new Error(`PC server delete failed (${resp.status})${detail ? `: ${detail}` : ""}`);
+  }
 }
 
 function extensionFromUrl(url: string): string {

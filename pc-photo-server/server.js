@@ -134,6 +134,42 @@ app.post("/upload", (req, res) => {
   req.pipe(writeStream);
 });
 
+// Permanently removes a whole path (typically an event's entire archives/<eventId> folder) — used
+// by the main app's "ลบงานถาวร" button once an operator is sure a close-out backup is never
+// coming back. Recursive + irreversible; the main app itself gates this behind a
+// type-the-event-code confirmation before ever calling here.
+app.delete("/files", async (req, res) => {
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!verifyToken(token)) {
+    return res.status(401).json({ error: "unauthorized or expired token" });
+  }
+
+  const requestedPath = String(req.query.path || "");
+  if (!requestedPath || requestedPath.includes("..") || path.isAbsolute(requestedPath)) {
+    return res.status(400).json({ error: "invalid path" });
+  }
+
+  let targetPath;
+  try {
+    targetPath = safeStoragePath(requestedPath);
+  } catch {
+    return res.status(400).json({ error: "invalid path" });
+  }
+  // Refuse to nuke the whole storage root even if a caller somehow requested an empty/root-ish
+  // path — safeStoragePath already rejects ".." and absolute paths, this is just a second guard.
+  if (targetPath === path.resolve(STORAGE_DIR)) {
+    return res.status(400).json({ error: "refusing to delete the storage root" });
+  }
+
+  try {
+    await fs.promises.rm(targetPath, { recursive: true, force: true });
+  } catch (err) {
+    return res.status(500).json({ error: `failed to delete: ${err.message}` });
+  }
+  res.json({ deleted: true });
+});
+
 const MAX_EMBED_BYTES = 10 * 1024 * 1024; // face crops sent for embedding are small, not full group photos
 
 /** Buffers the raw request body up to `maxBytes`, rejecting (destroying the connection) if

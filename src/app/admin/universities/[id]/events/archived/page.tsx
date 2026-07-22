@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listArchivedPhotoEvents } from "@/lib/actions/photoEvents";
+import { PermanentlyDeleteArchiveButton } from "./PermanentlyDeleteArchiveButton";
 
 /**
  * Every ARCHIVED (closed-out + deleted) event for this university — kept off the main events page
@@ -48,6 +49,7 @@ export default async function ArchivedPhotoEventsPage({ params }: { params: Prom
                 <th className="whitespace-nowrap px-4 py-2">รหัสงาน</th>
                 <th className="whitespace-nowrap px-4 py-2">คำอธิบาย</th>
                 <th className="whitespace-nowrap px-4 py-2">ช่วงวันที่</th>
+                <th className="whitespace-nowrap px-4 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -65,11 +67,14 @@ export default async function ArchivedPhotoEventsPage({ params }: { params: Prom
                   <td className="whitespace-nowrap px-4 py-2 text-gray-600">
                     {new Date(e.startDate).toLocaleDateString("th-TH")} – {new Date(e.endDate).toLocaleDateString("th-TH")}
                   </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right">
+                    <PermanentlyDeleteArchiveButton universityId={universityId} photoEventId={e.id} eventCode={e.code} />
+                  </td>
                 </tr>
               ))}
               {events.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-4 py-3 text-gray-400">
+                  <td colSpan={4} className="px-4 py-3 text-gray-400">
                     ไม่มีงานที่ปิดแล้ว
                   </td>
                 </tr>
