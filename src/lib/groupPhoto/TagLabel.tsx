@@ -32,10 +32,10 @@ export function TagMarker({
         width: size,
         height: size,
         backgroundColor: color,
-        // The white ring only earns its keep as a separator between the dot and an outer `ring`
-        // (selected/highlighted) — with no ring to separate from, it's just clutter on an already
-        // small, busy-photo marker.
-        border: ring ? "2px solid white" : "none",
+        // A thin edge, not a fat ring — without it the dot is the same color as the label
+        // sitting right next to (often overlapping) it and disappears entirely. `ring` markers
+        // get the fuller edge, since their outer boxShadow needs a clean line to sit against.
+        border: ring ? "2px solid white" : "1px solid white",
         borderRadius: "50% 50% 50% 0",
         transform: "rotate(-45deg)",
         transformOrigin: "0% 100%",
