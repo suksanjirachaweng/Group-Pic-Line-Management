@@ -27,6 +27,13 @@ const SELECT_FORM_ID = "bulk-select-form";
 const PAGE_SIZE = 50;
 const ADVANCED_FILTER_ROWS = 3;
 
+// These two DEFAULT_FORM_FIELDS keys (see lib/actions/universities.ts) carry long bilingual
+// Thai/English labels but always hold a short value (a handful of digits) — without a narrower
+// column, `whitespace-nowrap` on the header stretches the whole column to fit the label text
+// instead of the actual data, wasting a lot of table width on every university that hasn't
+// customized its form fields away from the seeded default.
+const NARROW_FIELD_KEYS = new Set(["group_photo_index", "phone_number"]);
+
 const FIXED_COLUMNS = [
   { key: "lineUserId", label: "LINE User ID" },
   { key: "channel", label: "LINE Channel" },
@@ -170,7 +177,7 @@ export default async function RegistrantsPage({
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h1 className="flex flex-wrap items-center gap-3 text-lg font-semibold text-gray-900">
           <Link href={`/admin/universities/${universityId}/group-photos`} className="text-sm font-normal text-gray-500 hover:text-gray-700">
             ← กลับ
@@ -178,78 +185,93 @@ export default async function RegistrantsPage({
           {university.name} — Registrants
           <span className="ml-2 text-sm font-normal text-gray-400">{total} total</span>
         </h1>
+        <EventFilterDropdown events={events} selectedEventId={selectedPhotoEventId} includeUnassignedOption />
+      </div>
+
+      {/* One toolbar, two clearly separated clusters — left needs a checkbox selection first
+          (reads from SELECT_FORM_ID), right doesn't (page-wide utilities/navigation). Flat, same-
+          weight buttons made it easy to miss that distinction and click a bulk action with nothing
+          selected. */}
+      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
-          <EventFilterDropdown events={events} selectedEventId={selectedPhotoEventId} includeUnassignedOption />
+          <span className="text-xs font-medium uppercase tracking-wide text-gray-400">จัดการที่เลือก</span>
           <BulkMoveEventButton universityId={universityId} selectFormId={SELECT_FORM_ID} events={events} />
           <BulkDeliveryStatusButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
           <BulkSendButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
-          <MergeDuplicatesButton universityId={universityId} />
           <BulkDeleteButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
+        </div>
+        <div className="hidden h-6 w-px bg-gray-300 sm:block" />
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-gray-400">อื่นๆ</span>
+          <MergeDuplicatesButton universityId={universityId} />
           <a
             href={exportHref}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Export to Excel
           </a>
           <Link
             href={`/admin/universities/${universityId}/unregistered-followers`}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             เพิ่มเพื่อนแต่ยังไม่ลงทะเบียน
           </Link>
         </div>
       </div>
 
-      <form className="mb-4 flex flex-wrap gap-2" method="get">
-        <input
-          type="text"
-          name="q"
-          defaultValue={q}
-          placeholder="Search name or LINE user ID"
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-        />
-        <select name="status" defaultValue={status ?? ""} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm">
-          <option value="">All statuses</option>
-          {Object.values(RegistrantStatus).map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <select
-          name="deliveryStatus"
-          defaultValue={deliveryStatus ?? ""}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-        >
-          <option value="">การรับรูปทั้งหมด</option>
-          {Object.values(DeliveryStatus).map((s) => (
-            <option key={s} value={s}>
-              {DELIVERY_STATUS_LABEL[s]}
-            </option>
-          ))}
-        </select>
-        <select name="fieldKey" defaultValue={fieldKey ?? ""} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm">
-          <option value="">Filter by field…</option>
-          {university.formFields.map((f) => (
-            <option key={f.key} value={f.key}>
-              {f.label}
-            </option>
-          ))}
-        </select>
-        <input
-          type="text"
-          name="fieldValue"
-          defaultValue={fieldValue}
-          placeholder="Field value"
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-        />
-        {sortBy && <input type="hidden" name="sortBy" value={sortBy} />}
-        {sortDir && <input type="hidden" name="sortDir" value={sortDir} />}
-        {eventId && <input type="hidden" name="eventId" value={eventId} />}
-        <button type="submit" className="rounded-md bg-green-600 hover:bg-green-700 px-3 py-1.5 text-sm font-medium text-white">
-          Filter
-        </button>
-      </form>
+      <div className="mb-4 rounded-lg border border-gray-200 bg-white p-3">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">ค้นหาและกรอง</p>
+        <form className="flex flex-wrap gap-2" method="get">
+          <input
+            type="text"
+            name="q"
+            defaultValue={q}
+            placeholder="Search name or LINE user ID"
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          />
+          <select name="status" defaultValue={status ?? ""} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm">
+            <option value="">All statuses</option>
+            {Object.values(RegistrantStatus).map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <select
+            name="deliveryStatus"
+            defaultValue={deliveryStatus ?? ""}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          >
+            <option value="">การรับรูปทั้งหมด</option>
+            {Object.values(DeliveryStatus).map((s) => (
+              <option key={s} value={s}>
+                {DELIVERY_STATUS_LABEL[s]}
+              </option>
+            ))}
+          </select>
+          <select name="fieldKey" defaultValue={fieldKey ?? ""} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm">
+            <option value="">Filter by field…</option>
+            {university.formFields.map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+          <input
+            type="text"
+            name="fieldValue"
+            defaultValue={fieldValue}
+            placeholder="Field value"
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          />
+          {sortBy && <input type="hidden" name="sortBy" value={sortBy} />}
+          {sortDir && <input type="hidden" name="sortDir" value={sortDir} />}
+          {eventId && <input type="hidden" name="eventId" value={eventId} />}
+          <button type="submit" className="rounded-md bg-green-600 hover:bg-green-700 px-3 py-1.5 text-sm font-medium text-white">
+            Filter
+          </button>
+        </form>
+      </div>
 
       <details className="mb-4 rounded-md border border-gray-200 bg-white p-3" open={!!advancedGroup}>
         <summary className="cursor-pointer text-sm font-medium text-gray-700">
@@ -318,7 +340,10 @@ export default async function RegistrantsPage({
                 </Link>
               </th>
               {university.formFields.map((f) => (
-                <th key={f.key} className="whitespace-nowrap px-4 py-2">
+                <th
+                  key={f.key}
+                  className={`px-4 py-2 ${NARROW_FIELD_KEYS.has(f.key) ? "w-28 whitespace-normal" : "whitespace-nowrap"}`}
+                >
                   <Link href={sortHref(f.key)} className="hover:text-gray-700">
                     {f.label}
                     {sortIndicator(f.key)}
@@ -354,7 +379,10 @@ export default async function RegistrantsPage({
                     </Link>
                   </td>
                   {university.formFields.map((f) => (
-                    <td key={f.key} className="whitespace-nowrap px-4 py-2 text-gray-500">
+                    <td
+                      key={f.key}
+                      className={`px-4 py-2 text-gray-500 ${NARROW_FIELD_KEYS.has(f.key) ? "w-28" : "whitespace-nowrap"}`}
+                    >
                       {data[f.key] || "—"}
                     </td>
                   ))}
