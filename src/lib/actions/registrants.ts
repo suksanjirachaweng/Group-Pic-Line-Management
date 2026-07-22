@@ -111,6 +111,59 @@ export async function bulkMoveRegistrantsToEvent(
   return { success: true, count: result.count };
 }
 
+export type BulkDeleteState =
+  | { success: true; count: number; skipped: { name: string; code: string }[] }
+  | { success: false; error: string }
+  | null;
+
+/**
+ * Bulk-deletes whatever's checked in the registrants list's shared select-form — but never a
+ * registrant already linked to a GroupPhotoTag (registrantId set), since that link is what drives
+ * their real name/LINE-send eligibility on the tagged photo; deleting them out from under it would
+ * silently strand the tag (the FK is onDelete: SetNull, so nothing would even error). Those get
+ * skipped and reported back rather than failing the whole batch — deletes everyone else that's
+ * actually safe to remove.
+ */
+export async function bulkDeleteRegistrants(
+  universityId: string,
+  _prevState: BulkDeleteState,
+  formData: FormData,
+): Promise<BulkDeleteState> {
+  await requireUniversityAccess(universityId);
+
+  const registrantIds = formData.getAll("registrantIds").map(String);
+  if (registrantIds.length === 0) return { success: false, error: "ยังไม่ได้เลือกผู้รับ" };
+
+  const rows = await prisma.registrant.findMany({
+    where: { id: { in: registrantIds }, universityId },
+    select: {
+      id: true,
+      displayName: true,
+      data: true,
+      _count: { select: { groupPhotoTags: true } },
+    },
+  });
+
+  const blocked = rows.filter((r) => r._count.groupPhotoTags > 0);
+  const deletable = rows.filter((r) => r._count.groupPhotoTags === 0);
+
+  if (deletable.length > 0) {
+    await prisma.registrant.deleteMany({ where: { id: { in: deletable.map((r) => r.id) }, universityId } });
+  }
+
+  revalidatePath(`/admin/universities/${universityId}/registrants`);
+  return {
+    success: true,
+    count: deletable.length,
+    skipped: blocked.map((r) => ({
+      name: r.displayName?.trim() || "(ไม่มีชื่อ)",
+      code: typeof (r.data as Record<string, unknown>)?.group_photo_index === "string"
+        ? ((r.data as Record<string, unknown>).group_photo_index as string)
+        : "",
+    })),
+  };
+}
+
 export type MergeDuplicatesState =
   | { success: true; groupsFound: number; registrantsMerged: number }
   | { success: false; error: string }

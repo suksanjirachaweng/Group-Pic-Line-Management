@@ -20,6 +20,7 @@ import { BulkSendButton } from "./BulkSendButton";
 import { BulkDeliveryStatusButton } from "./BulkDeliveryStatusButton";
 import { BulkMoveEventButton } from "./BulkMoveEventButton";
 import { MergeDuplicatesButton } from "./MergeDuplicatesButton";
+import { BulkDeleteButton } from "./BulkDeleteButton";
 
 const SELECT_FORM_ID = "bulk-select-form";
 
@@ -183,6 +184,7 @@ export default async function RegistrantsPage({
           <BulkDeliveryStatusButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
           <BulkSendButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
           <MergeDuplicatesButton universityId={universityId} />
+          <BulkDeleteButton universityId={universityId} selectFormId={SELECT_FORM_ID} />
           <a
             href={exportHref}
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
