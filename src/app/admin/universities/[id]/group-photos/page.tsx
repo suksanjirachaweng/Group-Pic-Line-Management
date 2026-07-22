@@ -21,6 +21,7 @@ import {
 import { buildEventScopedRegistrantWhere } from "@/lib/groupPhoto/resolveTagMatch";
 import { LegacyReferenceUploadForm } from "./LegacyReferenceUploadForm";
 import { StripNameTitlesButton } from "./StripNameTitlesButton";
+import { CrossEventAuditButton } from "./CrossEventAuditButton";
 import { UploadGroupPhotoButton } from "./UploadGroupPhotoButton";
 import { DeleteGroupPhotoButton } from "./DeleteGroupPhotoButton";
 import { PhotoSelectAll } from "./PhotoSelectAll";
@@ -502,6 +503,7 @@ async function DataTab({
               </h3>
               <div className="flex flex-wrap items-center gap-2">
                 <StripNameTitlesButton universityId={universityId} />
+                <CrossEventAuditButton universityId={universityId} />
                 <form method="get" className="flex gap-2">
                   <input type="hidden" name="tab" value="data" />
                   {eventIdParam && (
