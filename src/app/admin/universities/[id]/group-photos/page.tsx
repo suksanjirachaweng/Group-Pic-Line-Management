@@ -28,6 +28,7 @@ import { PhotoSelectAll } from "./PhotoSelectAll";
 import { SharePhotoLinksButton } from "./SharePhotoLinksButton";
 import { PhotoSortDropdown } from "./PhotoSortDropdown";
 import { EventFilterDropdown } from "../EventFilterDropdown";
+import { AutoTagAutoRefresh } from "./AutoTagAutoRefresh";
 
 const PAGE_SIZE = 50;
 const PHOTO_SELECT_FORM_ID = "photo-select-form";
@@ -42,6 +43,12 @@ const PHOTO_STATUS_CLASS: Record<GroupPhotoStatus, string> = {
   NOT_STARTED: "bg-gray-100 text-gray-500",
   NEEDS_EDIT: "bg-amber-100 text-amber-700",
   DONE: "bg-green-100 text-green-700",
+};
+
+const AUTO_TAG_STAGE_LABEL: Record<string, string> = {
+  OCR: "อ่านป้าย",
+  ACCEPTING: "รับแท็ก",
+  FIXING_ORDER: "จัดเรียง",
 };
 
 type CombinedRowSource = "Excel" | "Google Sheet" | "LINE";
@@ -766,6 +773,7 @@ async function PhotosTab({
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <AutoTagAutoRefresh active={activeAutoTagJobs.length > 0} />
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <SharePhotoLinksButton
           selectFormId={PHOTO_SELECT_FORM_ID}
@@ -813,13 +821,21 @@ async function PhotosTab({
                   >
                     {PHOTO_STATUS_LABEL[p.status]}
                   </span>
-                  {activeAutoTagByPhoto.has(p.id) && (
-                    <span className="whitespace-nowrap rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-700">
-                      ⏳ กำลังประมวลผลอัตโนมัติ (
-                      {activeAutoTagByPhoto.get(p.id)!.tilesDone}/
-                      {activeAutoTagByPhoto.get(p.id)!.tilesTotal} tile)
-                    </span>
-                  )}
+                  {activeAutoTagByPhoto.has(p.id) && (() => {
+                    const job = activeAutoTagByPhoto.get(p.id)!;
+                    const percent = job.tilesTotal > 0 ? (job.tilesDone / job.tilesTotal) * 100 : 0;
+                    return (
+                      <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-700">
+                        ⏳ {AUTO_TAG_STAGE_LABEL[job.stage] ?? "กำลังประมวลผลอัตโนมัติ"} ({job.tilesDone}/{job.tilesTotal} tile)
+                        <span className="h-1.5 w-14 overflow-hidden rounded-full bg-sky-200">
+                          <span
+                            className="block h-full rounded-full bg-sky-500 transition-[width] duration-500"
+                            style={{ width: `${Math.max(4, Math.min(100, percent))}%` }}
+                          />
+                        </span>
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="flex flex-none items-center gap-3">
                   <span className="text-xs text-gray-400">
