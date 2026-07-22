@@ -2,22 +2,32 @@ import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { isAuthorizedCronRequest } from "@/lib/cronAuth";
-import { buildEventArchiveData } from "@/lib/photoEvent/buildEventArchiveData";
+import {
+  countRegistrantsForExport,
+  fetchRegistrantExportBatch,
+  toRegistrantArchiveRecord,
+  buildEventArchiveRest,
+} from "@/lib/photoEvent/buildEventArchiveData";
 import { uploadArchiveDataJson, copyImageToArchive } from "@/lib/photoEvent/archiveStorage";
 import { isPcPhotoServerConfigured, embedFace } from "@/lib/pcPhotoServer";
 import { recordCronHeartbeat } from "@/lib/cronHeartbeat";
 import { PhotoEventStatus } from "@/generated/prisma/enums";
+import { Prisma } from "@/generated/prisma/client";
 import type { PhotoEventArchiveJob } from "@/generated/prisma/client";
+import type { ArchivedRegistrant } from "@/lib/photoEvent/archiveTypes";
 
 const JOB_KEY = "process-photo-event-archive-jobs";
 
-// Hobby-plan cap — the COPYING_IMAGES/EMBEDDING_FACES stages' own soft time budget below stays
-// comfortably under this so the route always returns a real response instead of getting killed
-// mid-tick.
+// Hobby-plan cap — every stage's own soft time budget below stays comfortably under this so the
+// route always returns a real response instead of getting killed mid-tick.
 export const maxDuration = 60;
 const TIME_BUDGET_MS = 45_000;
 const IMAGE_COPY_CONCURRENCY = 3;
 const FACE_EMBED_CONCURRENCY = 2; // each call does real CPU-bound ML inference on the PC server — gentler than image copying
+// EXPORTING_DATA fetches+maps+appends registrants a batch at a time (unlike image copying, this
+// is one DB round trip per batch, not one per row, so it can afford a much larger batch size while
+// still leaving headroom in TIME_BUDGET_MS for several batches per tick on a large event).
+const REGISTRANT_EXPORT_BATCH_SIZE = 1000;
 
 // Generous crop window around a tag's (x,y) point before handing off to the PC server's own
 // detector — these group photos can be extremely high-res (15000px+ wide) with many people per
@@ -53,8 +63,62 @@ async function finishArchive(photoEventId: string) {
   });
 }
 
+/** Appends one already-mapped batch to the job's scratch accumulator via raw SQL `||`
+ * concatenation, entirely server-side in Postgres — the only way to make each tick's cost
+ * O(batch size) instead of O(total accumulated so far), since reading the whole (potentially
+ * multi-MB, growing) array back into Node just to re-write it every tick would defeat the point of
+ * pagination for a large event. */
+async function appendExportedRegistrants(jobId: string, records: ArchivedRegistrant[]): Promise<void> {
+  if (records.length === 0) return;
+  await prisma.$executeRaw`
+    UPDATE "photo_event_archive_jobs"
+    SET "exportedRegistrantsJson" = COALESCE("exportedRegistrantsJson", '[]'::jsonb) || ${JSON.stringify(records)}::jsonb
+    WHERE "id" = ${jobId}
+  `;
+}
+
 async function processExportingDataStage(job: PhotoEventArchiveJob) {
-  const bundle = await buildEventArchiveData(job.photoEventId);
+  // First tick for this job: count once, up front, so every later tick has a stable target to
+  // compare registrantsDone against (a mid-export registration is vanishingly unlikely for an
+  // event already being closed out, but computing this once avoids the total shifting under us).
+  let registrantsTotal = job.registrantsTotal;
+  if (registrantsTotal === 0 && job.registrantsDone === 0 && !job.lastExportedRegistrantId) {
+    registrantsTotal = await countRegistrantsForExport(job.photoEventId);
+    await prisma.photoEventArchiveJob.update({ where: { id: job.id }, data: { registrantsTotal } });
+  }
+
+  if (registrantsTotal > job.registrantsDone) {
+    const startedAt = Date.now();
+    let cursor = job.lastExportedRegistrantId;
+    let done = job.registrantsDone;
+
+    while (done < registrantsTotal && Date.now() - startedAt < TIME_BUDGET_MS) {
+      const batch = await fetchRegistrantExportBatch(job.photoEventId, cursor, REGISTRANT_EXPORT_BATCH_SIZE);
+      if (batch.length === 0) break; // registrantsTotal was stale (e.g. a registrant got reassigned mid-export) — stop instead of looping forever
+      await appendExportedRegistrants(job.id, batch.map(toRegistrantArchiveRecord));
+      cursor = batch[batch.length - 1].id;
+      done += batch.length;
+    }
+
+    await prisma.photoEventArchiveJob.update({
+      where: { id: job.id },
+      data: { registrantsDone: done, lastExportedRegistrantId: cursor },
+    });
+    if (done < registrantsTotal) return; // not finished — next tick resumes from lastExportedRegistrantId
+  }
+
+  // Registrants are fully accumulated — read them back exactly once, combine with the small
+  // unpaginated rest of the bundle, and upload the single data.json exactly as before pagination
+  // was added (reimportEventArchive.ts and fetchArchiveDataJson never see any of this — the final
+  // file's shape is unchanged).
+  const { exportedRegistrantsJson } = await prisma.photoEventArchiveJob.findUniqueOrThrow({
+    where: { id: job.id },
+    select: { exportedRegistrantsJson: true },
+  });
+  const registrants = (exportedRegistrantsJson ?? []) as unknown as ArchivedRegistrant[];
+  const rest = await buildEventArchiveRest(job.photoEventId);
+  const bundle = { ...rest, registrants };
+
   const dataJsonUrl = await uploadArchiveDataJson(job.photoEventId, bundle);
 
   await prisma.$transaction([
@@ -65,6 +129,7 @@ async function processExportingDataStage(job: PhotoEventArchiveJob) {
         imagesTotal: bundle.groupPhotos.length,
         stage: bundle.groupPhotos.length > 0 ? "COPYING_IMAGES" : "DONE",
         completedAt: bundle.groupPhotos.length > 0 ? null : new Date(),
+        exportedRegistrantsJson: Prisma.JsonNull, // scratch space only — the real archive is now durably uploaded above
       },
     }),
   ]);

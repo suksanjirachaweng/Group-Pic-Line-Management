@@ -20,6 +20,8 @@ const STALL_WARNING_MINUTES = 3;
 
 type Job = {
   stage: string;
+  registrantsDone: number;
+  registrantsTotal: number;
   imagesDone: number;
   imagesTotal: number;
   facesDone: number;
@@ -60,7 +62,10 @@ export function ArchiveJobProgress({ job, universityId, photoEventId }: {
 
   let percent: number | null = null;
   let countLabel = "";
-  if (job.stage === "COPYING_IMAGES" && job.imagesTotal > 0) {
+  if (job.stage === "EXPORTING_DATA" && job.registrantsTotal > 0) {
+    percent = (job.registrantsDone / job.registrantsTotal) * 100;
+    countLabel = `${job.registrantsDone}/${job.registrantsTotal} คน`;
+  } else if (job.stage === "COPYING_IMAGES" && job.imagesTotal > 0) {
     percent = (job.imagesDone / job.imagesTotal) * 100;
     countLabel = `${job.imagesDone}/${job.imagesTotal} รูป`;
   } else if (job.stage === "EMBEDDING_FACES" && job.facesTotal > 0) {

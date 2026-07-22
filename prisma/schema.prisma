@@ -465,22 +465,34 @@ enum PhotoEventArchiveStage {
 /// EMBEDDING_FACES (before DONE) backs up row-0, named, non-problem tags into
 /// FacultyFaceProfile via the self-hosted PC server's /embed-face — see that model's docstring.
 model PhotoEventArchiveJob {
-  id           String                 @id @default(cuid())
-  photoEventId String
-  stage        PhotoEventArchiveStage @default(EXPORTING_DATA)
+  id                       String                 @id @default(cuid())
+  photoEventId             String
+  stage                    PhotoEventArchiveStage @default(EXPORTING_DATA)
   // True when this job was started via the standalone "ดึงเข้าคลังใบหน้า" button (starts directly
   // at EMBEDDING_FACES, skipping EXPORTING_DATA/COPYING_IMAGES) rather than a full close-out —
   // on completion the cron route must NOT flip PhotoEvent.status to ARCHIVE_READY, since nothing
   // was actually backed up/closed out, only the face bank was updated.
-  facesOnly    Boolean                @default(false)
-  imagesTotal  Int                    @default(0)
-  imagesDone   Int                    @default(0)
-  facesTotal   Int                    @default(0)
-  facesDone    Int                    @default(0)
-  errorMessage String?
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
-  completedAt  DateTime?
+  facesOnly                Boolean                @default(false)
+  // EXPORTING_DATA's own resumable pagination — mirrors imagesDone/imagesTotal below, added once
+  // a single-tick, unpaginated registrant query + upload started risking the 60s Vercel function
+  // timeout for large events (10,000+ registrants). exportedRegistrantsJson accumulates each
+  // tick's mapped batch (appended via raw SQL `||` concatenation server-side in Postgres, never
+  // read back into Node until the final tick, so cost per tick stays O(batch), not O(total)); once
+  // registrantsDone reaches registrantsTotal the cron route reads it back once, combines it with
+  // the (small, unpaginated) groupPhotos/legacyReferences, uploads the single data.json exactly as
+  // before, then clears this field back to null — it's scratch space, not part of the archive.
+  registrantsTotal         Int                    @default(0)
+  registrantsDone          Int                    @default(0)
+  lastExportedRegistrantId String?
+  exportedRegistrantsJson  Json?
+  imagesTotal              Int                    @default(0)
+  imagesDone               Int                    @default(0)
+  facesTotal               Int                    @default(0)
+  facesDone                Int                    @default(0)
+  errorMessage             String?
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  completedAt              DateTime?
 
   photoEvent PhotoEvent @relation(fields: [photoEventId], references: [id], onDelete: Cascade)
 
@@ -516,6 +528,7 @@ model GroupPhoto {
   tags         GroupPhotoTag[]
   shareLinks   GroupPhotoShareLink[]
   titleHistory GroupPhotoTitleHistory[]
+  imageHistory GroupPhotoImageHistory[]
   autoTagJobs  GroupPhotoAutoTagJob[]
   ocrTiles     GroupPhotoOcrTile[]
 
@@ -618,6 +631,31 @@ model GroupPhotoTitleHistory {
 
   @@index([groupPhotoId, createdAt])
   @@map("group_photo_title_history")
+}
+
+/// One entry per past image, captured the moment it's about to be REPLACED (updateGroupPhotoImage
+/// snapshots GroupPhoto's current imageUrl/imageWidth/imageHeight into a row here before
+/// overwriting them) — the opposite convention from GroupPhotoTitleHistory, which logs the NEW
+/// value each time. Images need the old-value convention instead: the file itself is never
+/// deleted by an update (every group-photo upload lands at a fresh randomly-suffixed path on
+/// whichever storage backend, see pc-photo-server's /upload), so without this row the replaced
+/// file would become a disk orphan with zero DB trace back to the photo it came from — logging
+/// the new value here would duplicate GroupPhoto.imageUrl and still lose the one value (the old
+/// file) an admin might actually want to look back at or restore. GroupPhoto's very first image
+/// (from createGroupPhoto) has no entry until it's first replaced, same as title history's
+/// implicit untracked initial null.
+model GroupPhotoImageHistory {
+  id           String   @id @default(cuid())
+  groupPhotoId String
+  imageUrl     String
+  imageWidth   Int
+  imageHeight  Int
+  createdAt    DateTime @default(now())
+
+  groupPhoto GroupPhoto @relation(fields: [groupPhotoId], references: [id], onDelete: Cascade)
+
+  @@index([groupPhotoId, createdAt])
+  @@map("group_photo_image_history")
 }
 
 enum GroupPhotoStatus {

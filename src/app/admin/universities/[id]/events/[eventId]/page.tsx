@@ -118,6 +118,8 @@ export default async function PhotoEventDetailPage({
           <ArchiveJobProgress
             job={{
               stage: latestJob.stage,
+              registrantsDone: latestJob.registrantsDone,
+              registrantsTotal: latestJob.registrantsTotal,
               imagesDone: latestJob.imagesDone,
               imagesTotal: latestJob.imagesTotal,
               facesDone: latestJob.facesDone,
@@ -163,6 +165,8 @@ export default async function PhotoEventDetailPage({
           <ArchiveJobProgress
             job={{
               stage: latestFaceBankJob.stage,
+              registrantsDone: latestFaceBankJob.registrantsDone,
+              registrantsTotal: latestFaceBankJob.registrantsTotal,
               imagesDone: latestFaceBankJob.imagesDone,
               imagesTotal: latestFaceBankJob.imagesTotal,
               facesDone: latestFaceBankJob.facesDone,
