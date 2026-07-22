@@ -93,6 +93,12 @@ export type ArchivedGroupPhoto = {
   tags: ArchivedGroupPhotoTag[];
   shareLinks: { id: string; token: string; isActive: boolean; createdAt: string }[];
   titleHistory: { id: string; title: string | null; source: string; createdAt: string }[];
+  // Just the old imageUrl/width/height/timestamp, not a copy of the file itself — unlike the
+  // current image (archivedImagePath, physically copied into this same archive by
+  // COPYING_IMAGES), a past version's URL still points at wherever it happened to live on the
+  // original storage backend, which isn't guaranteed to survive forever. Accepted tradeoff: see
+  // GroupPhotoImageHistory's own schema docstring.
+  imageHistory: { id: string; imageUrl: string; imageWidth: number; imageHeight: number; createdAt: string }[];
   autoTagJobs: {
     id: string;
     stage: string;

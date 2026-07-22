@@ -214,6 +214,17 @@ export async function reimportEventArchive(photoEventId: string): Promise<Reimpo
         })),
       });
     }
+    if (p.imageHistory.length > 0) {
+      await prisma.groupPhotoImageHistory.createMany({
+        data: p.imageHistory.map((h) => ({
+          groupPhotoId: createdPhoto.id,
+          imageUrl: h.imageUrl,
+          imageWidth: h.imageWidth,
+          imageHeight: h.imageHeight,
+          createdAt: new Date(h.createdAt),
+        })),
+      });
+    }
   }
 
   if (bundle.legacyReferences.length > 0) {

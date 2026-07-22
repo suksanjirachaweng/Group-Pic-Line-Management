@@ -103,6 +103,7 @@ export async function buildEventArchiveRest(
         tags: { include: { history: true } },
         shareLinks: true,
         titleHistory: true,
+        imageHistory: true,
         autoTagJobs: { include: { hits: true } },
       },
     }),
@@ -176,6 +177,13 @@ export async function buildEventArchiveRest(
         id: h.id,
         title: h.title,
         source: h.source,
+        createdAt: h.createdAt.toISOString(),
+      })),
+      imageHistory: p.imageHistory.map((h) => ({
+        id: h.id,
+        imageUrl: h.imageUrl,
+        imageWidth: h.imageWidth,
+        imageHeight: h.imageHeight,
         createdAt: h.createdAt.toISOString(),
       })),
       autoTagJobs: p.autoTagJobs.map((j) => ({
