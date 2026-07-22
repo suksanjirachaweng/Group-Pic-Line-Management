@@ -5,6 +5,7 @@ import { authOptions, canAccessUniversity } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizeCode } from "@/lib/groupPhoto/normalizeCode";
 import { resolveRegistrantGroupPhotoName } from "@/lib/groupPhoto/registrantDisplayName";
+import { buildEventScopedRegistrantWhere } from "@/lib/groupPhoto/resolveTagMatch";
 import { TagCanvas } from "./TagCanvas";
 import { UpdatePhotoImageButton } from "./UpdatePhotoImageButton";
 import { ImportMarkFileButton } from "./ImportMarkFileButton";
@@ -37,13 +38,22 @@ export default async function GroupPhotoTaggingPage({
   });
   if (!photo) notFound();
 
+  // Both lookups below must stay scoped to this photo's own event — the same university can run
+  // this event more than once with overlapping group_photo_index code ranges (see
+  // resolveTagMatch.ts's doc comment), so an unscoped code match can silently pull in a different
+  // event's registrant/reference under the same code.
+  const event = await prisma.photoEvent.findUniqueOrThrow({
+    where: { id: photo.photoEventId, universityId },
+    select: { startDate: true, endDate: true },
+  });
+
   const [registrantRows, referenceRows, ocrTileCount] = await Promise.all([
     prisma.registrant.findMany({
-      where: { universityId },
+      where: buildEventScopedRegistrantWhere(universityId, photo.photoEventId, event),
       select: { id: true, displayName: true, lineUserId: true, channelId: true, data: true },
     }),
     prisma.groupPhotoLegacyReference.findMany({
-      where: { universityId },
+      where: { universityId, photoEventId: photo.photoEventId },
       select: { name: true, normalizedCode: true, source: true },
     }),
     countOcrTiles(universityId, photoId),

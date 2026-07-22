@@ -560,26 +560,23 @@ export async function importGroupPhotoTagsFromMarkFile(
     return { error: "ไม่พบข้อมูลที่ใช้ได้ในไฟล์ (ต้องมีคอลัมน์: ชื่อ-นามสกุล, CODE, แถว, ลำดับ, X, Y)" };
   }
 
-  const [registrantRows, referenceRows] = await Promise.all([
-    prisma.registrant.findMany({ where: { universityId }, select: { id: true, data: true } }),
-    prisma.groupPhotoLegacyReference.findMany({ where: { universityId }, select: { normalizedCode: true } }),
-  ]);
-  const registrantByCode = new Map<string, string>();
-  for (const r of registrantRows) {
-    const raw = (r.data as Record<string, unknown> | null)?.group_photo_index;
-    if (typeof raw === "string" && raw.trim()) registrantByCode.set(normalizeCode(raw), r.id);
-  }
-  const legacyCodes = new Set(referenceRows.map((r) => r.normalizedCode));
+  const { photoEventId } = await prisma.groupPhoto.findUniqueOrThrow({
+    where: { id: groupPhotoId, universityId },
+    select: { photoEventId: true },
+  });
+  // Event-scoped for the same reason saveGroupPhotoTag/resolveTagMatch are — a code from this mark
+  // file could coincidentally also exist in a different event's registrant/reference set.
+  const { registrantByCode, referenceByCode } = await buildTagMatchMaps(universityId, photoEventId);
 
   await prisma.$transaction([
     prisma.groupPhotoTag.deleteMany({ where: { groupPhotoId } }),
     prisma.groupPhotoTag.createMany({
       data: parsed.map((p) => {
         const normalizedCode = normalizeCode(p.code);
-        const registrantId = registrantByCode.get(normalizedCode) ?? null;
+        const registrantId = registrantByCode.get(normalizedCode)?.id ?? null;
         const matchSource: TagMatchSource = registrantId
           ? TagMatchSource.REGISTRANT
-          : legacyCodes.has(normalizedCode)
+          : referenceByCode.has(normalizedCode)
             ? TagMatchSource.LEGACY_REFERENCE
             : TagMatchSource.MANUAL;
         return {
