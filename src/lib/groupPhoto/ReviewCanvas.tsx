@@ -540,13 +540,16 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
     for (const [row, rowTags] of byRow) {
       const sorted = [...rowTags].sort((a, b) => a.order - b.order);
       const color = colorForRow(row);
+      // y matches the SVG viewBox height below (100 * imageHeight/imageWidth, not a flat 100) so
+      // the coordinate space is undistorted — see that viewBox's own comment for why.
+      const viewBoxHeight = (100 * imageHeight) / imageWidth;
       for (let i = 0; i < sorted.length - 1; i++) {
         segments.push({
           key: `${sorted[i].id}-${sorted[i + 1].id}`,
           x1: (sorted[i].x / imageWidth) * 100,
-          y1: (sorted[i].y / imageHeight) * 100,
+          y1: (sorted[i].y / imageHeight) * viewBoxHeight,
           x2: (sorted[i + 1].x / imageWidth) * 100,
-          y2: (sorted[i + 1].y / imageHeight) * 100,
+          y2: (sorted[i + 1].y / imageHeight) * viewBoxHeight,
           color,
         });
       }
@@ -649,7 +652,12 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
             {displayFields.has("line") && (
               <svg
                 className="absolute inset-0 h-full w-full"
-                viewBox="0 0 100 100"
+                // Matches the container's real aspect ratio (not a flat square) — a square
+                // viewBox stretched non-uniformly onto a wide/flat photo scales x and y
+                // differently, so a line's rendered thickness depended on its own slope
+                // (near-vertical segments came out visibly thicker than near-horizontal ones).
+                // Squaring this up makes stroke width uniform regardless of a segment's angle.
+                viewBox={`0 0 100 ${(100 * imageHeight) / imageWidth}`}
                 preserveAspectRatio="none"
               >
                 {rowLineSegments.map((seg) => (
@@ -660,7 +668,9 @@ export const ReviewCanvas = forwardRef<ReviewCanvasHandle, {
                     x2={seg.x2}
                     y2={seg.y2}
                     stroke={seg.color}
-                    strokeWidth={0.3}
+                    // Scaled by 1/imageWidth so the rendered thickness stays visually constant
+                    // across photos regardless of resolution, now that x and y scale together.
+                    strokeWidth={250 / imageWidth}
                     strokeLinecap="round"
                   />
                 ))}
