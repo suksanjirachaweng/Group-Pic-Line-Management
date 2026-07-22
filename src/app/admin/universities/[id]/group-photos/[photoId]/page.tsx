@@ -8,6 +8,7 @@ import { resolveRegistrantGroupPhotoName } from "@/lib/groupPhoto/registrantDisp
 import { buildEventScopedRegistrantWhere } from "@/lib/groupPhoto/resolveTagMatch";
 import { TagCanvas } from "./TagCanvas";
 import { UpdatePhotoImageButton } from "./UpdatePhotoImageButton";
+import { ImageHistoryButton } from "./ImageHistoryButton";
 import { ImportMarkFileButton } from "./ImportMarkFileButton";
 import { PhotoStatusSelector } from "./PhotoStatusSelector";
 import { PhotoTitleEditor } from "./PhotoTitleEditor";
@@ -103,6 +104,7 @@ export default async function GroupPhotoTaggingPage({
             </div>
             <div className="flex items-center gap-2">
               <UpdatePhotoImageButton universityId={universityId} groupPhotoId={photo.id} />
+              <ImageHistoryButton universityId={universityId} groupPhotoId={photo.id} />
               <ImportMarkFileButton universityId={universityId} groupPhotoId={photo.id} />
             </div>
           </div>

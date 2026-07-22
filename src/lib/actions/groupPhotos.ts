@@ -41,9 +41,16 @@ export async function deleteGroupPhoto(universityId: string, groupPhotoId: strin
 
 /**
  * Replaces just the image file behind an existing photo (e.g. a retouched version with a title
- * bar added) — tags are left untouched since they belong to the GroupPhoto row, not the image
- * itself. The new image's geometry may not line up with the old one, so this is normally paired
- * with a bulk position adjustment (see `bulkAdjustTagPositions`) on the tagging page.
+ * bar added, or a crop-and-save from the tagging canvas) — tags are left untouched since they
+ * belong to the GroupPhoto row, not the image itself. The new image's geometry may not line up
+ * with the old one, so this is normally paired with a bulk position adjustment (see
+ * `bulkAdjustTagPositions`) on the tagging page.
+ *
+ * Snapshots whatever image this is about to replace into GroupPhotoImageHistory first — the old
+ * file is never deleted from storage (every upload lands at a fresh path, see
+ * uploadLargePhoto.ts), so without this the replaced version would become an untraceable disk
+ * orphan. Doubles as "restore an old version": callers just pass a past history entry's own
+ * values back in here, which archives the current image in turn — restoring is itself undoable.
  */
 export async function updateGroupPhotoImage(
   universityId: string,
@@ -51,9 +58,43 @@ export async function updateGroupPhotoImage(
   input: { imageUrl: string; imageWidth: number; imageHeight: number },
 ): Promise<void> {
   await requireUniversityAccess(universityId);
-  await prisma.groupPhoto.update({ where: { id: groupPhotoId, universityId }, data: input });
+  const current = await prisma.groupPhoto.findUniqueOrThrow({
+    where: { id: groupPhotoId, universityId },
+    select: { imageUrl: true, imageWidth: true, imageHeight: true },
+  });
+  await prisma.$transaction([
+    prisma.groupPhotoImageHistory.create({
+      data: {
+        groupPhotoId,
+        imageUrl: current.imageUrl,
+        imageWidth: current.imageWidth,
+        imageHeight: current.imageHeight,
+      },
+    }),
+    prisma.groupPhoto.update({ where: { id: groupPhotoId, universityId }, data: input }),
+  ]);
   revalidatePath(`/admin/universities/${universityId}/group-photos/${groupPhotoId}`);
   revalidatePath(`/admin/universities/${universityId}/group-photos`);
+}
+
+export type ImageHistoryEntry = {
+  id: string;
+  imageUrl: string;
+  imageWidth: number;
+  imageHeight: number;
+  createdAt: string;
+};
+
+export async function getGroupPhotoImageHistory(
+  universityId: string,
+  groupPhotoId: string,
+): Promise<ImageHistoryEntry[]> {
+  await requireUniversityAccess(universityId);
+  const rows = await prisma.groupPhotoImageHistory.findMany({
+    where: { groupPhotoId, groupPhoto: { universityId } },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
 }
 
 /**
