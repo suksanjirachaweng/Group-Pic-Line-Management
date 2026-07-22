@@ -10,6 +10,7 @@ import { ReimportArchiveButton } from "./ReimportArchiveButton";
 import { BuildFaceBankButton } from "./BuildFaceBankButton";
 import { EditPhotoEventForm } from "./EditPhotoEventForm";
 import { ToggleLiffVisibilityButton } from "../ToggleLiffVisibilityButton";
+import { ArchiveJobProgress } from "./ArchiveJobProgress";
 
 const STATUS_LABEL: Record<PhotoEventStatus, string> = {
   ACTIVE: "กำลังดำเนินการ",
@@ -21,14 +22,6 @@ const STATUS_CLASS: Record<PhotoEventStatus, string> = {
   ACTIVE: "bg-green-100 text-green-700",
   ARCHIVE_READY: "bg-amber-100 text-amber-700",
   ARCHIVED: "bg-gray-100 text-gray-500",
-};
-
-const ARCHIVE_STAGE_LABEL: Record<string, string> = {
-  EXPORTING_DATA: "กำลังบันทึกข้อมูล",
-  COPYING_IMAGES: "กำลังคัดลอกรูปภาพ",
-  EMBEDDING_FACES: "กำลังสำรองข้อมูลใบหน้าอาจารย์",
-  DONE: "เสร็จสิ้น",
-  FAILED: "ล้มเหลว",
 };
 
 export default async function PhotoEventDetailPage({
@@ -122,32 +115,19 @@ export default async function PhotoEventDetailPage({
         </p>
 
         {latestJob && (
-          <div className="mb-3 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
-            สถานะการสำรองข้อมูลล่าสุด: <span className="font-medium">{ARCHIVE_STAGE_LABEL[latestJob.stage]}</span>
-            {latestJob.stage === "COPYING_IMAGES" && (
-              <span>
-                {" "}
-                ({latestJob.imagesDone}/{latestJob.imagesTotal} รูป)
-              </span>
-            )}
-            {latestJob.stage === "EMBEDDING_FACES" && (
-              <span>
-                {" "}
-                ({latestJob.facesDone}/{latestJob.facesTotal} คน)
-              </span>
-            )}
-            {latestJob.stage === "FAILED" && latestJob.errorMessage && (
-              <span className="ml-1 text-red-600">— {latestJob.errorMessage}</span>
-            )}
-            {jobInProgress && (
-              <>
-                {" "}
-                <Link href={`/admin/universities/${universityId}/events/${eventId}`} className="text-indigo-600 hover:underline">
-                  รีเฟรชสถานะ
-                </Link>
-              </>
-            )}
-          </div>
+          <ArchiveJobProgress
+            job={{
+              stage: latestJob.stage,
+              imagesDone: latestJob.imagesDone,
+              imagesTotal: latestJob.imagesTotal,
+              facesDone: latestJob.facesDone,
+              facesTotal: latestJob.facesTotal,
+              errorMessage: latestJob.errorMessage,
+              createdAt: latestJob.createdAt.toISOString(),
+            }}
+            universityId={universityId}
+            photoEventId={eventId}
+          />
         )}
 
         {event.archiveFileUrl && (
@@ -180,26 +160,19 @@ export default async function PhotoEventDetailPage({
         </p>
 
         {latestFaceBankJob && (
-          <div className="mb-3 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
-            สถานะล่าสุด: <span className="font-medium">{ARCHIVE_STAGE_LABEL[latestFaceBankJob.stage]}</span>
-            {latestFaceBankJob.stage === "EMBEDDING_FACES" && (
-              <span>
-                {" "}
-                ({latestFaceBankJob.facesDone}/{latestFaceBankJob.facesTotal} คน)
-              </span>
-            )}
-            {latestFaceBankJob.stage === "FAILED" && latestFaceBankJob.errorMessage && (
-              <span className="ml-1 text-red-600">— {latestFaceBankJob.errorMessage}</span>
-            )}
-            {faceBankJobInProgress && (
-              <>
-                {" "}
-                <Link href={`/admin/universities/${universityId}/events/${eventId}`} className="text-indigo-600 hover:underline">
-                  รีเฟรชสถานะ
-                </Link>
-              </>
-            )}
-          </div>
+          <ArchiveJobProgress
+            job={{
+              stage: latestFaceBankJob.stage,
+              imagesDone: latestFaceBankJob.imagesDone,
+              imagesTotal: latestFaceBankJob.imagesTotal,
+              facesDone: latestFaceBankJob.facesDone,
+              facesTotal: latestFaceBankJob.facesTotal,
+              errorMessage: latestFaceBankJob.errorMessage,
+              createdAt: latestFaceBankJob.createdAt.toISOString(),
+            }}
+            universityId={universityId}
+            photoEventId={eventId}
+          />
         )}
 
         <div className="flex flex-wrap items-center gap-2">
