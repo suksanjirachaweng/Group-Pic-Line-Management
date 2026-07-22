@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { ocrCardGrid } from "@/lib/actions/bulkCardOcr";
+import { deleteOcrTiles } from "@/lib/actions/ocrTileDebug";
 import { extractRectCrop } from "@/lib/groupPhoto/coordinateMapping";
 import { CONCURRENCY, computeTiles, computeOcrUploadScale } from "@/lib/groupPhoto/tileGeometry";
 
@@ -50,6 +51,15 @@ export function useBulkCardOcr() {
       for (const t of prev) URL.revokeObjectURL(t.imageUrl);
       return [];
     });
+    // Clear whatever this photo's *persisted* debug tiles (GroupPhotoOcrTile, from either this
+    // button or the mobile quick-tag cron) still hold from a previous run — otherwise every re-run
+    // just piles more tiles on top (5, then 10, then 15...) since ocrCardGrid always inserts, never
+    // replaces. Best-effort: a failed clear shouldn't block the OCR run the admin is waiting on.
+    try {
+      await deleteOcrTiles(universityId, groupPhotoId);
+    } catch (err) {
+      console.error("Failed to clear previous persisted OCR tiles before a new run:", err);
+    }
     try {
       const { width, height } = fullBitmap;
       const tiles = computeTiles(width, height);
