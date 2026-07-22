@@ -115,11 +115,11 @@ export function TagLabel({
   return (
     <div
       className="absolute left-0 top-0 flex origin-left items-center gap-1 rounded-md py-0.5 pl-0.5 pr-1.5 shadow-md ring-1 ring-black/10"
-      // Lifted further than the marker's own size (see TagMarker) so the label body clears the
-      // now-borderless dot instead of sitting right on top of it, hiding it against a same-color
-      // marker — was -6px, which worked back when the marker itself had a white ring to peek
-      // through with.
-      style={{ backgroundColor: color, transform: `translateY(-14px) rotate(${angle}deg)` }}
+      // Lifted up and right, clear of the marker itself (see TagMarker) — the now-borderless dot
+      // is the same color as this label and needs real clearance, not just a few px, to stay
+      // visible instead of hiding underneath it. Was -6px/no X-shift, which worked back when the
+      // marker itself had a white ring to peek through with.
+      style={{ backgroundColor: color, transform: `translate(6px, -22px) rotate(${angle}deg)` }}
     >
       {showOrder && (
         <span className="flex h-4 min-w-[16px] items-center justify-center rounded bg-black/25 px-1 text-[10px] font-bold leading-none text-white">
