@@ -4,7 +4,22 @@ import { FM_ROOT } from "@/lib/fileManager/pathScope";
 import { FileManagerView } from "./FileManagerView";
 
 export default async function FileManagerPage({ params }: { params: Promise<{ path?: string[] }> }) {
-  const { path: pathSegments } = await params;
+  const { path: rawPathSegments } = await params;
+
+  // Non-ASCII/space segments (e.g. Thai folder names) arrive here still percent-encoded rather
+  // than decoded — without this, `currentPath` ends up literally containing "%E0%B8..." text,
+  // which then corrupts everything downstream: the breadcrumb displays raw percent-encoding, and
+  // any upload/mkdir/rename while browsing such a folder writes into a WRONG, separate top-level
+  // folder literally named with that percent-encoded string instead of the real one (confirmed by
+  // inspecting the PC server's actual filesystem — a folder named "%E0%B8%A3..." sat right next to
+  // the correctly-named one). Decoding is safe to apply unconditionally: an already-decoded plain
+  // segment has no "%" sequences, so decodeURIComponent is a no-op on it.
+  let pathSegments: string[] | undefined;
+  try {
+    pathSegments = rawPathSegments?.map((s) => decodeURIComponent(s));
+  } catch {
+    notFound();
+  }
   if (pathSegments?.some((s) => !s || s === "." || s === "..")) notFound();
 
   const currentPath = pathSegments && pathSegments.length > 0 ? `${FM_ROOT}/${pathSegments.join("/")}` : FM_ROOT;

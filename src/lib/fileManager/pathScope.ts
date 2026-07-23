@@ -42,3 +42,18 @@ export function isValidFmPath(candidate: string): boolean {
   if (!candidate || candidate.includes("..") || candidate.startsWith("/") || candidate.includes("\\")) return false;
   return candidate === FM_ROOT || candidate.startsWith(FM_ROOT + "/");
 }
+
+/**
+ * Encodes a `/`-joined path for use in a `/photos/...` URL, one segment at a time — never
+ * `encodeURIComponent` on the whole string (that would also escape the `/` separators). Building
+ * these URLs by directly interpolating a raw path/name into a template string is NOT safe: it
+ * relies on the browser's own href/src normalization to encode spaces/Unicode, which breaks the
+ * moment a segment contains a literal `%` (e.g. a name like `%E0%B8...` — a real case hit once,
+ * caused by a since-fixed bug elsewhere that let a raw percent-encoded string become an actual
+ * folder name on disk) — a literal `%` left un-escaped gets misread as the start of an escape
+ * sequence, silently 404ing. Encoding every segment explicitly is correct for both the ordinary
+ * case (Thai text, spaces) and this pathological one.
+ */
+export function encodePathForUrl(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}

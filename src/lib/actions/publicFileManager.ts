@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { isPcPhotoServerConfigured, mintPcPhotoServerToken } from "@/lib/pcPhotoServer";
-import { isPathWithinScope } from "@/lib/fileManager/pathScope";
+import { isPathWithinScope, encodePathForUrl } from "@/lib/fileManager/pathScope";
 import { computeCollisionSafeName } from "@/lib/fileManager/collisionSafeName";
 import type { FmEntry } from "@/lib/actions/fileManager";
 
@@ -81,7 +81,7 @@ export async function getDownloadUrl(token: string, filePath: string): Promise<s
   if (!isPcPhotoServerConfigured()) return null;
 
   const baseUrl = process.env.NEXT_PUBLIC_PC_PHOTO_STORAGE_URL!.replace(/\/+$/, "");
-  return `${baseUrl}/photos/${target}`;
+  return `${baseUrl}/photos/${encodePathForUrl(target)}`;
 }
 
 export type PublicUploadTarget = { uploadUrl: string; token: string; finalPath: string; finalName: string };
