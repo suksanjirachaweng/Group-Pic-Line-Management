@@ -7,6 +7,26 @@ export function isPcPhotoServerConfigured(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_PC_PHOTO_STORAGE_URL && process.env.PC_PHOTO_STORAGE_SECRET);
 }
 
+export type PcPhotoServerTokenOptions = {
+  /**
+   * Restricts the token to paths equal to or nested under this prefix (e.g. `"filemanager/abc"`).
+   * Only meaningful together with `uploadOnly: true` — see that field's own doc comment.
+   */
+  scope?: string;
+  /**
+   * Set `true` for ANY token that will be sent to a browser — admin or anonymous share visitor
+   * alike. An `uploadOnly` token is only accepted by the PC server's `/upload` route; every other
+   * route (list/mkdir/rename/move/delete/disk-space) explicitly rejects it even if the scope would
+   * otherwise match. Without this, handing a scoped-but-full-access token to an anonymous
+   * "dropbox" visitor would let them delete/rename/move other files already sitting in that same
+   * shared folder, not just upload their own — this flag is what closes that gap. Trusted
+   * server-to-server callers (list/mkdir/rename/move/disk-space, all called directly from a
+   * `"use server"` action, never serialized to a client) must never set this — they use the
+   * default omitted-`opts` call instead.
+   */
+  uploadOnly?: boolean;
+};
+
 /**
  * Mints a short-lived, HMAC-signed token for the self-hosted PC photo server — the shared secret
  * itself never leaves this process, only this time-boxed token. The PC server verifies the exact
@@ -14,15 +34,30 @@ export function isPcPhotoServerConfigured(): boolean {
  * — callers that need one (e.g. a browser-initiated upload) gate it themselves before calling this
  * (see getPcUploadToken); trusted server-side/cron callers (e.g. the close-out face-backup
  * trigger) call this directly.
+ *
+ * Called with no `opts` (the original, still-default shape): produces the exact same 2-part
+ * `"<expiry>.<sig>"` token every existing caller (`embedFace`, the archive close-out job, the
+ * group-photo uploader) has always gotten — byte-for-byte unchanged, zero behavior change for any
+ * of them. Only callers that pass `opts` (the file-manager feature) get the newer 3-part
+ * `"<expiry>.<claimsB64url>.<sig>"` scoped format — see pc-photo-server/server.js's `verifyToken`
+ * for the exact parsing/verification counterpart.
  */
-export function mintPcPhotoServerToken(): { baseUrl: string; token: string } {
+export function mintPcPhotoServerToken(opts?: PcPhotoServerTokenOptions): { baseUrl: string; token: string } {
   const baseUrl = process.env.NEXT_PUBLIC_PC_PHOTO_STORAGE_URL;
   const secret = process.env.PC_PHOTO_STORAGE_SECRET;
   if (!baseUrl || !secret) throw new Error("PC photo storage is not configured (missing env vars)");
 
   const expiry = Date.now() + TOKEN_TTL_MS;
-  const signature = createHmac("sha256", secret).update(String(expiry)).digest("hex");
-  return { baseUrl: baseUrl.replace(/\/+$/, ""), token: `${expiry}.${signature}` };
+
+  if (!opts) {
+    const signature = createHmac("sha256", secret).update(String(expiry)).digest("hex");
+    return { baseUrl: baseUrl.replace(/\/+$/, ""), token: `${expiry}.${signature}` };
+  }
+
+  const claims = { scope: opts.scope ?? null, uploadOnly: Boolean(opts.uploadOnly) };
+  const claimsB64 = Buffer.from(JSON.stringify(claims), "utf8").toString("base64url");
+  const signature = createHmac("sha256", secret).update(`${expiry}.${claimsB64}`).digest("hex");
+  return { baseUrl: baseUrl.replace(/\/+$/, ""), token: `${expiry}.${claimsB64}.${signature}` };
 }
 
 // Same reasoning as EMBED_FACE_TIMEOUT_MS below — this is a real PC, not managed infra, so

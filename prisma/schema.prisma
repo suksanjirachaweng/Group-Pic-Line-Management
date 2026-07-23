@@ -851,3 +851,28 @@ model CronHeartbeat {
 
   @@map("cron_heartbeats")
 }
+
+// ---------------------------------------------------------------------------
+// Phase 5: standalone file manager — entirely unrelated to registration/tagging.
+// Files themselves live on the self-hosted PC server's `filemanager/` subtree, not in this DB —
+// the filesystem is the source of truth for the file/folder tree (see src/lib/actions/fileManager.ts's
+// own doc comment for why: a dual-source-of-truth mirror would need reconciliation logic against a
+// machine that's explicitly allowed to be offline). The only thing that genuinely needs a DB row is
+// the share link itself, matching GroupPhotoShareLink's same deliberate minimalism.
+// ---------------------------------------------------------------------------
+
+/// A share link for one file or folder under the PC server's filemanager/ subtree. `path` is
+/// relative to that root (never an absolute filesystem path). `isFolder` distinguishes a
+/// file-share (view/download only) from a folder-share (also allows anonymous upload of new files
+/// at the share's own top level — see the public actions for why uploads never target a
+/// client-supplied sub-path).
+model FileManagerShareLink {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  path      String
+  isFolder  Boolean
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("file_manager_share_links")
+}
