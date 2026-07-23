@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { deleteEntry } from "@/lib/actions/fileManager";
@@ -55,6 +55,8 @@ export function FileManagerView({
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [zipping, setZipping] = useState(false);
 
   const segments = currentPath === FM_ROOT ? [] : currentPath.split("/").slice(1);
   const sorted = [...initialEntries].sort((a, b) => {
@@ -71,6 +73,47 @@ export function FileManagerView({
   function downloadUrlFor(entryName: string): string | null {
     if (!PC_BASE_URL) return null;
     return `${PC_BASE_URL.replace(/\/+$/, "")}/photos/${encodePathForUrl(`${currentPath}/${entryName}`)}`;
+  }
+
+  function toggleSelected(name: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  async function handleDownloadSelected() {
+    const names = [...selected];
+    if (names.length === 0) return;
+    if (names.length === 1) {
+      const url = downloadUrlFor(names[0]);
+      if (url) window.open(url, "_blank", "noreferrer");
+      return;
+    }
+    setZipping(true);
+    try {
+      const resp = await fetch("/api/admin/file-manager/zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parentPath: currentPath, fileNames: names }),
+      });
+      if (!resp.ok) throw new Error("สร้างไฟล์ ZIP ไม่สำเร็จ");
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "download.zip";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "สร้างไฟล์ ZIP ไม่สำเร็จ");
+    } finally {
+      setZipping(false);
+    }
   }
 
   async function handleDelete(entry: FmEntry) {
@@ -103,38 +146,105 @@ export function FileManagerView({
     }
   }
 
-  function EntryActions({ entry, compact = false }: { entry: FmEntry; compact?: boolean }) {
-    const downloadUrl = !entry.isDir ? downloadUrlFor(entry.name) : null;
-    const btnClass = compact
-      ? "rounded border border-gray-300 px-1.5 py-0.5 text-[11px] hover:bg-gray-50"
-      : "rounded border border-gray-300 px-2 py-1 hover:bg-gray-50";
-    const delClass = compact
-      ? "rounded border border-red-300 px-1.5 py-0.5 text-[11px] text-red-600 hover:bg-red-50 disabled:opacity-50"
-      : "rounded border border-red-300 px-2 py-1 text-red-600 hover:bg-red-50 disabled:opacity-50";
+  function SelectCheckbox({ entry }: { entry: FmEntry }) {
+    if (entry.isDir) return null;
     return (
-      <div className={`flex flex-wrap items-center gap-1.5 ${compact ? "justify-center text-[11px]" : "text-xs"}`}>
-        {!entry.isDir && downloadUrl && (
-          <a href={downloadUrl} target="_blank" rel="noreferrer" className={btnClass}>
-            ดาวน์โหลด
-          </a>
-        )}
-        <button type="button" onClick={() => setDialog({ type: "share", entry })} className={btnClass}>
-          แชร์
-        </button>
-        <button type="button" onClick={() => setDialog({ type: "rename", entry })} className={btnClass}>
-          เปลี่ยนชื่อ
-        </button>
-        <button type="button" onClick={() => setDialog({ type: "move", entry })} className={btnClass}>
-          ย้าย
-        </button>
+      <input
+        type="checkbox"
+        checked={selected.has(entry.name)}
+        onChange={() => toggleSelected(entry.name)}
+        aria-label={`เลือก ${entry.name}`}
+        className="h-4 w-4 shrink-0 rounded border-gray-300"
+      />
+    );
+  }
+
+  /** Google-Drive-style "⋮" menu — replaces what used to be an always-visible row of 4-5 buttons
+   * per entry. A dropdown here also sidesteps the earlier grid-view bug where a wrapped
+   * multi-button row (hidden via opacity alone) still reserved its full wrapped height, leaving
+   * blank space under every card — a single small button can't wrap. */
+  function EntryMenu({ entry }: { entry: FmEntry }) {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+    const downloadUrl = !entry.isDir ? downloadUrlFor(entry.name) : null;
+
+    useEffect(() => {
+      if (!open) return;
+      function onClickOutside(e: MouseEvent) {
+        if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      }
+      document.addEventListener("mousedown", onClickOutside);
+      return () => document.removeEventListener("mousedown", onClickOutside);
+    }, [open]);
+
+    const itemClass = "block w-full px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-50";
+
+    return (
+      <div ref={ref} className="relative inline-block">
         <button
           type="button"
-          disabled={deleting === entry.name}
-          onClick={() => void handleDelete(entry)}
-          className={delClass}
+          onClick={() => setOpen((o) => !o)}
+          aria-label="ตัวเลือกเพิ่มเติม"
+          className="rounded-full px-2 py-1 text-lg leading-none text-gray-500 hover:bg-gray-100"
         >
-          {deleting === entry.name ? "กำลังลบ..." : "ลบ"}
+          ⋮
         </button>
+        {open && (
+          <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+            {downloadUrl && (
+              <a
+                href={downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => setOpen(false)}
+                className={itemClass}
+              >
+                ดาวน์โหลด
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setDialog({ type: "share", entry });
+              }}
+              className={itemClass}
+            >
+              แชร์
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setDialog({ type: "rename", entry });
+              }}
+              className={itemClass}
+            >
+              เปลี่ยนชื่อ
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setDialog({ type: "move", entry });
+              }}
+              className={itemClass}
+            >
+              ย้าย
+            </button>
+            <button
+              type="button"
+              disabled={deleting === entry.name}
+              onClick={() => {
+                setOpen(false);
+                void handleDelete(entry);
+              }}
+              className={`${itemClass} text-red-600 disabled:opacity-50`}
+            >
+              {deleting === entry.name ? "กำลังลบ..." : "ลบ"}
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -217,6 +327,20 @@ export function FileManagerView({
               ))}
             </select>
           </label>
+          {selected.size > 0 && (
+            <button
+              type="button"
+              disabled={zipping}
+              onClick={() => void handleDownloadSelected()}
+              className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {zipping
+                ? "กำลังสร้าง ZIP..."
+                : selected.size === 1
+                  ? "ดาวน์โหลดที่เลือก"
+                  : `ดาวน์โหลดที่เลือก (${selected.size}) เป็น ZIP`}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setDialog({ type: "newFolder" })}
@@ -245,7 +369,7 @@ export function FileManagerView({
                   <th className="whitespace-nowrap px-4 py-2">ชื่อ</th>
                   <th className="whitespace-nowrap px-4 py-2">ขนาด</th>
                   <th className="whitespace-nowrap px-4 py-2">แก้ไขล่าสุด</th>
-                  <th className="whitespace-nowrap px-4 py-2">การจัดการ</th>
+                  <th className="whitespace-nowrap px-4 py-2"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -253,6 +377,7 @@ export function FileManagerView({
                   <tr key={entry.name}>
                     <td className="whitespace-nowrap px-4 py-2">
                       <div className="flex items-center gap-2">
+                        <SelectCheckbox entry={entry} />
                         <EntryThumb entry={entry} className="h-8 w-8 shrink-0 text-lg" />
                         {entry.isDir ? (
                           <Link
@@ -272,8 +397,8 @@ export function FileManagerView({
                     <td className="whitespace-nowrap px-4 py-2 text-gray-500">
                       {new Date(entry.mtimeMs).toLocaleString("th-TH")}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2">
-                      <EntryActions entry={entry} />
+                    <td className="whitespace-nowrap px-4 py-2 text-right">
+                      <EntryMenu entry={entry} />
                     </td>
                   </tr>
                 ))}
@@ -284,7 +409,8 @@ export function FileManagerView({
       ) : viewMode === "list" ? (
         <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
           {sorted.map((entry) => (
-            <div key={entry.name} className="group flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50">
+            <div key={entry.name} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50">
+              <SelectCheckbox entry={entry} />
               <EntryThumb entry={entry} className="h-8 w-8 shrink-0 text-lg" />
               {entry.isDir ? (
                 <Link href={urlFor([...segments, entry.name])} className="truncate font-medium text-indigo-600 hover:underline">
@@ -293,8 +419,8 @@ export function FileManagerView({
               ) : (
                 <span className="truncate text-gray-900">{entry.name}</span>
               )}
-              <div className="ml-auto shrink-0 opacity-0 group-hover:opacity-100">
-                <EntryActions entry={entry} compact />
+              <div className="ml-auto shrink-0">
+                <EntryMenu entry={entry} />
               </div>
             </div>
           ))}
@@ -312,8 +438,12 @@ export function FileManagerView({
           {sorted.map((entry) => (
             <div
               key={entry.name}
-              className="group relative rounded-lg border border-gray-200 bg-white p-3 hover:border-indigo-300 hover:shadow-sm"
+              className="relative rounded-lg border border-gray-200 bg-white p-3 hover:border-indigo-300 hover:shadow-sm"
             >
+              <div className="mb-1 flex items-center justify-between">
+                <SelectCheckbox entry={entry} />
+                <EntryMenu entry={entry} />
+              </div>
               {entry.isDir ? (
                 <Link href={urlFor([...segments, entry.name])} className="block">
                   <EntryThumb entry={entry} className="aspect-square w-full" />
@@ -332,13 +462,6 @@ export function FileManagerView({
                   <span>{new Date(entry.mtimeMs).toLocaleDateString("th-TH")}</span>
                 </div>
               )}
-              {/* Absolutely positioned (not just opacity-0) so the hidden buttons never affect the
-                  card's own height — a narrow card (icons mode) wraps 4 buttons onto several lines,
-                  and opacity alone still reserves that wrapped height, leaving tall blank space
-                  under every card even when nothing is hovered. */}
-              <div className="pointer-events-none absolute inset-x-1 bottom-1 flex flex-wrap items-center justify-center gap-1 rounded-md bg-white/95 p-1 opacity-0 shadow-sm group-hover:pointer-events-auto group-hover:opacity-100">
-                <EntryActions entry={entry} compact />
-              </div>
             </div>
           ))}
         </div>
