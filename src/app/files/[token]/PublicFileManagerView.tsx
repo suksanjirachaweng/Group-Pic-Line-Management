@@ -5,6 +5,24 @@ import { getDownloadUrl, getPublicUploadTarget, listSharedFolder } from "@/lib/a
 import type { FmEntry } from "@/lib/actions/fileManager";
 import { formatBytes } from "@/lib/fileManager/formatBytes";
 
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"]);
+function isImageName(entryName: string): boolean {
+  const ext = entryName.split(".").pop()?.toLowerCase();
+  return !!ext && IMAGE_EXTENSIONS.has(ext);
+}
+
+// Same 5 modes + labels as the admin file-manager view (FileManagerView.tsx) and the faculty face
+// bank browser — kept visually consistent across every page in the app that browses a list of
+// visual items, rather than inventing a per-page taxonomy.
+type ViewMode = "xlarge" | "icons" | "list" | "details" | "content";
+const VIEW_MODE_LABEL: Record<ViewMode, string> = {
+  xlarge: "ไอคอนใหญ่พิเศษ",
+  icons: "ไอคอน",
+  list: "รายการ",
+  details: "รายละเอียด",
+  content: "เนื้อหา",
+};
+
 const MAX_RETRIES = 5;
 
 async function uploadOne(token: string, file: File, onProgress: (pct: number) => void, attempt = 0): Promise<void> {
@@ -85,6 +103,7 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
   const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
   const [downloadUrls, setDownloadUrls] = useState<Record<string, string>>({});
   const [refreshKey, setRefreshKey] = useState(0);
+  const [viewMode, setViewMode] = useState<ViewMode>("details");
   const refresh = () => setRefreshKey((k) => k + 1);
 
   useEffect(() => {
@@ -170,74 +189,200 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
             </span>
           ))}
         </nav>
-        {isAtRoot && (
-          <>
-            <input
-              ref={inputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files);
-              }}
-            />
-            <button
-              type="button"
-              disabled={uploading}
-              onClick={() => inputRef.current?.click()}
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1 text-xs text-gray-600">
+            มุมมอง:
+            <select
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value as ViewMode)}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs"
             >
-              {uploading
-                ? progress
-                  ? `กำลังอัปโหลด ${progress.name} (${Math.round(progress.pct)}%)`
-                  : "กำลังอัปโหลด..."
-                : "อัปโหลดไฟล์"}
-            </button>
-          </>
-        )}
+              {(Object.keys(VIEW_MODE_LABEL) as ViewMode[]).map((v) => (
+                <option key={v} value={v}>
+                  {VIEW_MODE_LABEL[v]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {isAtRoot && (
+            <>
+              <input
+                ref={inputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files);
+                }}
+              />
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => inputRef.current?.click()}
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {uploading
+                  ? progress
+                    ? `กำลังอัปโหลด ${progress.name} (${Math.round(progress.pct)}%)`
+                    : "กำลังอัปโหลด..."
+                  : "อัปโหลดไฟล์"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        {error && <p className="p-4 text-sm text-red-600">{error}</p>}
-        {!error && entries === null && <p className="p-4 text-sm text-gray-400">กำลังโหลด...</p>}
-        {!error && entries && entries.length === 0 && (
-          <p className="p-4 text-sm text-gray-400">โฟลเดอร์นี้ยังไม่มีไฟล์</p>
-        )}
-        {!error && entries && entries.length > 0 && (
-          <ul className="divide-y divide-gray-100">
-            {[...entries]
-              .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name, "th") : a.isDir ? -1 : 1))
-              .map((e) => (
-                <li key={e.name} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+      {error && (
+        <p className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-red-600">{error}</p>
+      )}
+      {!error && entries === null && (
+        <p className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-400">กำลังโหลด...</p>
+      )}
+      {!error && entries && entries.length === 0 && (
+        <p className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-400">โฟลเดอร์นี้ยังไม่มีไฟล์</p>
+      )}
+      {!error && entries && entries.length > 0 && (() => {
+        const sorted = [...entries].sort((a, b) =>
+          a.isDir === b.isDir ? a.name.localeCompare(b.name, "th") : a.isDir ? -1 : 1,
+        );
+
+        function Thumb({ entry, className }: { entry: FmEntry; className: string }) {
+          if (entry.isDir) {
+            return <div className={`flex items-center justify-center rounded-md bg-gray-50 text-4xl ${className}`}>📁</div>;
+          }
+          const url = downloadUrls[entry.name];
+          if (url && isImageName(entry.name)) {
+            // eslint-disable-next-line @next/next/no-img-element
+            return <img src={url} alt={entry.name} className={`rounded-md bg-gray-50 object-cover ${className}`} />;
+          }
+          return <div className={`flex items-center justify-center rounded-md bg-gray-50 text-4xl ${className}`}>📄</div>;
+        }
+
+        function DownloadButton({ entry, compact = false }: { entry: FmEntry; compact?: boolean }) {
+          if (entry.isDir || !downloadUrls[entry.name]) return null;
+          return (
+            <a
+              href={downloadUrls[entry.name]}
+              target="_blank"
+              rel="noreferrer"
+              className={
+                compact
+                  ? "rounded border border-gray-300 px-1.5 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50"
+                  : "rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+              }
+            >
+              ดาวน์โหลด
+            </a>
+          );
+        }
+
+        if (viewMode === "details") {
+          return (
+            <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                    <tr>
+                      <th className="whitespace-nowrap px-4 py-2">ชื่อ</th>
+                      <th className="whitespace-nowrap px-4 py-2">ขนาด</th>
+                      <th className="whitespace-nowrap px-4 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {sorted.map((e) => (
+                      <tr key={e.name}>
+                        <td className="whitespace-nowrap px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            <Thumb entry={e} className="h-8 w-8 shrink-0 text-lg" />
+                            {e.isDir ? (
+                              <button
+                                type="button"
+                                onClick={() => setSubPath(`${subPath}/${e.name}`)}
+                                className="font-medium text-indigo-600 hover:underline"
+                              >
+                                {e.name}
+                              </button>
+                            ) : (
+                              <span>{e.name}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2 text-gray-500">
+                          {e.isDir ? "—" : formatBytes(e.size)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2">
+                          <DownloadButton entry={e} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        if (viewMode === "list") {
+          return (
+            <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+              {sorted.map((e) => (
+                <div key={e.name} className="flex items-center gap-2 px-4 py-2 text-sm">
+                  <Thumb entry={e} className="h-8 w-8 shrink-0 text-lg" />
                   {e.isDir ? (
                     <button
                       type="button"
                       onClick={() => setSubPath(`${subPath}/${e.name}`)}
-                      className="font-medium text-indigo-600 hover:underline"
+                      className="truncate font-medium text-indigo-600 hover:underline"
                     >
-                      📁 {e.name}
+                      {e.name}
                     </button>
                   ) : (
-                    <span>📄 {e.name}</span>
+                    <span className="truncate text-gray-900">{e.name}</span>
                   )}
-                  <div className="flex items-center gap-2 text-xs text-gray-400">
-                    {!e.isDir && <span>{formatBytes(e.size)}</span>}
-                    {!e.isDir && downloadUrls[e.name] && (
-                      <a
-                        href={downloadUrls[e.name]}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-50"
-                      >
-                        ดาวน์โหลด
-                      </a>
-                    )}
+                  <div className="ml-auto shrink-0">
+                    <DownloadButton entry={e} compact />
                   </div>
-                </li>
+                </div>
               ))}
-          </ul>
-        )}
-      </div>
+            </div>
+          );
+        }
+
+        return (
+          <div
+            className={
+              viewMode === "xlarge"
+                ? "grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4"
+                : viewMode === "icons"
+                  ? "grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8"
+                  : "grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
+            }
+          >
+            {sorted.map((e) => (
+              <div key={e.name} className="rounded-lg border border-gray-200 bg-white p-3">
+                {e.isDir ? (
+                  <button type="button" onClick={() => setSubPath(`${subPath}/${e.name}`)} className="block w-full">
+                    <Thumb entry={e} className="aspect-square w-full" />
+                  </button>
+                ) : (
+                  <Thumb entry={e} className="aspect-square w-full" />
+                )}
+                <div className={`mt-2 truncate font-medium text-gray-900 ${viewMode === "icons" ? "text-xs" : "text-sm"}`}>
+                  {e.name}
+                </div>
+                {viewMode === "content" && !e.isDir && (
+                  <div className="mt-0.5 text-xs text-gray-400">{formatBytes(e.size)}</div>
+                )}
+                {!e.isDir && (
+                  <div className="mt-1.5 flex justify-center">
+                    <DownloadButton entry={e} compact />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }

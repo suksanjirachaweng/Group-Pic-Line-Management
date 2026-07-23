@@ -22,6 +22,17 @@ function isImageName(name: string): boolean {
   return !!ext && IMAGE_EXTENSIONS.has(ext);
 }
 
+// Same 5 modes + labels as the faculty face bank browser (FacultyFaceBankBrowser.tsx) — kept
+// visually consistent across both admin pages rather than inventing a second view-mode taxonomy.
+type ViewMode = "xlarge" | "icons" | "list" | "details" | "content";
+const VIEW_MODE_LABEL: Record<ViewMode, string> = {
+  xlarge: "ไอคอนใหญ่พิเศษ",
+  icons: "ไอคอน",
+  list: "รายการ",
+  details: "รายละเอียด",
+  content: "เนื้อหา",
+};
+
 type DialogState =
   | { type: "newFolder" }
   | { type: "rename"; entry: FmEntry }
@@ -40,7 +51,7 @@ export function FileManagerView({
   const router = useRouter();
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [viewMode, setViewMode] = useState<ViewMode>("details");
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
@@ -92,6 +103,56 @@ export function FileManagerView({
     }
   }
 
+  function EntryActions({ entry, compact = false }: { entry: FmEntry; compact?: boolean }) {
+    const downloadUrl = !entry.isDir ? downloadUrlFor(entry.name) : null;
+    const btnClass = compact
+      ? "rounded border border-gray-300 px-1.5 py-0.5 text-[11px] hover:bg-gray-50"
+      : "rounded border border-gray-300 px-2 py-1 hover:bg-gray-50";
+    const delClass = compact
+      ? "rounded border border-red-300 px-1.5 py-0.5 text-[11px] text-red-600 hover:bg-red-50 disabled:opacity-50"
+      : "rounded border border-red-300 px-2 py-1 text-red-600 hover:bg-red-50 disabled:opacity-50";
+    return (
+      <div className={`flex flex-wrap items-center gap-1.5 ${compact ? "justify-center text-[11px]" : "text-xs"}`}>
+        {!entry.isDir && downloadUrl && (
+          <a href={downloadUrl} target="_blank" rel="noreferrer" className={btnClass}>
+            ดาวน์โหลด
+          </a>
+        )}
+        <button type="button" onClick={() => setDialog({ type: "share", entry })} className={btnClass}>
+          แชร์
+        </button>
+        <button type="button" onClick={() => setDialog({ type: "rename", entry })} className={btnClass}>
+          เปลี่ยนชื่อ
+        </button>
+        <button type="button" onClick={() => setDialog({ type: "move", entry })} className={btnClass}>
+          ย้าย
+        </button>
+        <button
+          type="button"
+          disabled={deleting === entry.name}
+          onClick={() => void handleDelete(entry)}
+          className={delClass}
+        >
+          {deleting === entry.name ? "กำลังลบ..." : "ลบ"}
+        </button>
+      </div>
+    );
+  }
+
+  function EntryThumb({ entry, className }: { entry: FmEntry; className: string }) {
+    const downloadUrl = !entry.isDir ? downloadUrlFor(entry.name) : null;
+    if (entry.isDir) {
+      return <div className={`flex items-center justify-center rounded-md bg-gray-50 text-4xl ${className}`}>📁</div>;
+    }
+    if (downloadUrl && isImageName(entry.name)) {
+      // eslint-disable-next-line @next/next/no-img-element
+      return <img src={downloadUrl} alt={entry.name} className={`rounded-md bg-gray-50 object-cover ${className}`} />;
+    }
+    return <div className={`flex items-center justify-center rounded-md bg-gray-50 text-4xl ${className}`}>📄</div>;
+  }
+
+  const emptyMessage = "โฟลเดอร์นี้ยังไม่มีไฟล์หรือโฟลเดอร์ย่อย";
+
   return (
     <div
       className="relative mx-auto max-w-5xl p-6"
@@ -142,24 +203,20 @@ export function FileManagerView({
           ))}
         </nav>
         <div className="flex items-center gap-2">
-          <div className="flex overflow-hidden rounded-md border border-gray-300 text-sm">
-            <button
-              type="button"
-              onClick={() => setViewMode("list")}
-              className={`px-2.5 py-1.5 ${viewMode === "list" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-              title="มุมมองรายการ"
+          <label className="flex items-center gap-1 text-xs text-gray-600">
+            มุมมอง:
+            <select
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value as ViewMode)}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs"
             >
-              รายการ
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("grid")}
-              className={`border-l border-gray-300 px-2.5 py-1.5 ${viewMode === "grid" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-              title="มุมมองไอคอน/พรีวิว"
-            >
-              ไอคอน
-            </button>
-          </div>
+              {(Object.keys(VIEW_MODE_LABEL) as ViewMode[]).map((v) => (
+                <option key={v} value={v}>
+                  {VIEW_MODE_LABEL[v]}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             onClick={() => setDialog({ type: "newFolder" })}
@@ -177,7 +234,9 @@ export function FileManagerView({
         </p>
       )}
 
-      {viewMode === "list" ? (
+      {sorted.length === 0 ? (
+        <p className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-400">{emptyMessage}</p>
+      ) : viewMode === "details" ? (
         <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -190,157 +249,94 @@ export function FileManagerView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {sorted.map((entry) => {
-                  const downloadUrl = !entry.isDir ? downloadUrlFor(entry.name) : null;
-                  return (
-                    <tr key={entry.name}>
-                      <td className="whitespace-nowrap px-4 py-2">
+                {sorted.map((entry) => (
+                  <tr key={entry.name}>
+                    <td className="whitespace-nowrap px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <EntryThumb entry={entry} className="h-8 w-8 shrink-0 text-lg" />
                         {entry.isDir ? (
                           <Link
                             href={urlFor([...segments, entry.name])}
                             className="font-medium text-indigo-600 hover:underline"
                           >
-                            📁 {entry.name}
+                            {entry.name}
                           </Link>
                         ) : (
-                          <span>📄 {entry.name}</span>
+                          <span>{entry.name}</span>
                         )}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-gray-500">
-                        {entry.isDir ? "—" : formatBytes(entry.size)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-gray-500">
-                        {new Date(entry.mtimeMs).toLocaleString("th-TH")}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2">
-                        <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                          {!entry.isDir && downloadUrl && (
-                            <a
-                              href={downloadUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50"
-                            >
-                              ดาวน์โหลด
-                            </a>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setDialog({ type: "share", entry })}
-                            className="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50"
-                          >
-                            แชร์
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDialog({ type: "rename", entry })}
-                            className="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50"
-                          >
-                            เปลี่ยนชื่อ
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDialog({ type: "move", entry })}
-                            className="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50"
-                          >
-                            ย้าย
-                          </button>
-                          <button
-                            type="button"
-                            disabled={deleting === entry.name}
-                            onClick={() => void handleDelete(entry)}
-                            className="rounded border border-red-300 px-2 py-1 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                          >
-                            {deleting === entry.name ? "กำลังลบ..." : "ลบ"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {sorted.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-gray-400">
-                      โฟลเดอร์นี้ยังไม่มีไฟล์หรือโฟลเดอร์ย่อย
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-gray-500">
+                      {entry.isDir ? "—" : formatBytes(entry.size)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-gray-500">
+                      {new Date(entry.mtimeMs).toLocaleString("th-TH")}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2">
+                      <EntryActions entry={entry} />
                     </td>
                   </tr>
-                )}
+                ))}
               </tbody>
             </table>
           </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-          {sorted.map((entry) => {
-            const downloadUrl = !entry.isDir ? downloadUrlFor(entry.name) : null;
-            const showImage = !entry.isDir && downloadUrl && isImageName(entry.name);
-            return (
-              <div
-                key={entry.name}
-                className="group relative rounded-lg border border-gray-200 bg-white p-2 hover:border-indigo-300 hover:shadow-sm"
-              >
-                {entry.isDir ? (
-                  <Link href={urlFor([...segments, entry.name])} className="block">
-                    <div className="flex aspect-square w-full items-center justify-center rounded-md bg-gray-50 text-4xl">
-                      📁
-                    </div>
-                    <div className="mt-1.5 truncate text-center text-xs font-medium text-gray-900">{entry.name}</div>
-                  </Link>
-                ) : (
-                  <>
-                    {showImage ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={downloadUrl}
-                        alt={entry.name}
-                        className="aspect-square w-full rounded-md bg-gray-50 object-cover"
-                      />
-                    ) : (
-                      <div className="flex aspect-square w-full items-center justify-center rounded-md bg-gray-50 text-4xl">
-                        📄
-                      </div>
-                    )}
-                    <div className="mt-1.5 truncate text-center text-xs font-medium text-gray-900">{entry.name}</div>
-                    <div className="text-center text-[11px] text-gray-400">{formatBytes(entry.size)}</div>
-                  </>
-                )}
-                <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
-                  <button
-                    type="button"
-                    onClick={() => setDialog({ type: "share", entry })}
-                    className="rounded border border-gray-300 px-1.5 py-0.5 text-[11px] hover:bg-gray-50"
-                  >
-                    แชร์
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDialog({ type: "rename", entry })}
-                    className="rounded border border-gray-300 px-1.5 py-0.5 text-[11px] hover:bg-gray-50"
-                  >
-                    เปลี่ยนชื่อ
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDialog({ type: "move", entry })}
-                    className="rounded border border-gray-300 px-1.5 py-0.5 text-[11px] hover:bg-gray-50"
-                  >
-                    ย้าย
-                  </button>
-                  <button
-                    type="button"
-                    disabled={deleting === entry.name}
-                    onClick={() => void handleDelete(entry)}
-                    className="rounded border border-red-300 px-1.5 py-0.5 text-[11px] text-red-600 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    {deleting === entry.name ? "กำลังลบ..." : "ลบ"}
-                  </button>
-                </div>
+      ) : viewMode === "list" ? (
+        <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+          {sorted.map((entry) => (
+            <div key={entry.name} className="group flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50">
+              <EntryThumb entry={entry} className="h-8 w-8 shrink-0 text-lg" />
+              {entry.isDir ? (
+                <Link href={urlFor([...segments, entry.name])} className="truncate font-medium text-indigo-600 hover:underline">
+                  {entry.name}
+                </Link>
+              ) : (
+                <span className="truncate text-gray-900">{entry.name}</span>
+              )}
+              <div className="ml-auto shrink-0 opacity-0 group-hover:opacity-100">
+                <EntryActions entry={entry} compact />
               </div>
-            );
-          })}
-          {sorted.length === 0 && (
-            <p className="col-span-full py-6 text-center text-gray-400">โฟลเดอร์นี้ยังไม่มีไฟล์หรือโฟลเดอร์ย่อย</p>
-          )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div
+          className={
+            viewMode === "xlarge"
+              ? "grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4"
+              : viewMode === "icons"
+                ? "grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8"
+                : "grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
+          }
+        >
+          {sorted.map((entry) => (
+            <div
+              key={entry.name}
+              className="group relative rounded-lg border border-gray-200 bg-white p-3 hover:border-indigo-300 hover:shadow-sm"
+            >
+              {entry.isDir ? (
+                <Link href={urlFor([...segments, entry.name])} className="block">
+                  <EntryThumb entry={entry} className="aspect-square w-full" />
+                </Link>
+              ) : (
+                <EntryThumb entry={entry} className="aspect-square w-full" />
+              )}
+              <div
+                className={`mt-2 truncate font-medium text-gray-900 ${viewMode === "icons" ? "text-xs" : "text-sm"}`}
+              >
+                {entry.name}
+              </div>
+              {viewMode === "content" && (
+                <div className="mt-0.5 flex items-center justify-between text-xs text-gray-400">
+                  <span>{entry.isDir ? "โฟลเดอร์" : formatBytes(entry.size)}</span>
+                  <span>{new Date(entry.mtimeMs).toLocaleDateString("th-TH")}</span>
+                </div>
+              )}
+              <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
+                <EntryActions entry={entry} compact />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
