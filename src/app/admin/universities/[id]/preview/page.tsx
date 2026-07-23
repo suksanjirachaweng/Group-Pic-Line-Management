@@ -132,10 +132,7 @@ function FormPreview({ university }: { university: University }) {
     <>
       <div className="mb-6 flex items-center gap-2.5">
         <span className="brand-bg h-8 w-1.5 shrink-0 rounded-full" />
-        <div>
-          <h1 className="text-xl font-bold leading-tight text-gray-900">{university.name}</h1>
-          <p className="text-sm text-gray-400">Registration</p>
-        </div>
+        <h1 className="text-xl font-bold leading-tight text-gray-900">Registration</h1>
       </div>
 
       <form className="space-y-5">
@@ -191,10 +188,7 @@ function ListPreview({ university }: { university: University }) {
     <>
       <div className="mb-6 flex items-center gap-2.5">
         <span className="brand-bg h-8 w-1.5 shrink-0 rounded-full" />
-        <div>
-          <h1 className="text-xl font-bold leading-tight text-gray-900">{university.name}</h1>
-          <p className="text-sm text-gray-400">รายการที่ลงทะเบียนไว้</p>
-        </div>
+        <h1 className="text-xl font-bold leading-tight text-gray-900">รายการที่ลงทะเบียนไว้</h1>
       </div>
 
       <ul className="space-y-3">

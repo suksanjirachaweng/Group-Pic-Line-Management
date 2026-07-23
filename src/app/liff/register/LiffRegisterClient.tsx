@@ -347,7 +347,7 @@ export default function LiffRegisterClient() {
     );
   }
 
-  const { fields, universityName, headerImageUrl, themeColor } = status;
+  const { fields, headerImageUrl, themeColor } = status;
   const brandStyle = { "--brand-color": themeColor || DEFAULT_THEME_COLOR } as React.CSSProperties;
 
   if (status.step === "list") {
@@ -363,10 +363,9 @@ export default function LiffRegisterClient() {
             <div className="p-6">
               <div className="mb-6 flex items-center gap-2.5">
                 <span className="brand-bg h-8 w-1.5 shrink-0 rounded-full" />
-                <div>
-                  <h1 className="text-xl font-bold leading-tight text-gray-900">{universityName}</h1>
-                  <p className="text-sm text-gray-400">รายการที่ลงทะเบียนไว้ / Your registrations</p>
-                </div>
+                <h1 className="text-xl font-bold leading-tight text-gray-900">
+                  รายการที่ลงทะเบียนไว้ / Your registrations
+                </h1>
               </div>
 
               <ul className="space-y-3">
@@ -445,12 +444,9 @@ export default function LiffRegisterClient() {
 
             <div className="mb-6 flex items-center gap-2.5">
               <span className="brand-bg h-8 w-1.5 shrink-0 rounded-full" />
-              <div>
-                <h1 className="text-xl font-bold leading-tight text-gray-900">{universityName}</h1>
-                <p className="text-sm text-gray-400">
-                  {status.editingId ? "แก้ไขข้อมูล / Edit registration" : "ลงทะเบียน / Registration"}
-                </p>
-              </div>
+              <h1 className="text-xl font-bold leading-tight text-gray-900">
+                {status.editingId ? "แก้ไขข้อมูล / Edit registration" : "ลงทะเบียน / Registration"}
+              </h1>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
