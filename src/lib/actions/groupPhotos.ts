@@ -11,6 +11,7 @@ import { interpolateTemplate } from "@/lib/rules/evaluate";
 import { TagMatchSource, GroupPhotoStatus, TagHistorySource } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 import { buildTagMatchMaps, resolveTagMatch, stampRegistrantPhotoEvent } from "@/lib/groupPhoto/resolveTagMatch";
+import { deleteLiveGroupPhotoImage } from "@/lib/groupPhoto/deleteLiveImage";
 
 export async function createGroupPhoto(
   universityId: string,
@@ -33,10 +34,30 @@ export async function createGroupPhoto(
   return { id: photo.id };
 }
 
+/**
+ * Deletes the photo row (cascading its tags/shareLinks/titleHistory/imageHistory/autoTagJobs at
+ * the DB level) plus every image file it ever referenced — the current one AND every
+ * GroupPhotoImageHistory version, not just the current image — since none of those files get
+ * cleaned up any other way (every group-photo upload lands at a fresh, uniquely-named path on
+ * whichever backend, see uploadLargePhoto.ts, so a merely-deleted DB row leaves the actual file
+ * behind as a permanent, untraceable disk orphan). Storage cleanup is best-effort and runs after
+ * the DB delete succeeds — see deleteLiveGroupPhotoImage.
+ */
 export async function deleteGroupPhoto(universityId: string, groupPhotoId: string): Promise<void> {
   await requireUniversityAccess(universityId);
+
+  const photo = await prisma.groupPhoto.findUnique({
+    where: { id: groupPhotoId, universityId },
+    select: { imageUrl: true, imageHistory: { select: { imageUrl: true } } },
+  });
+
   await prisma.groupPhoto.delete({ where: { id: groupPhotoId, universityId } });
   revalidatePath(`/admin/universities/${universityId}/group-photos`);
+
+  if (photo) {
+    const urls = [photo.imageUrl, ...photo.imageHistory.map((h) => h.imageUrl)];
+    await Promise.all(urls.map((url) => deleteLiveGroupPhotoImage(url)));
+  }
 }
 
 /**
