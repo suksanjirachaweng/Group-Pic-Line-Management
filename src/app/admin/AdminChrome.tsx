@@ -63,12 +63,6 @@ export function AdminChrome({
             >
               Universities
             </Link>
-            <Link
-              href="/admin/file-manager"
-              className="shrink-0 whitespace-nowrap text-indigo-100 transition-colors hover:text-white"
-            >
-              จัดการไฟล์
-            </Link>
             {isSuperadmin && (
               <Link
                 href="/admin/channels"
@@ -93,6 +87,12 @@ export function AdminChrome({
                 คลังใบหน้าอาจารย์
               </Link>
             )}
+            <Link
+              href="/admin/file-manager"
+              className="shrink-0 whitespace-nowrap text-indigo-100 transition-colors hover:text-white"
+            >
+              จัดการไฟล์
+            </Link>
           </nav>
         </div>
       </header>

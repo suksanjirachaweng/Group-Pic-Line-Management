@@ -165,32 +165,64 @@ export function FileManagerView({
    * blank space under every card — a single small button can't wrap. */
   function EntryMenu({ entry }: { entry: FmEntry }) {
     const [open, setOpen] = useState(false);
-    const ref = useRef<HTMLDivElement>(null);
+    const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+    const btnRef = useRef<HTMLButtonElement>(null);
+    const menuRef = useRef<HTMLDivElement>(null);
     const downloadUrl = !entry.isDir ? downloadUrlFor(entry.name) : null;
+    const MENU_WIDTH = 160; // matches the menu's own w-40
 
     useEffect(() => {
       if (!open) return;
       function onClickOutside(e: MouseEvent) {
-        if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+        const target = e.target as Node;
+        if (menuRef.current?.contains(target) || btnRef.current?.contains(target)) return;
+        setOpen(false);
+      }
+      // Also close on scroll — the menu is `position: fixed` at a coordinate computed once on
+      // open, so it would otherwise stay stuck in place while the table/page scrolls underneath it.
+      function onScroll() {
+        setOpen(false);
       }
       document.addEventListener("mousedown", onClickOutside);
-      return () => document.removeEventListener("mousedown", onClickOutside);
+      window.addEventListener("scroll", onScroll, true);
+      return () => {
+        document.removeEventListener("mousedown", onClickOutside);
+        window.removeEventListener("scroll", onScroll, true);
+      };
     }, [open]);
+
+    // `position: fixed` (viewport-relative, computed from the button's own on-screen position)
+    // rather than `absolute` inside a `relative` wrapper — the details-view table sits inside an
+    // `overflow-hidden` container (for rounded corners), which silently clipped an absolutely
+    // positioned dropdown that tried to render outside those bounds. Fixed positioning is
+    // immune to any ancestor's overflow/clipping, wherever this menu is used (table, list, grid).
+    function toggle() {
+      if (!open && btnRef.current) {
+        const rect = btnRef.current.getBoundingClientRect();
+        setPos({ top: rect.bottom + 4, left: Math.max(8, rect.right - MENU_WIDTH) });
+      }
+      setOpen((o) => !o);
+    }
 
     const itemClass = "block w-full px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-50";
 
     return (
-      <div ref={ref} className="relative inline-block">
+      <>
         <button
+          ref={btnRef}
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={toggle}
           aria-label="ตัวเลือกเพิ่มเติม"
           className="rounded-full px-2 py-1 text-lg leading-none text-gray-500 hover:bg-gray-100"
         >
           ⋮
         </button>
-        {open && (
-          <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+        {open && pos && (
+          <div
+            ref={menuRef}
+            style={{ position: "fixed", top: pos.top, left: pos.left, width: MENU_WIDTH }}
+            className="z-50 rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+          >
             {downloadUrl && (
               <a
                 href={downloadUrl}
@@ -245,7 +277,7 @@ export function FileManagerView({
             </button>
           </div>
         )}
-      </div>
+      </>
     );
   }
 
