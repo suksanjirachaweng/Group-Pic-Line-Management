@@ -14,7 +14,14 @@ export default async function UniversitiesPage() {
   const universities = await prisma.university.findMany({
     where: isSuperadmin ? {} : { id: { in: user.universityIds } },
     orderBy: { name: "asc" },
-    include: { _count: { select: { registrants: true } } },
+    include: {
+      _count: { select: { registrants: true } },
+      channelPool: {
+        where: { isActive: true },
+        include: { channel: true },
+        orderBy: { channel: { name: "asc" } },
+      },
+    },
   });
 
   return (
@@ -47,22 +54,43 @@ export default async function UniversitiesPage() {
             <li key={u.id}>
               <Link
                 href={`/admin/universities/${u.id}/group-photos`}
-                className="flex items-center justify-between px-4 py-3 text-sm hover:bg-sky-50"
+                className="flex flex-col gap-1.5 px-4 py-3 text-sm hover:bg-sky-50"
               >
-                <span className="flex items-center gap-2">
-                  <span
-                    aria-hidden
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: u.themeColor || DEFAULT_THEME_COLOR }}
-                  />
-                  {u.name} <span className="text-gray-400">({u.slug})</span>
-                  {!u.isActive && (
-                    <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
-                      inactive
-                    </span>
-                  )}
+                <span className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2">
+                    <span
+                      aria-hidden
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: u.themeColor || DEFAULT_THEME_COLOR }}
+                    />
+                    {u.name} <span className="text-gray-400">({u.slug})</span>
+                    {!u.isActive && (
+                      <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
+                        inactive
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-gray-400">{u._count.registrants} registrants</span>
                 </span>
-                <span className="text-gray-400">{u._count.registrants} registrants</span>
+                {u.channelPool.length > 0 && (
+                  <span className="flex flex-wrap items-center gap-1.5 pl-[18px]">
+                    {u.channelPool.map(({ channel: c }) => (
+                      <span
+                        key={c.id}
+                        className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 py-0.5 pl-0.5 pr-2 text-xs text-gray-600"
+                      >
+                        {c.linePictureUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={c.linePictureUrl} alt="" className="h-4 w-4 shrink-0 rounded-full" />
+                        ) : (
+                          <span className="h-4 w-4 shrink-0 rounded-full bg-gray-200" />
+                        )}
+                        <span>{c.lineDisplayName || c.name}</span>
+                        <span className="text-gray-400">({c.lineChannelId})</span>
+                      </span>
+                    ))}
+                  </span>
+                )}
               </Link>
             </li>
           ))}
