@@ -11,6 +11,34 @@ function isImageName(entryName: string): boolean {
   return !!ext && IMAGE_EXTENSIONS.has(ext);
 }
 
+/** Module-level (not defined inside PublicFolderBrowser's render body) — same reasoning as the
+ * admin file manager's equivalent component: it's referenced from two places at once (the
+ * toolbar and the details-table header), so it must not be re-created every render. */
+function SelectAllCheckbox({
+  allSelected,
+  someSelected,
+  onToggle,
+}: {
+  allSelected: boolean;
+  someSelected: boolean;
+  onToggle: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = someSelected && !allSelected;
+  }, [someSelected, allSelected]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={allSelected}
+      onChange={onToggle}
+      aria-label="เลือกทั้งหมด"
+      className="h-4 w-4 shrink-0 rounded border-gray-300"
+    />
+  );
+}
+
 // Same 5 modes + labels as the admin file-manager view (FileManagerView.tsx) and the faculty face
 // bank browser — kept visually consistent across every page in the app that browses a list of
 // visual items, rather than inventing a per-page taxonomy.
@@ -75,7 +103,7 @@ function PublicFileDownload({ token, sharePath, name }: { token: string; sharePa
   }, [token, sharePath]);
 
   return (
-    <div className="mx-auto max-w-md p-6 text-center">
+    <div className="mx-auto w-full min-w-0 max-w-md p-6 text-center">
       <p className="mb-1 text-2xl">📄</p>
       <h1 className="mb-4 text-lg font-semibold text-gray-900">{name}</h1>
       {url ? (
@@ -116,6 +144,15 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
       return next;
     });
   }
+
+  const allFileNames = (entries ?? []).filter((e) => !e.isDir).map((e) => e.name);
+  const allSelected = allFileNames.length > 0 && allFileNames.every((n) => selected.has(n));
+  const someSelected = allFileNames.some((n) => selected.has(n));
+
+  function toggleSelectAll() {
+    setSelected(allSelected ? new Set() : new Set(allFileNames));
+  }
+
 
   async function handleDownloadSelected() {
     const names = [...selected];
@@ -209,7 +246,7 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto w-full min-w-0 max-w-3xl p-6">
       <h1 className="mb-1 text-lg font-semibold text-gray-900">📁 {rootName}</h1>
       <p className="mb-4 text-xs text-gray-500">
         ดู/ดาวน์โหลดไฟล์ในโฟลเดอร์นี้ได้ {isAtRoot && "และอัปโหลดไฟล์ใหม่เพิ่มเข้ามาได้"}
@@ -233,7 +270,13 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
             </span>
           ))}
         </nav>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {allFileNames.length > 0 && (
+            <label className="flex items-center gap-1.5 text-xs text-gray-600">
+              <SelectAllCheckbox allSelected={allSelected} someSelected={someSelected} onToggle={toggleSelectAll} />
+              เลือกทั้งหมด
+            </label>
+          )}
           <label className="flex items-center gap-1 text-xs text-gray-600">
             มุมมอง:
             <select
@@ -354,7 +397,14 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
                     <tr>
-                      <th className="whitespace-nowrap px-4 py-2">ชื่อ</th>
+                      <th className="whitespace-nowrap px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          {allFileNames.length > 0 && (
+                            <SelectAllCheckbox allSelected={allSelected} someSelected={someSelected} onToggle={toggleSelectAll} />
+                          )}
+                          ชื่อ
+                        </div>
+                      </th>
                       <th className="whitespace-nowrap px-4 py-2">ขนาด</th>
                       <th className="whitespace-nowrap px-4 py-2"></th>
                     </tr>

@@ -22,6 +22,34 @@ function isImageName(name: string): boolean {
   return !!ext && IMAGE_EXTENSIONS.has(ext);
 }
 
+/** Module-level (not defined inside FileManagerView's render body) because it's referenced from
+ * two places at once — the toolbar and the details-table header — and a component re-created on
+ * every render loses its DOM identity/state each time React sees two call sites for it. */
+function SelectAllCheckbox({
+  allSelected,
+  someSelected,
+  onToggle,
+}: {
+  allSelected: boolean;
+  someSelected: boolean;
+  onToggle: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = someSelected && !allSelected;
+  }, [someSelected, allSelected]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={allSelected}
+      onChange={onToggle}
+      aria-label="เลือกทั้งหมด"
+      className="h-4 w-4 shrink-0 rounded border-gray-300"
+    />
+  );
+}
+
 // Same 5 modes + labels as the faculty face bank browser (FacultyFaceBankBrowser.tsx) — kept
 // visually consistent across both admin pages rather than inventing a second view-mode taxonomy.
 type ViewMode = "xlarge" | "icons" | "list" | "details" | "content";
@@ -63,6 +91,13 @@ export function FileManagerView({
     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
     return a.name.localeCompare(b.name, "th");
   });
+  const allFileNames = sorted.filter((e) => !e.isDir).map((e) => e.name);
+  const allSelected = allFileNames.length > 0 && allFileNames.every((n) => selected.has(n));
+  const someSelected = allFileNames.some((n) => selected.has(n));
+
+  function toggleSelectAll() {
+    setSelected(allSelected ? new Set() : new Set(allFileNames));
+  }
 
   const usedPct = diskSpace.size > 0 ? Math.min(100, Math.round(((diskSpace.size - diskSpace.free) / diskSpace.size) * 100)) : 0;
 
@@ -344,7 +379,13 @@ export function FileManagerView({
             </span>
           ))}
         </nav>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {allFileNames.length > 0 && (
+            <label className="flex items-center gap-1.5 text-xs text-gray-600">
+              <SelectAllCheckbox allSelected={allSelected} someSelected={someSelected} onToggle={toggleSelectAll} />
+              เลือกทั้งหมด
+            </label>
+          )}
           <label className="flex items-center gap-1 text-xs text-gray-600">
             มุมมอง:
             <select
@@ -398,7 +439,14 @@ export function FileManagerView({
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
                 <tr>
-                  <th className="whitespace-nowrap px-4 py-2">ชื่อ</th>
+                  <th className="whitespace-nowrap px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      {allFileNames.length > 0 && (
+                        <SelectAllCheckbox allSelected={allSelected} someSelected={someSelected} onToggle={toggleSelectAll} />
+                      )}
+                      ชื่อ
+                    </div>
+                  </th>
                   <th className="whitespace-nowrap px-4 py-2">ขนาด</th>
                   <th className="whitespace-nowrap px-4 py-2">แก้ไขล่าสุด</th>
                   <th className="whitespace-nowrap px-4 py-2"></th>
