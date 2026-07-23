@@ -62,7 +62,8 @@ export default async function UniversitiesPage() {
                     className="h-2.5 w-2.5 shrink-0 rounded-full"
                     style={{ backgroundColor: u.themeColor || DEFAULT_THEME_COLOR }}
                   />
-                  {u.name} <span className="text-gray-400">({u.slug})</span>
+                  <span className="text-base font-semibold text-gray-900">{u.name}</span>{" "}
+                  <span className="text-gray-400">({u.slug})</span>
                   {!u.isActive && (
                     <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
                       inactive
