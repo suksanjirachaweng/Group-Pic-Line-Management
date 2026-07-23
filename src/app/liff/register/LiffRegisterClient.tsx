@@ -363,7 +363,7 @@ export default function LiffRegisterClient() {
             <div className="p-6">
               <div className="mb-6 flex items-center gap-2.5">
                 <span className="brand-bg h-8 w-1.5 shrink-0 rounded-full" />
-                <h1 className="text-xl font-bold leading-tight text-gray-900">
+                <h1 className="text-base font-bold leading-tight text-gray-900">
                   รายการที่ลงทะเบียนไว้ / Your registrations
                 </h1>
               </div>
