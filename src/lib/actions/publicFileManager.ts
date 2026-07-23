@@ -111,3 +111,23 @@ export async function getPublicUploadTarget(token: string, fileName: string): Pr
   const { baseUrl, token: uploadToken } = mintPcPhotoServerToken({ scope: finalPath, uploadOnly: true });
   return { uploadUrl: `${baseUrl}/upload`, token: uploadToken, finalPath, finalName };
 }
+
+/**
+ * Validates a multi-select "download as ZIP" request from the public folder browser and returns
+ * the full PC-server-relative paths to hand to `/fm/zip` — or null if anything is off. Called from
+ * the route handler at `src/app/api/files/[token]/zip/route.ts` (a route handler, not a client
+ * component, but still goes through the same token-only trust model as every other function here:
+ * `subPath` is re-validated against the share's own scope, and `fileNames` must be plain filenames
+ * (no `/`, no `..`) — never a client-supplied sub-path of their own, same reasoning as
+ * `getPublicUploadTarget` never trusting a client-supplied upload destination.
+ */
+export async function resolveZipPaths(token: string, subPath: string, fileNames: string[]): Promise<string[] | null> {
+  const link = await resolveActiveLink(token);
+  if (!link || !link.isFolder) return null;
+  if (!isPathWithinScope(subPath, link.path)) return null;
+  if (fileNames.length === 0) return null;
+  if (fileNames.some((n) => typeof n !== "string" || !n || n.includes("/") || n.includes("\\") || n.includes(".."))) {
+    return null;
+  }
+  return fileNames.map((n) => `${subPath}/${n}`);
+}

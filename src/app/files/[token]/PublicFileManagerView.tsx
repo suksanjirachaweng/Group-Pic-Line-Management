@@ -104,12 +104,56 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
   const [downloadUrls, setDownloadUrls] = useState<Record<string, string>>({});
   const [refreshKey, setRefreshKey] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>("details");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [zipping, setZipping] = useState(false);
   const refresh = () => setRefreshKey((k) => k + 1);
+
+  function toggleSelected(name: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  async function handleDownloadSelected() {
+    const names = [...selected];
+    if (names.length === 0) return;
+    if (names.length === 1) {
+      const url = downloadUrls[names[0]];
+      if (url) window.open(url, "_blank", "noreferrer");
+      return;
+    }
+    setZipping(true);
+    try {
+      const resp = await fetch(`/api/files/${token}/zip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subPath, fileNames: names }),
+      });
+      if (!resp.ok) throw new Error("สร้างไฟล์ ZIP ไม่สำเร็จ");
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "download.zip";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "สร้างไฟล์ ZIP ไม่สำเร็จ");
+    } finally {
+      setZipping(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       setEntries(null);
+      setSelected(new Set());
       try {
         const result = await listSharedFolder(token, subPath);
         if (cancelled) return;
@@ -204,6 +248,20 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
               ))}
             </select>
           </label>
+          {selected.size > 0 && (
+            <button
+              type="button"
+              disabled={zipping}
+              onClick={() => void handleDownloadSelected()}
+              className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {zipping
+                ? "กำลังสร้าง ZIP..."
+                : selected.size === 1
+                  ? "ดาวน์โหลดที่เลือก"
+                  : `ดาวน์โหลดที่เลือก (${selected.size}) เป็น ZIP`}
+            </button>
+          )}
           {isAtRoot && (
             <>
               <input
@@ -258,6 +316,19 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
           return <div className={`flex items-center justify-center rounded-md bg-gray-50 text-4xl ${className}`}>📄</div>;
         }
 
+        function SelectCheckbox({ entry }: { entry: FmEntry }) {
+          if (entry.isDir) return null;
+          return (
+            <input
+              type="checkbox"
+              checked={selected.has(entry.name)}
+              onChange={() => toggleSelected(entry.name)}
+              aria-label={`เลือก ${entry.name}`}
+              className="h-4 w-4 shrink-0 rounded border-gray-300"
+            />
+          );
+        }
+
         function DownloadButton({ entry, compact = false }: { entry: FmEntry; compact?: boolean }) {
           if (entry.isDir || !downloadUrls[entry.name]) return null;
           return (
@@ -293,6 +364,7 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
                       <tr key={e.name}>
                         <td className="whitespace-nowrap px-4 py-2">
                           <div className="flex items-center gap-2">
+                            <SelectCheckbox entry={e} />
                             <Thumb entry={e} className="h-8 w-8 shrink-0 text-lg" />
                             {e.isDir ? (
                               <button
@@ -327,6 +399,7 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
             <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
               {sorted.map((e) => (
                 <div key={e.name} className="flex items-center gap-2 px-4 py-2 text-sm">
+                  <SelectCheckbox entry={e} />
                   <Thumb entry={e} className="h-8 w-8 shrink-0 text-lg" />
                   {e.isDir ? (
                     <button
@@ -359,7 +432,12 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
             }
           >
             {sorted.map((e) => (
-              <div key={e.name} className="rounded-lg border border-gray-200 bg-white p-3">
+              <div key={e.name} className="relative rounded-lg border border-gray-200 bg-white p-3">
+                {!e.isDir && (
+                  <div className="absolute left-4 top-4 z-10 rounded bg-white/90 p-0.5">
+                    <SelectCheckbox entry={e} />
+                  </div>
+                )}
                 {e.isDir ? (
                   <button type="button" onClick={() => setSubPath(`${subPath}/${e.name}`)} className="block w-full">
                     <Thumb entry={e} className="aspect-square w-full" />

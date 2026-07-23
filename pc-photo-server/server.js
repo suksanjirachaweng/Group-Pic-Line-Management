@@ -21,6 +21,7 @@ const path = require("path");
 const fs = require("fs");
 const { preloadModels, detectAndEmbed } = require("./faceEmbedding");
 const checkDiskSpace = require("check-disk-space").default;
+const archiver = require("archiver");
 
 const PORT = Number(process.env.PORT || 8793);
 const SECRET = process.env.UPLOAD_SECRET;
@@ -395,6 +396,55 @@ app.get("/fm/disk-space", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: `failed to check disk space: ${err.message}` });
   }
+});
+
+// Multi-select "download as ZIP" (both the admin file manager and the public share page can ask
+// for this) — only ever called server-to-server with a fresh full-access token minted by the
+// Next.js app, which has already validated every path against the caller's own scope (a share
+// link's folder, or nothing at all for the session-gated admin case). Files-only by design: no
+// directory ever appears in `paths` here, since both callers resolve a listing first and only
+// forward the individually-selected filenames — keeps this route from turning into an unbounded
+// recursive archive of an entire subtree.
+app.post("/fm/zip", express.json(), async (req, res) => {
+  const paths = req.body && Array.isArray(req.body.paths) ? req.body.paths : null;
+  if (!paths || paths.length === 0) return res.status(400).json({ error: "paths required" });
+  for (const p of paths) {
+    if (typeof p !== "string" || !p || p.includes("..") || path.isAbsolute(p)) {
+      return res.status(400).json({ error: "invalid path" });
+    }
+  }
+  const check = fmAuthCheck(req, FM_ROOT);
+  if (!check.ok) return res.status(check.status).json({ error: check.error });
+
+  let absPaths;
+  try {
+    absPaths = paths.map((p) => safeStoragePath(p));
+  } catch {
+    return res.status(400).json({ error: "invalid path" });
+  }
+  for (const abs of absPaths) {
+    let stat;
+    try {
+      stat = fs.statSync(abs);
+    } catch {
+      return res.status(404).json({ error: "file not found" });
+    }
+    if (!stat.isFile()) return res.status(400).json({ error: "only files can be zipped" });
+  }
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", 'attachment; filename="download.zip"');
+  const archive = archiver("zip", { zlib: { level: 6 } });
+  archive.on("error", (err) => {
+    // Headers are likely already flushed by the time archiver hits a mid-stream error (reading a
+    // file that got deleted between the stat check above and now) — just end the response rather
+    // than trying to send a JSON error onto an already-started binary stream.
+    res.end();
+    console.error("zip stream error:", err);
+  });
+  archive.pipe(res);
+  absPaths.forEach((abs, i) => archive.file(abs, { name: path.basename(paths[i]) }));
+  archive.finalize();
 });
 
 const MAX_EMBED_BYTES = 10 * 1024 * 1024; // face crops sent for embedding are small, not full group photos

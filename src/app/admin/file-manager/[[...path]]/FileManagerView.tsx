@@ -332,7 +332,11 @@ export function FileManagerView({
                   <span>{new Date(entry.mtimeMs).toLocaleDateString("th-TH")}</span>
                 </div>
               )}
-              <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
+              {/* Absolutely positioned (not just opacity-0) so the hidden buttons never affect the
+                  card's own height — a narrow card (icons mode) wraps 4 buttons onto several lines,
+                  and opacity alone still reserves that wrapped height, leaving tall blank space
+                  under every card even when nothing is hovered. */}
+              <div className="pointer-events-none absolute inset-x-1 bottom-1 flex flex-wrap items-center justify-center gap-1 rounded-md bg-white/95 p-1 opacity-0 shadow-sm group-hover:pointer-events-auto group-hover:opacity-100">
                 <EntryActions entry={entry} compact />
               </div>
             </div>
