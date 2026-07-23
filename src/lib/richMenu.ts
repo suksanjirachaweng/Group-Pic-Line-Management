@@ -10,15 +10,10 @@ import { decryptSecret } from "@/lib/crypto";
 // visible quality loss on the text/icons.
 const RICH_MENU_IMAGE_PATH = path.join(process.cwd(), "public", "richmenu.jpg");
 
-// This operator's own photo-ordering site — the same for every university this system serves.
-const ORDER_PHOTOS_URL = "https://www.newsalon1999.com/booking.html";
-const TRACK_STATUS_URL = "https://www.newsalon1999.com/track.html";
-
 /**
- * Creates and publishes the standard 3-button rich menu (register / order photos / track
- * status) for a channel, then deletes whatever rich menu it's replacing. The image is
- * shared across every channel — only the "register" area's target URL differs, built from
- * that channel's own LIFF link.
+ * Creates and publishes the single-button rich menu (register) for a channel, then deletes
+ * whatever rich menu it's replacing. The image is shared across every channel — only the
+ * area's target URL differs, built from that channel's own LIFF link.
  */
 export async function publishRichMenu(
   accessTokenEncrypted: string,
@@ -29,21 +24,15 @@ export async function publishRichMenu(
   const client = new messagingApi.MessagingApiClient({ channelAccessToken });
   const blobClient = new messagingApi.MessagingApiBlobClient({ channelAccessToken });
 
-  // Large-format canvas (2500x1686) — matches richmenu.jpg's own layout: a big left-hand
-  // registration button spanning the full height (~70.6% of the width), with "order photos" /
-  // "track status" stacked in the remaining right-hand column. Switched from the old compact
-  // (2500x843) equal-thirds layout because the redesigned artwork's proportions don't fit a short
-  // wide banner without distorting the illustration/icons (2026-07-20).
+  // Large-format canvas (2500x1686) — matches richmenu.jpg's own layout: the registration
+  // button now spans the entire canvas (2026-07-24, dropped the "order photos" / "track
+  // status" buttons that used to share the right-hand column).
   const { richMenuId } = await client.createRichMenu({
     size: { width: 2500, height: 1686 },
     selected: true,
     name: "Main",
     chatBarText: "เมนู",
-    areas: [
-      { bounds: { x: 0, y: 0, width: 1764, height: 1686 }, action: { type: "uri", uri: registerUrl } },
-      { bounds: { x: 1764, y: 0, width: 736, height: 843 }, action: { type: "uri", uri: ORDER_PHOTOS_URL } },
-      { bounds: { x: 1764, y: 843, width: 736, height: 843 }, action: { type: "uri", uri: TRACK_STATUS_URL } },
-    ],
+    areas: [{ bounds: { x: 0, y: 0, width: 2500, height: 1686 }, action: { type: "uri", uri: registerUrl } }],
   });
 
   const imageBuffer = await fs.readFile(RICH_MENU_IMAGE_PATH);
