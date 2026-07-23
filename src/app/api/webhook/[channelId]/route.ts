@@ -47,9 +47,14 @@ export async function POST(
       // Tracked independently of Registrant — a follow event alone never creates a Registrant
       // row (that only happens once someone actually submits the registration form), so without
       // this there's no way to later list "added the LINE friend but never registered."
-      const profile = await getLineUserProfile(channel.accessTokenEncrypted, userId);
+      const profile = await getLineUserProfile(
+        channel.accessTokenEncrypted,
+        userId,
+      );
       await prisma.lineFollower.upsert({
-        where: { channelId_lineUserId: { channelId: channel.id, lineUserId: userId } },
+        where: {
+          channelId_lineUserId: { channelId: channel.id, lineUserId: userId },
+        },
         create: {
           channelId: channel.id,
           lineUserId: userId,
@@ -58,7 +63,12 @@ export async function POST(
         },
         update: {
           unfollowedAt: null,
-          ...(profile ? { displayName: profile.displayName, pictureUrl: profile.pictureUrl } : {}),
+          ...(profile
+            ? {
+                displayName: profile.displayName,
+                pictureUrl: profile.pictureUrl,
+              }
+            : {}),
         },
       });
 
@@ -103,7 +113,7 @@ async function sendRegistrationLinkIfSingleUniversity(
 
   const university = pool[0].university;
   const url = buildLiffRegisterUrl(channel.liffId, university.slug);
-  const text = `ขอบคุณที่เพิ่มเพื่อนนะครับ/ค่ะ!\n\nกดลิงก์ด้านล่างเพื่อลงทะเบียนถ่ายภาพหมู่ของ ${university.name} ได้เลย:\n${url}`;
+  const text = `ขอบคุณที่เพิ่มเพื่อนนะครับ/ค่ะ!\n\nกดลิงก์ด้านล่างเพื่อลงทะเบียนถ่ายภาพหมู่ได้เลย:\n${url}`;
 
   try {
     await replyTextMessage(channel.accessTokenEncrypted, replyToken, text);
