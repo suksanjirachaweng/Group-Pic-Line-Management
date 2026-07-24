@@ -169,9 +169,23 @@ function drawFillInBox(doc: PDFKit.PDFDocument, x: number, y: number, w: number)
 function drawReturnReminder(doc: PDFKit.PDFDocument, contentWidth: number) {
   doc
     .font("Sarabun")
-    .fontSize(11)
+    .fontSize(13)
     .fillColor("#000000")
-    .text(RETURN_REMINDER, MARGIN, PAGE_HEIGHT - MARGIN - 13, { width: contentWidth, align: "left", lineBreak: false });
+    .text(RETURN_REMINDER, MARGIN, PAGE_HEIGHT - MARGIN - 15, { width: contentWidth, align: "left", lineBreak: false });
+}
+
+/** Right-aligned — sits in the gap between the header row (brand/event-name) and the number,
+ * under the event-name text specifically (both right-aligned, so they read as one block). This
+ * is the only free space in the layouts that pair a fill-in box with a QR, where the whole
+ * bottom band is already spoken for. Shrink-to-fit against contentWidth as a safety net, but the
+ * gap (see numberTop below) is sized to comfortably fit the max size without shrinking. */
+function drawReturnReminderTop(doc: PDFKit.PDFDocument, contentWidth: number) {
+  doc.font("Sarabun");
+  const size = fitFontSize(doc, RETURN_REMINDER, contentWidth, 13, 7);
+  doc
+    .fontSize(size)
+    .fillColor("#000000")
+    .text(RETURN_REMINDER, MARGIN, MARGIN + 15, { width: contentWidth, align: "right", lineBreak: false });
 }
 
 async function buildQrBuffer(url: string): Promise<Buffer> {
@@ -299,6 +313,13 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
           .fillColor("#000000")
           .text(headerRight, MARGIN, MARGIN, { width: contentWidth, align: "right", lineBreak: false });
       }
+
+      // The bottom band is only free in the "neither" case (handled below, after the number, at
+      // the bottom) — when a fill-in box or QR occupies it, this header gap is the only space
+      // left, so the reminder goes here instead.
+      if (includeFillIn || showQr) {
+        drawReturnReminderTop(doc, contentWidth);
+      }
     }
 
     // Fills the whole space between the header row (or the top QR row, in QR-only layout) and the
@@ -306,7 +327,8 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
     // (previously 150pt-capped) size — the fixed cap left a lot of unused vertical room, and
     // fitFontSize's width-only check had also been measuring against the *regular* font (it ran
     // before `.font("Sarabun-Bold")` was set below), which under-fits since bold glyphs are wider.
-    const numberTop = qrOnlyTopLayout ? QR_TOP_ROW_Y + topRowContentH + 14 : 40;
+    // 54 (not 40) in the non-QR-only branch leaves room for drawReturnReminderTop's line above.
+    const numberTop = qrOnlyTopLayout ? QR_TOP_ROW_Y + topRowContentH + 14 : 54;
     const numberBottom = qrOnlyTopLayout ? PAGE_HEIGHT - MARGIN - (hasEventFooter ? EVENT_FOOTER_H : 0) : bottomBandY - 14;
     const codeStr = String(code);
     doc.font("Sarabun-Bold");
