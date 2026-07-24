@@ -1,16 +1,17 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import type { PublishRichMenuState } from "@/lib/actions/channels";
 
 export function PublishRichMenuButton({
   action,
   hasExisting,
 }: {
-  action: (prevState: PublishRichMenuState) => Promise<PublishRichMenuState>;
+  action: (prevState: PublishRichMenuState, formData: FormData) => Promise<PublishRichMenuState>;
   hasExisting: boolean;
 }) {
   const [state, formAction, isPending] = useActionState(action, null);
+  const [variant, setVariant] = useState<"ONE_BUTTON" | "THREE_BUTTON">("ONE_BUTTON");
 
   useEffect(() => {
     if (!state) return;
@@ -22,7 +23,30 @@ export function PublishRichMenuButton({
   }, [state]);
 
   return (
-    <form action={formAction}>
+    <form action={formAction} className="space-y-3">
+      <fieldset className="space-y-1.5">
+        <legend className="mb-1 text-xs font-medium text-gray-700">รูปแบบเมนู</legend>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="radio"
+            name="variant"
+            value="ONE_BUTTON"
+            checked={variant === "ONE_BUTTON"}
+            onChange={() => setVariant("ONE_BUTTON")}
+          />
+          เมนูเดียว (ลงทะเบียน)
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="radio"
+            name="variant"
+            value="THREE_BUTTON"
+            checked={variant === "THREE_BUTTON"}
+            onChange={() => setVariant("THREE_BUTTON")}
+          />
+          3 ปุ่ม (ลงทะเบียน / สั่งซื้อภาพ / ตรวจสอบสถานะ) — แบบเดิม
+        </label>
+      </fieldset>
       <button
         type="submit"
         disabled={isPending}

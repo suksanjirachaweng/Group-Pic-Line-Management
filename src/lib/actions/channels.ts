@@ -336,16 +336,20 @@ export type PublishRichMenuState =
   | null;
 
 /**
- * Publishes the standard 3-button rich menu (register / order photos / track status) to
- * this channel, deriving the "register" link from the single active university it serves.
- * Only supported when the channel's pool has exactly one active university — with more than
- * one, there's no single link to bake into the rich menu's static action URL.
+ * Publishes a rich menu (register-only, or the older 3-button register / order photos / track
+ * status layout) to this channel, deriving the "register" link from the single active
+ * university it serves. Only supported when the channel's pool has exactly one active
+ * university — with more than one, there's no single link to bake into the rich menu's static
+ * action URL.
  */
 export async function publishChannelRichMenu(
   channelId: string,
   _prevState: PublishRichMenuState,
+  formData: FormData,
 ): Promise<PublishRichMenuState> {
   await requireSuperadmin();
+
+  const variant = formData.get("variant") === "THREE_BUTTON" ? "THREE_BUTTON" : "ONE_BUTTON";
 
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
@@ -372,7 +376,7 @@ export async function publishChannelRichMenu(
   const registerUrl = buildLiffRegisterUrl(channel.liffId, university.slug);
 
   try {
-    const richMenuId = await publishRichMenu(channel.accessTokenEncrypted, registerUrl, channel.richMenuId);
+    const richMenuId = await publishRichMenu(channel.accessTokenEncrypted, registerUrl, channel.richMenuId, variant);
     await prisma.channel.update({ where: { id: channelId }, data: { richMenuId } });
     revalidatePath(`/admin/channels/${channelId}`);
     return { success: true, richMenuId };

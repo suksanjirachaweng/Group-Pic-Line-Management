@@ -282,9 +282,9 @@ export default async function ChannelDetailPage({
       <div className="rounded-md border border-gray-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold text-gray-900">Rich menu</h2>
         <p className="mb-3 text-xs text-gray-400">
-          Publishes the standard 3-button rich menu (register / order photos / track status) as this
-          channel&apos;s default — the &quot;register&quot; button links to the university this channel
-          serves. Re-publish after changing the LIFF ID above so the link stays in sync.
+          Publishes the selected rich menu layout as this channel&apos;s default — the
+          &quot;register&quot; button links to the university this channel serves. Re-publish after
+          changing the LIFF ID above so the link stays in sync.
         </p>
         {channel.richMenuId && (
           <p className="mb-3 text-xs text-gray-500">
