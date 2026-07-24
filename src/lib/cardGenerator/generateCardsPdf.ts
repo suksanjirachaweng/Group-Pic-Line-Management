@@ -34,6 +34,7 @@ const QR_LAYOUT_LOGO_HEIGHT = 26;
 const QR_LAYOUT_LOGO_WIDTH = (QR_LAYOUT_LOGO_HEIGHT * LOGO_NATIVE_W) / LOGO_NATIVE_H;
 const QR_LAYOUT_BRAND_FONT_SIZE = 14;
 const TITLE_CHECKBOXES = ["ศ", "รศ", "ผศ", "ดร", "อ"];
+const RETURN_REMINDER = "โปรดส่งคืนหลังถ่ายภาพเสร็จ";
 
 export type CardGeneratorOptions = {
   startCode: number;
@@ -160,6 +161,19 @@ function drawFillInBox(doc: PDFKit.PDFDocument, x: number, y: number, w: number)
   }
 }
 
+/** Left-aligned footnote reminding whoever's holding the card to hand it back — mirrors the
+ * event-name/year footer's own position/size so the two can share the bottom row (that footer is
+ * right-aligned, this is left-aligned, so they never collide even when both are present). Only
+ * called where the bottom band actually has free space; layouts where the fill-in box or QR
+ * already fill that band are left alone rather than cramming another line into them. */
+function drawReturnReminder(doc: PDFKit.PDFDocument, contentWidth: number) {
+  doc
+    .font("Sarabun")
+    .fontSize(11)
+    .fillColor("#000000")
+    .text(RETURN_REMINDER, MARGIN, PAGE_HEIGHT - MARGIN - 13, { width: contentWidth, align: "left", lineBreak: false });
+}
+
 async function buildQrBuffer(url: string): Promise<Buffer> {
   return QRCode.toBuffer(url, { margin: 1, width: 300 });
 }
@@ -256,6 +270,8 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
         width: QR_TOP_ROW_QR_SIZE,
         height: QR_TOP_ROW_QR_SIZE,
       });
+
+      drawReturnReminder(doc, contentWidth);
 
       if (hasEventFooter) {
         const headerRight = [eventName.trim(), year.trim()].filter(Boolean).join("  ");
@@ -357,6 +373,10 @@ export async function generateCardsPdf(options: CardGeneratorOptions): Promise<B
       });
     } else if (includeFillIn) {
       drawFillInBox(doc, MARGIN, bottomBandY, contentWidth);
+    } else {
+      // Neither fill-in box nor QR (showQr here would mean qrOnlyTopLayout instead, handled
+      // above) — the whole bottom band is otherwise empty, so there's room for the reminder.
+      drawReturnReminder(doc, contentWidth);
     }
     // showQr-only (no fill-in) is already drawn above, in the dedicated top scan band.
   }
