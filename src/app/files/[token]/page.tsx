@@ -14,6 +14,8 @@ export default async function PublicFileSharePage({ params }: { params: Promise<
   if (!info) {
     return (
       <div className="mx-auto max-w-lg p-6">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/nsl-logo.png" alt="Newsalon" className="mb-3 h-6 w-auto" />
         <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
           ลิงก์นี้ไม่ถูกต้องหรือถูกปิดใช้งานแล้ว กรุณาติดต่อผู้ดูแลเพื่อขอลิงก์ใหม่
         </p>

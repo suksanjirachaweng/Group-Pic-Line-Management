@@ -104,6 +104,8 @@ function PublicFileDownload({ token, sharePath, name }: { token: string; sharePa
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-md p-6 text-center">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/nsl-logo.png" alt="Newsalon" className="mx-auto mb-4 h-6 w-auto" />
       <p className="mb-1 text-2xl">📄</p>
       <h1 className="mb-4 text-lg font-semibold text-gray-900">{name}</h1>
       {url ? (
@@ -247,6 +249,8 @@ function PublicFolderBrowser({ token, sharePath, rootName }: { token: string; sh
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-3xl p-6">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/nsl-logo.png" alt="Newsalon" className="mb-3 h-6 w-auto" />
       <h1 className="mb-1 text-lg font-semibold text-gray-900">📁 {rootName}</h1>
       <p className="mb-4 text-xs text-gray-500">
         ดู/ดาวน์โหลดไฟล์ในโฟลเดอร์นี้ได้ {isAtRoot && "และอัปโหลดไฟล์ใหม่เพิ่มเข้ามาได้"}
