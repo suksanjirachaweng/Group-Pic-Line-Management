@@ -2,7 +2,64 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { isFullscreenAdminRoute } from "@/lib/admin/fullscreenAdminRoutes";
+
+/** A dropdown grouping a handful of related nav links under one label — keeps the header from
+ * turning into a long flat row of unrelated links as more admin sections get added. */
+function NavGroup({
+  label,
+  align = "left",
+  children,
+}: {
+  label: string;
+  align?: "left" | "right";
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 whitespace-nowrap text-indigo-100 transition-colors hover:text-white"
+      >
+        {label}
+        <span aria-hidden className={`text-[10px] transition-transform ${open ? "rotate-180" : ""}`}>
+          ▾
+        </span>
+      </button>
+      {open && (
+        <div
+          className={`absolute top-full z-20 mt-2 w-52 rounded-md border border-gray-200 bg-white py-1 shadow-lg ${
+            align === "right" ? "right-0" : "left-0"
+          }`}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NavGroupLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} className="block px-3 py-2 text-sm text-gray-700 hover:bg-sky-50 hover:text-indigo-700">
+      {children}
+    </Link>
+  );
+}
 
 export function AdminChrome({
   email,
@@ -56,7 +113,7 @@ export function AdminChrome({
               sm:w-auto puts it back inline with the brand/email row on desktop, matching the
               original single-row layout exactly. Horizontal scroll (not wrap) on mobile so tab
               labels never break into the tall multi-line stack a plain flex-wrap nav produces. */}
-          <nav className="order-3 flex w-full gap-4 overflow-x-auto text-sm sm:order-none sm:w-auto sm:overflow-visible">
+          <nav className="order-3 flex w-full items-center gap-4 overflow-x-auto text-sm sm:order-none sm:w-auto sm:overflow-visible">
             <Link
               href="/admin/universities"
               className="shrink-0 whitespace-nowrap text-indigo-100 transition-colors hover:text-white"
@@ -64,35 +121,24 @@ export function AdminChrome({
               Universities
             </Link>
             {isSuperadmin && (
+              <NavGroup label="ระบบ">
+                <NavGroupLink href="/admin/channels">LINE Channels</NavGroupLink>
+                <NavGroupLink href="/admin/system-status">สถานะระบบ</NavGroupLink>
+              </NavGroup>
+            )}
+            {isSuperadmin ? (
+              <NavGroup label="เครื่องมือ" align="right">
+                <NavGroupLink href="/admin/faculty-face-bank">คลังใบหน้าอาจารย์</NavGroupLink>
+                <NavGroupLink href="/admin/file-manager">จัดการไฟล์</NavGroupLink>
+              </NavGroup>
+            ) : (
               <Link
-                href="/admin/channels"
+                href="/admin/file-manager"
                 className="shrink-0 whitespace-nowrap text-indigo-100 transition-colors hover:text-white"
               >
-                LINE Channels
+                จัดการไฟล์
               </Link>
             )}
-            {isSuperadmin && (
-              <Link
-                href="/admin/system-status"
-                className="shrink-0 whitespace-nowrap text-indigo-100 transition-colors hover:text-white"
-              >
-                สถานะระบบ
-              </Link>
-            )}
-            {isSuperadmin && (
-              <Link
-                href="/admin/faculty-face-bank"
-                className="shrink-0 whitespace-nowrap text-indigo-100 transition-colors hover:text-white"
-              >
-                คลังใบหน้าอาจารย์
-              </Link>
-            )}
-            <Link
-              href="/admin/file-manager"
-              className="shrink-0 whitespace-nowrap text-indigo-100 transition-colors hover:text-white"
-            >
-              จัดการไฟล์
-            </Link>
           </nav>
         </div>
       </header>
